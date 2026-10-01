@@ -228,6 +228,14 @@ for otro in /etc/nginx/sites-enabled/*; do
         echo "               sudo systemctl reload nginx"
         echo "           (si quieres conservar esa web, cambiale el server_name,"
         echo "            p. ej. a viejo.${DOMAIN})"
+        # Vhosts que escuchan en IPs concretas o sirven el 443: las reglas de
+        # este fichero no bastan, hay que integrar el nuevo 'root' en ese vhost.
+        if grep -qsE 'listen[^;]*443' "$otro" 2>/dev/null; then
+            echo "           OJO: ese vhost sirve tambien el 443 (HTTPS) y/o escucha en IPs"
+            echo "           concretas. Este sitio solo escucha el puerto 80 en 0.0.0.0,"
+            echo "           asi que para HTTPS habra que integrar el nuevo 'root' en ese"
+            echo "           vhost (o anadir un 443 aqui con el certificado de ${DOMAIN})."
+        fi
     fi
 done
 
