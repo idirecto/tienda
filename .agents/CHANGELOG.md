@@ -5,6 +5,61 @@ El detalle línea a línea está en `git log`.
 
 ---
 
+## 2026-10-01 · Imágenes de las tiendas: carpetas `tienda_<tipo>`, id en el nombre y WebP
+
+**Motivo:** el dueño quiere que las imágenes que sube cada tienda (banners,
+productos, logo…) se guarden separadas por tipo en carpetas con el prefijo de la
+tienda, con el **id de la tienda en el nombre del fichero** (para poder
+identificarlas y borrarlas después) y **comprimidas**: si sube un JPG, que se
+convierta a un formato ligero.
+
+**Cambios**
+
+- `app/Core/Storage/StorageKey.php` (nuevo): una única clave para S3 y local:
+  `tenants/tienda_banners/7_banners_20261001-174530-9f3c1a2b.webp`.
+  - Carpeta `{STORAGE_FOLDER_PREFIX}_{tipo}` → `tienda_banners`,
+    `tienda_productos`, `tienda_logo`…, para listar/borrar por familias.
+  - El nombre empieza por el id de la tienda (0 = global) y lleva fecha +
+    aleatorio, así que nunca se reescribe un fichero.
+  - Sanea los segmentos: un tipo con `../` no puede escapar de la carpeta.
+- `app/Core/Media/ImageOptimizer.php` (nuevo): recompone la imagen con GD.
+  - **JPG, PNG, AVIF, BMP y WebP → WebP** (calidad 82 por defecto). En la prueba
+    real: 203 KB → 15,7 KB (**−92 %**).
+  - **SVG** se respeta (vectorial) y **GIF animado** se queda en GIF.
+  - Si un PNG ya pesa menos que su WebP (logos, gráficos planos), se guarda el
+    original: mejor calidad y menos peso.
+  - Corrige la orientación EXIF, limita a 2560 px sin ampliar y **quita los
+    metadatos EXIF** (peso y privacidad).
+- `app/Core/Media/MediaUploader.php` (nuevo): punto único de subida
+  (`upload()` para HTTP, `storePath()` para importaciones/tareas); el
+  `MediaController` solo persiste los metadatos en `mt_media`.
+- Los drivers (`StorageInterface`, `LocalStorage`, `S3Storage`) reciben ahora un
+  **fichero ya preparado en disco**, comparten la clave y S3 sube con
+  `Cache-Control: immutable` y metadatos de la tienda. Se pasan las dos
+  comprobaciones de MIME/tamaño al servicio de subida (un solo sitio).
+- `config/storage.php` + `.env.example`: `STORAGE_PREFIX`,
+  `STORAGE_FOLDER_PREFIX`, `STORAGE_MAX_BYTES` y el bloque `IMAGE_*`
+  (optimización, calidad, tamaño máximo, GIF animado).
+- `panel.js`: al subir una imagen muestra el ahorro
+  (`JPG 2,4 MB → WEBP 380 KB, −84 %`).
+- **`.htaccess`**: se declaran los tipos MIME `.webp` y `.avif`. Probando con
+  HTTP real se vio que este Apache no trae `webp` en `/etc/mime.types` y servía
+  la imagen **sin `Content-Type`** (los buscadores y las previsualizaciones de
+  WhatsApp/Telegram no la pintan).
+- `tools/verify.php`: 29 → **32** comprobaciones (clave `tienda_tipo` con el id,
+  clave saneada, el driver S3 usa el mismo esquema, JPG → WebP más ligero, SVG
+  sin reconvertir).
+
+**Verificación:** `php tools/verify.php` → TODO OK (32). Subida **real por HTTP**
+con sesión en el panel (login + CSRF + multipart): la respuesta fue
+`tenants/tienda_banners/1_banners_20261001-172238-b203220e.webp`,
+`image/webp`, 203595 B → 15706 B, 2560×1024; el fichero se sirvió con
+`Content-Type: image/webp` (200) y el borrado desde el panel lo eliminó de disco
+y de `mt_media`. También se comprobó la transparencia de PNG (conservada), el SVG
+intacto, el GIF estático convertido y el animado respetado.
+
+---
+
 ## 2026-10-01 · Publicar en otro servidor: script de nginx más seguro y Plesk
 
 **Motivo:** el dueño va a poner la web en `https://valduran.com` desde

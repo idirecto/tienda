@@ -21,6 +21,22 @@ _(vacío — sin petición pendiente)_
 
 Cada petición terminada se anota aquí con la fecha, qué se pidió y qué se hizo.
 
+### 2026-10-01 · Imágenes de cada tienda: carpetas `tienda_<tipo>`, id en el nombre y WebP (petición por chat)
+
+**Pedido:** que las imágenes que suben las tiendas (banners, productos y demás)
+se guarden en carpetas separadas con el prefijo de la tienda (tipo
+`tienda_banner`), con el **id de la tienda en el nombre** del fichero para poder
+identificarlas/borrarlas, y que se suban con la mejor calidad pero comprimidas
+(un JPG, a WebP o al formato más ligero).
+
+**Hecho:** clave única para S3 y local
+`tenants/tienda_<tipo>/<id>_<tipo>_<fecha>-<aleatorio>.webp` (`StorageKey`);
+optimización a WebP con GD (`ImageOptimizer`, calidad 82, límite 2560 px,
+orientación EXIF corregida, EXIF eliminado; SVG y GIF animado se respetan);
+subida centralizada en `MediaUploader`; el panel informa del ahorro. De paso se
+declararon los MIME `.webp`/`.avif` en `.htaccess` porque este Apache servía el
+WebP sin `Content-Type`. `verify.php` 29 → 32 comprobaciones.
+
 ### 2026-10-01 · «Error interno» en la portada (petición por chat)
 
 **Pedido:** revisar por qué `http://local.tienda/` solo mostraba «Error interno».

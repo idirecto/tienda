@@ -13,7 +13,7 @@ catálogo real, ficha de producto y panel completo. Falta el ciclo de compra
 
 > ✅ **Entorno (2026-10-01).** `idirecto_db` está **completa** (239 tablas:
 > catálogo con 41.289 productos con stock, 33 categorías con stock, y las `mt_`),
-> la web responde 200 y `php tools/verify.php` da **TODO OK (29)**.
+> la web responde 200 y `php tools/verify.php` da **TODO OK (32)**.
 >
 > ⚠️ **Si vuelve a salir un 500 con «Error interno»**: casi siempre es que el
 > usuario del servidor web (`www-data`) **no puede leer `.env`**, no un fallo de
@@ -31,6 +31,7 @@ catálogo real, ficha de producto y panel completo. Falta el ciclo de compra
 | Panel de la tienda (diseño, banners, avisos, productos, dominios, ajustes) | ✅ Completo |
 | Dominios propios + verificación DNS | ✅ Completo |
 | Almacenamiento (local / S3) | ✅ Completo (S3 sin probar contra bucket real) |
+| Subida de imágenes (carpetas `tienda_<tipo>`, id en el nombre, WebP) | ✅ Completo |
 | Entorno local (`http://local.tienda`) | ✅ Completo |
 | **Despliegue Apache y nginx** | ✅ Completo (nginx verificado con binario real) |
 | **Checkout: carrito, pago y envío** | ❌ **No existe** |
@@ -83,7 +84,7 @@ catálogo real, ficha de producto y panel completo. Falta el ciclo de compra
   en **nginx + PHP-FPM** (`sudo bash deploy/setup-nginx-domain.sh valduran.com`).
 - La app detecta el servidor (`app/Core/Server.php`): ruta pública de `/public`,
   esquema real (incluido proxy) y host de las URLs canónicas.
-- `tools/verify.php`: 29 comprobaciones automáticas.
+- `tools/verify.php`: 32 comprobaciones automáticas.
 - Documentación interna en `.agents/`, blindada frente a la web.
 - Repositorio publicado en GitHub (`main`).
 

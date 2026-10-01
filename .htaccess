@@ -4,6 +4,18 @@
 Options +FollowSymLinks -MultiViews
 DirectoryIndex index.php
 
+# -----------------------------------------------------------------------------
+# TIPOS MIME DE LAS IMAGENES SUBIDAS
+# Las fotos se guardan en WebP (ver app/Core/Media/ImageOptimizer.php). Algunos
+# servidores no traen "webp" en /etc/mime.types y servirian la imagen SIN
+# Content-Type: los buscadores y las previsualizaciones de WhatsApp/Telegram
+# dejan de pintarla. Declarandolo aqui funciona en cualquier Apache.
+# -----------------------------------------------------------------------------
+<IfModule mod_mime.c>
+    AddType image/webp .webp
+    AddType image/avif .avif
+</IfModule>
+
 <IfModule mod_rewrite.c>
     RewriteEngine On
 

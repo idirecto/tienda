@@ -40,6 +40,8 @@ Los tres ficheros viven en el repositorio y **nunca** se sirven por web.
 | Cambiar el layout público | `app/Views/layouts/shop.php` |
 | Añadir una tabla | `database/migrations/` + ejecutar `php database/migrate.php` |
 | Añadir un ajuste | `config/*.php` + clave en `.env` y `.env.example` |
+| Subir/optimizar imágenes (WebP) | `app/Core/Media/` (`MediaUploader`, `ImageOptimizer`) |
+| Cambiar carpetas/nombres en S3 | `app/Core/Storage/StorageKey.php` (+ `config/storage.php`) |
 | Desplegar con **nginx** | `deploy/nginx-site.conf.tpl` + `deploy/setup-nginx-domain.sh <dominio>` |
 | Saber servidor / esquema / host real | `app/Core/Server.php` |
 
@@ -53,7 +55,7 @@ Esquema de tablas `mt_` al detalle: [`references/esquema-bd.md`](references/esqu
 ## Verificación obligatoria antes de decir "hecho"
 
 ```bash
-php tools/verify.php          # debe terminar en: TODO OK (29 comprobaciones)
+php tools/verify.php          # debe terminar en: TODO OK (32 comprobaciones)
 php -l <fichero-modificado>   # sintaxis de cada PHP que toques
 node --check public/assets/js/shop.js   # si tocas JS
 curl -s -o /dev/null -w '%{http_code}\n' http://local.tienda/catalogo

@@ -7,6 +7,28 @@
 
     var CFG = window.TIENDA || {};
 
+    /** Tamanos legibles: 2,4 MB, 380 KB, 900 B. */
+    function fmtBytes(bytes) {
+        if (!bytes || bytes <= 0) { return ''; }
+        if (bytes >= 1048576) { return (bytes / 1048576).toFixed(1).replace('.', ',') + ' MB'; }
+        if (bytes >= 1024) { return Math.round(bytes / 1024) + ' KB'; }
+        return bytes + ' B';
+    }
+
+    /**
+     * Detalle del ahorro cuando el servidor ha reconvertido la imagen
+     * (JPG 2,4 MB -> WEBP 380 KB, -84%).
+     */
+    function detalleOptimizacion(media) {
+        if (!media || !media.optimized || !media.original_bytes) { return ''; }
+        var origen = media.original_mime ? String(media.original_mime).replace('image/', '').toUpperCase() + ' ' : '';
+        var texto = ' (' + origen + fmtBytes(media.original_bytes) + ' -> WEBP ' + fmtBytes(media.bytes);
+        if (media.original_bytes > media.bytes) {
+            texto += ', -' + Math.round((1 - (media.bytes / media.original_bytes)) * 100) + '%';
+        }
+        return texto + ')';
+    }
+
     /**
      * Sube un fichero al endpoint de media y rellena los campos indicados.
      */
@@ -48,7 +70,7 @@
                     preview.innerHTML = '<img src="' + data.media.url + '" alt="">';
                 }
             }
-            if (status) { status.textContent = 'Imagen subida correctamente.'; }
+            if (status) { status.textContent = 'Imagen subida correctamente' + detalleOptimizacion(data.media) + '.'; }
             return data.media;
         })
         .catch(function (err) {

@@ -11,6 +11,9 @@ use Tienda\Core\StorageException;
 /**
  * Almacenamiento local (desarrollo): public/uploads.
  * No debe usarse en produccion; sirve para trabajar sin S3 ni SDK de AWS.
+ *
+ * Usa las MISMAS claves que S3 (`tenants/tienda_banners/7_banners_....webp`),
+ * asi cambiar de driver no invalida lo ya guardado en `mt_media`.
  */
 final class LocalStorage implements StorageInterface
 {
@@ -19,46 +22,32 @@ final class LocalStorage implements StorageInterface
         return 'local';
     }
 
-    public function put(array $file, int $storeId, string $folder): array
+    public function put(string $localPath, string $mime, int $storeId, string $folder): array
     {
-        $this->assertValidUpload($file);
-
-        $mime = $this->detectMime($file['tmp_name']);
-        $allowed = (array) Config::get('storage.mime', []);
-        if (!isset($allowed[$mime])) {
-            throw new ValidationException('Formato no permitido: ' . $mime);
+        if (!is_file($localPath)) {
+            throw new ValidationException('No se ha recibido un fichero valido.');
         }
 
-        $maxBytes = (int) Config::get('storage.max_bytes', 5242880);
-        if ((int) $file['size'] > $maxBytes) {
-            throw new ValidationException('El fichero supera el tamano maximo permitido.');
-        }
+        $key = StorageKey::build($storeId, $folder, StorageKey::extensionParaMime($mime));
+        $absolute = $this->absolutePath($key);
 
-        $ext = $allowed[$mime];
-        $scope = $storeId > 0 ? (string) $storeId : 'global';
-        $folder = $this->sanitizeSegment($folder);
-
-        $relativeDir = '/' . $scope . '/' . $folder;
-        $absoluteDir = rtrim((string) Config::get('storage.local.path'), '/') . $relativeDir;
-
-        if (!is_dir($absoluteDir) && !mkdir($absoluteDir, 0775, true) && !is_dir($absoluteDir)) {
+        $dir = dirname($absolute);
+        if (!is_dir($dir) && !mkdir($dir, 0775, true) && !is_dir($dir)) {
             throw new StorageException('No se pudo crear el directorio de destino.');
         }
 
-        $filename = bin2hex(random_bytes(16)) . '.' . $ext;
-        $absolute = $absoluteDir . '/' . $filename;
-
-        if (!move_uploaded_file($file['tmp_name'], $absolute)) {
+        if (!@copy($localPath, $absolute)) {
             throw new StorageException('No se pudo guardar el fichero subido.');
         }
+        @chmod($absolute, 0644);
 
         $dim = @getimagesize($absolute);
 
         return [
-            'key'    => ltrim($scope . '/' . $folder . '/' . $filename, '/'),
-            'url'    => rtrim((string) Config::get('storage.local.url', '/uploads'), '/') . $relativeDir . '/' . $filename,
+            'key'    => $key,
+            'url'    => rtrim((string) Config::get('storage.local.url', '/uploads'), '/') . '/' . $key,
             'mime'   => $mime,
-            'bytes'  => (int) filesize($absolute),
+            'bytes'  => (int) (@filesize($absolute) ?: 0),
             'width'  => $dim ? (int) $dim[0] : null,
             'height' => $dim ? (int) $dim[1] : null,
         ];
@@ -70,29 +59,15 @@ final class LocalStorage implements StorageInterface
         if ($key === '' || str_contains($key, '..')) {
             return false;
         }
-        $path = rtrim((string) Config::get('storage.local.path'), '/') . '/' . $key;
-        return is_file($path) ? @unlink($path) : false;
+
+        return is_file($this->absolutePath($key)) ? @unlink($this->absolutePath($key)) : false;
     }
 
-    private function assertValidUpload(array $file): void
+    /** Ruta absoluta de una clave, sin dejar que se escape de la carpeta base. */
+    public function absolutePath(string $key): string
     {
-        if (empty($file['tmp_name']) || !is_uploaded_file($file['tmp_name'])) {
-            throw new ValidationException('No se ha recibido un fichero valido.');
-        }
-        if (($file['error'] ?? UPLOAD_ERR_OK) !== UPLOAD_ERR_OK) {
-            throw new ValidationException('Error en la subida (codigo ' . $file['error'] . ').');
-        }
-    }
+        $base = rtrim((string) Config::get('storage.local.path'), '/');
 
-    private function detectMime(string $path): string
-    {
-        $finfo = new \finfo(FILEINFO_MIME_TYPE);
-        return (string) ($finfo->file($path) ?: '');
-    }
-
-    private function sanitizeSegment(string $segment): string
-    {
-        $segment = preg_replace('/[^a-z0-9_\-]/i', '', $segment) ?? '';
-        return $segment !== '' ? strtolower($segment) : 'otros';
+        return $base . '/' . ltrim($key, '/');
     }
 }

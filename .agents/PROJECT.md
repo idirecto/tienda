@@ -74,7 +74,7 @@ public/                    ÚNICO directorio servido como estático
   assets/css|js            shop.css, panel.css, shop.js, panel.js
   uploads/                 Archivos locales (si STORAGE_DRIVER=local)
 storage/                   cache/ y logs/ (escritura de la app)
-tools/verify.php           29 comprobaciones automáticas
+tools/verify.php           32 comprobaciones automáticas
 ```
 
 ---
@@ -91,7 +91,8 @@ tools/verify.php           29 comprobaciones automáticas
 | `Tenant` | Contexto inmutable de la tienda (nombre, tema, color, cuotas…) |
 | `Auth` / `Session` / `Csrf` | Sesión, login y tokens CSRF |
 | `Controller` / `View` / `Model` | Base MVC; `View` usa `extract()` |
-| `Storage/*` | `StorageInterface` + `LocalStorage` + `S3Storage` + `StorageManager` |
+| `Storage/*` | `StorageInterface` + `LocalStorage` + `S3Storage` + `StorageManager` + `StorageKey` |
+| `Media/*` | `MediaUploader` (subida) e `ImageOptimizer` (WebP, tamaño, EXIF) |
 | `Specs` | Parsea características y especificaciones del catálogo central |
 | `Str` | `slugify()` (mismo criterio que idirecto) y `excerpt()` |
 | `Dns` | Verificación de dominios por A/CNAME/TXT (con *lookup* inyectable) |
@@ -264,15 +265,50 @@ base si el tema no la tiene, de modo que un tema incompleto no rompe.
 
 ---
 
-## 8. Almacenamiento
+## 8. Almacenamiento e imagenes
 
 `StorageManager` elige driver según `STORAGE_DRIVER`:
 
 - `local` → `public/uploads/` (solo desarrollo).
-- `s3` → `S3Storage`, clave `tenants/{storeId}/{carpeta}/{uuid}.ext`.
+- `s3` → `S3Storage` (bucket del mayorista).
 
 **En la base de datos solo se guardan claves y URLs**, nunca el binario. La
-validación de MIME es real (`finfo`), no por extensión.
+validación de MIME es real (`finfo`, por contenido), no por extensión.
+
+### Clave de los ficheros (`StorageKey`)
+
+Los dos drivers usan **la misma clave**, así que cambiar de driver no invalida lo
+que ya hay en `mt_media`:
+
+```
+{STORAGE_PREFIX}/{STORAGE_FOLDER_PREFIX}_{tipo}/{id}_{tipo}_{fecha}-{aleatorio}.{ext}
+tenants/tienda_banners/7_banners_20261001-174530-9f3c1a2b.webp
+```
+
+- La carpeta es `tienda_<tipo>` (banners, productos, logo, general…): permite
+  listar o borrar familias enteras y ver de un vistazo qué es cada cosa.
+- El nombre empieza por el **id de la tienda**, así un fichero se identifica (y
+  se puede borrar) aunque se mueva de carpeta.
+
+### Optimización al subir (`MediaUploader` + `ImageOptimizer`)
+
+Todo pasa por `Tienda\Core\Media\MediaUploader::upload()` (subida HTTP) o
+`storePath()` (ficheros en disco: importaciones, tareas):
+
+- **JPG, PNG, AVIF, BMP y WebP → WebP** con calidad `IMAGE_QUALITY` (82 por
+  defecto). Ahorro típico en fotos: 80-95 %.
+- **GIF animado** se queda en GIF (a WebP perdería el movimiento) y **SVG** tal
+  cual (es vectorial).
+- Si un PNG ya pesa menos que su WebP (gráficos planos, logos), se respeta el
+  original: mejor calidad y menos peso.
+- Corrige la orientación EXIF (fotos de móvil), limita a `IMAGE_MAX_WIDTH` /
+  `IMAGE_MAX_HEIGHT` sin ampliar nunca, y **quita los metadatos EXIF** (peso y
+  privacidad: GPS, número de serie…).
+- Interruptor de emergencia: `IMAGE_OPTIMIZE=false` guarda el original.
+
+Los tipos MIME de `.webp`/`.avif` se declaran en `.htaccess` porque algunos
+servidores no los traen en `/etc/mime.types` y servirían la imagen sin
+`Content-Type`.
 
 ---
 
@@ -280,7 +316,7 @@ validación de MIME es real (`finfo`), no por extensión.
 
 ```bash
 sudo bash deploy/setup-local-domain.sh     # /etc/hosts + VirtualHost + permisos
-php tools/verify.php                       # 29 comprobaciones
+php tools/verify.php                       # 32 comprobaciones
 php -S 127.0.0.1:8099 index.php            # servidor embebido (alternativa)
 ```
 
@@ -307,7 +343,7 @@ con repetir el script con el nuevo nombre y tocar esas tres claves del `.env`.
 ## 10. Verificación antes de dar algo por hecho
 
 ```bash
-php tools/verify.php                 # debe decir: TODO OK (29 comprobaciones)
+php tools/verify.php                 # debe decir: TODO OK (32 comprobaciones)
 curl -s -o /dev/null -w '%{http_code}\n' http://local.tienda/
 curl -s -o /dev/null -w '%{http_code}\n' http://local.tienda/catalogo
 curl -s -o /dev/null -w '%{http_code}\n' http://local.tienda/panel/login

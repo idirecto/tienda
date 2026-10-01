@@ -201,11 +201,15 @@ tablas propias del proyecto (`mt_*`).
 # "local" para desarrollo, "s3" para el bucket del mayorista
 STORAGE_DRIVER=local
 
+# Carpeta de cada tipo dentro del bucket: {STORAGE_FOLDER_PREFIX}_{tipo}
+STORAGE_PREFIX=tenants/
+STORAGE_FOLDER_PREFIX=tienda
+STORAGE_MAX_BYTES=5242880      # 5 MB por fichero
+
 S3_REGION=eu-west-1
 S3_BUCKET=mi-bucket
 S3_KEY=...
 S3_SECRET=...
-S3_PREFIX=tenants/
 S3_PUBLIC_URL=              # opcional (CDN o dominio propio del bucket)
 
 # Si el SDK de AWS no esta en ./vendor, apunta a un autoload existente:
@@ -219,8 +223,39 @@ composer require aws/aws-sdk-php
 # y pon STORAGE_DRIVER=s3 en .env
 ```
 
-Las imágenes se guardan como `tenants/{id_tienda}/{carpeta}/{uuid}.{ext}`.
-En base de datos **solo** se persisten key y URL (`mt_media`), nunca binarios.
+Los ficheros se guardan con **la misma clave en S3 y en local**, así cambiar de
+driver no invalida lo que ya hay en `mt_media`:
+
+```
+tenants/tienda_banners/7_banners_20261001-174530-9f3c1a2b.webp
+└ prefijo └ tienda_tipo  └ id de la tienda   fecha    aleatorio
+```
+
+Cada tipo de imagen (`banners`, `productos`, `logo`, `general`) tiene su carpeta
+`tienda_<tipo>` y el nombre empieza por el **id de la tienda**: se puede listar o
+borrar por familias y saber de quién es cada fichero. En base de datos **solo** se
+persisten key y URL (`mt_media`), nunca binarios.
+
+### Optimización de las imágenes al subirlas
+
+```ini
+IMAGE_OPTIMIZE=true            # false = guardar el original tal cual
+IMAGE_QUALITY=82               # calidad WebP (1-100)
+IMAGE_MAX_WIDTH=2560           # si es mayor se reduce; nunca se amplía
+IMAGE_MAX_HEIGHT=2560
+IMAGE_KEEP_ANIMATED_GIF=true
+```
+
+| Lo que se sube | Qué se guarda |
+|---|---|
+| JPG, PNG, AVIF, BMP, WebP | **WebP** comprimido (en fotos se ahorra un 80-95 %) |
+| PNG que ya pesa menos que su WebP | El PNG original (mejor calidad y menos peso) |
+| GIF **animado** | GIF (a WebP perdería el movimiento) |
+| SVG | SVG tal cual (es vectorial) |
+
+Además se corrige la orientación EXIF (fotos de móvil), se limita el tamaño
+máximo y se eliminan los metadatos EXIF (peso y privacidad). El panel muestra el
+ahorro al subir cada imagen (`JPG 2,4 MB → WEBP 380 KB, -84%`).
 
 ### Multi-tenant
 

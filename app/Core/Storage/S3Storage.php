@@ -48,55 +48,53 @@ final class S3Storage implements StorageInterface
         return $this->client;
     }
 
-    public function put(array $file, int $storeId, string $folder): array
+    public function put(string $localPath, string $mime, int $storeId, string $folder): array
     {
-        if (empty($file['tmp_name']) || !is_uploaded_file($file['tmp_name'])) {
+        if (!is_file($localPath)) {
             throw new ValidationException('No se ha recibido un fichero valido.');
         }
-        if (($file['error'] ?? UPLOAD_ERR_OK) !== UPLOAD_ERR_OK) {
-            throw new ValidationException('Error en la subida (codigo ' . $file['error'] . ').');
-        }
 
-        $finfo = new \finfo(FILEINFO_MIME_TYPE);
-        $mime = (string) ($finfo->file($file['tmp_name']) ?: '');
-
-        $allowed = (array) Config::get('storage.mime', []);
-        if (!isset($allowed[$mime])) {
-            throw new ValidationException('Formato no permitido: ' . $mime);
-        }
-
-        $maxBytes = (int) Config::get('storage.max_bytes', 5242880);
-        if ((int) $file['size'] > $maxBytes) {
-            throw new ValidationException('El fichero supera el tamano maximo permitido.');
-        }
-
-        $ext = $allowed[$mime];
-        $key = $this->buildKey($storeId, $folder, $ext);
         $bucket = (string) Config::get('storage.s3.bucket', '');
-
         if ($bucket === '') {
             throw new StorageException('S3_BUCKET no esta configurado.');
+        }
+
+        $key = StorageKey::build($storeId, $folder, StorageKey::extensionParaMime($mime));
+        $cuerpo = fopen($localPath, 'r');
+        if ($cuerpo === false) {
+            throw new StorageException('No se ha podido abrir el fichero para subirlo.');
         }
 
         try {
             $this->client()->putObject([
                 'Bucket'      => $bucket,
                 'Key'         => $key,
-                'Body'        => fopen($file['tmp_name'], 'r'),
+                'Body'        => $cuerpo,
                 'ACL'         => 'public-read',
                 'ContentType' => $mime,
+                // Los ficheros llevan fecha y aleatorio en el nombre: nunca se
+                // reescriben, asi que se pueden cachear para siempre.
+                'CacheControl' => 'public, max-age=31536000, immutable',
+                'Metadata'    => [
+                    'tienda-id'    => StorageKey::id($storeId),
+                    'tienda-tipo'  => $folder,
+                ],
             ]);
         } catch (\Throwable $e) {
             throw new StorageException('Error al subir a S3: ' . $e->getMessage(), 0, $e);
+        } finally {
+            if (is_resource($cuerpo)) {
+                fclose($cuerpo);
+            }
         }
 
-        $dim = @getimagesize($file['tmp_name']);
+        $dim = @getimagesize($localPath);
 
         return [
             'key'    => $key,
             'url'    => $this->publicUrl($key),
             'mime'   => $mime,
-            'bytes'  => (int) $file['size'],
+            'bytes'  => (int) (@filesize($localPath) ?: 0),
             'width'  => $dim ? (int) $dim[0] : null,
             'height' => $dim ? (int) $dim[1] : null,
         ];
@@ -119,15 +117,14 @@ final class S3Storage implements StorageInterface
         }
     }
 
-    /** tenants/{id}/{folder}/{uuid}.{ext} */
+    /**
+     * Clave del objeto. Delega en StorageKey para que S3 y local compartan
+     * exactamente el mismo esquema:
+     *   tenants/tienda_banners/7_banners_20261001-174530-9f3c1a2b.webp
+     */
     public function buildKey(int $storeId, string $folder, string $ext): string
     {
-        $folder = preg_replace('/[^a-z0-9_\-]/i', '', $folder) ?? '';
-        $folder = $folder !== '' ? strtolower($folder) : 'otros';
-        $scope = $storeId > 0 ? (string) $storeId : 'global';
-        $prefix = trim((string) Config::get('storage.s3.prefix', 'tenants/'), '/');
-
-        return $prefix . '/' . $scope . '/' . $folder . '/' . bin2hex(random_bytes(16)) . '.' . $ext;
+        return StorageKey::build($storeId, $folder, $ext);
     }
 
     private function publicUrl(string $key): string

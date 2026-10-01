@@ -6,14 +6,18 @@ namespace Tienda\Controllers\Admin;
 
 use Tienda\Core\Auth;
 use Tienda\Core\Controller;
+use Tienda\Core\Media\MediaUploader;
 use Tienda\Core\Storage\StorageManager;
 use Tienda\Core\ValidationException;
 use Tienda\Core\StorageException;
 use Tienda\Models\Media;
 
 /**
- * Subida de imagenes del panel (AJAX). Delega en el driver configurado
- * (S3 o local) y persiste solo los metadatos en mt_media.
+ * Subida de imagenes del panel (AJAX).
+ *
+ * El trabajo fino (validar, optimizar a WebP y colocarla en la carpeta
+ * `tienda_<tipo>` con el id de la tienda en el nombre) lo hace MediaUploader;
+ * aqui solo se persisten los metadatos en `mt_media`.
  */
 final class MediaController extends Controller
 {
@@ -33,7 +37,7 @@ final class MediaController extends Controller
         $folder = (string) ($_POST['folder'] ?? 'general');
 
         try {
-            $stored = StorageManager::driver()->put($_FILES['file'], $storeId, $folder);
+            $stored = MediaUploader::upload($_FILES['file'], $storeId, $folder);
         } catch (ValidationException $e) {
             return $this->json(['ok' => false, 'error' => $e->getMessage()], 422);
         } catch (StorageException $e) {
@@ -57,10 +61,17 @@ final class MediaController extends Controller
         return $this->json([
             'ok'    => true,
             'media' => [
-                'id'     => $mediaId,
-                'url'    => $stored['url'],
-                'key'    => $stored['key'],
-                'driver' => StorageManager::driver()->driver(),
+                'id'             => $mediaId,
+                'url'            => $stored['url'],
+                'key'            => $stored['key'],
+                'driver'         => StorageManager::driver()->driver(),
+                'mime'           => $stored['mime'],
+                'bytes'          => $stored['bytes'],
+                'width'          => $stored['width'],
+                'height'         => $stored['height'],
+                'optimized'      => $stored['optimized'],
+                'original_mime'  => $stored['original_mime'],
+                'original_bytes' => $stored['original_bytes'],
             ],
         ]);
     }

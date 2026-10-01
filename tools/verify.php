@@ -15,9 +15,11 @@ require dirname(__DIR__) . '/app/bootstrap.php';
 
 use Tienda\Core\Database;
 use Tienda\Core\Dns;
+use Tienda\Core\Media\ImageOptimizer;
 use Tienda\Core\Server;
 use Tienda\Core\Storage\LocalStorage;
 use Tienda\Core\Storage\S3Storage;
+use Tienda\Core\Storage\StorageKey;
 use Tienda\Core\Storage\StorageManager;
 use Tienda\Core\Tenant;
 use Tienda\Core\TenantResolver;
@@ -96,11 +98,57 @@ check($premium->canAddOwnProduct(9999) === true, 'premium: sin limite');
 
 echo "\n== Almacenamiento ==\n";
 check(StorageManager::driver() instanceof LocalStorage || StorageManager::driver() instanceof S3Storage, 'driver de almacenamiento operativo (' . StorageManager::driver()->driver() . ')');
-$s3 = new S3Storage();
-$key = $s3->buildKey(7, 'banners', 'png');
-check(str_starts_with($key, 'tenants/7/banners/'), 'key S3 por tenant: ' . $key);
-$keyBad = $s3->buildKey(7, '../../etc', 'png');
-check((bool) preg_match('#^tenants/7/[a-z0-9_\-]+/[0-9a-f]+\.png$#', $keyBad), 'key S3 saneada (sin path traversal)');
+
+// Clave unica para S3 y local: {prefijo}/{tienda}_{tipo}/{id}_{tipo}_{fecha}-{aleatorio}.{ext}
+$key = StorageKey::build(7, 'banners', 'webp');
+echo '  Clave: ' . $key . "\n";
+check(
+    (bool) preg_match('#^tenants/tienda_banners/7_banners_\d{8}-\d{6}-[0-9a-f]{8}\.webp$#', $key),
+    'clave con carpeta tienda_tipo y el id en el nombre'
+);
+$keyBad = StorageKey::build(7, '../../etc', 'png');
+check(
+    !str_contains($keyBad, '..')
+        && (bool) preg_match('#^tenants/tienda_[a-z0-9_\-]+/[0-9]+_[a-z0-9_\-]+_\d{8}-\d{6}-[0-9a-f]{8}\.png$#', $keyBad),
+    'clave saneada (sin path traversal): ' . $keyBad
+);
+$keyS3 = (new S3Storage())->buildKey(12, 'productos', 'webp');
+check(
+    (bool) preg_match('#^tenants/tienda_productos/12_productos_\d{8}-\d{6}-[0-9a-f]{8}\.webp$#', $keyS3),
+    'el driver S3 usa el mismo esquema: ' . $keyS3
+);
+
+// Optimizacion de imagenes: JPG grande -> WebP mas ligero y con el tamano limitado.
+if (function_exists('imagecreatetruecolor')) {
+    $jpg = sys_get_temp_dir() . '/tienda_verify_' . getmypid() . '.jpg';
+    $imagen = imagecreatetruecolor(3000, 1200);
+    for ($x = 0; $x < 3000; $x++) {
+        imageline($imagen, $x, 0, $x, 1199, imagecolorallocate($imagen, (int) ($x / 3000 * 255), 120, 255 - (int) ($x / 3000 * 255)));
+    }
+    imagejpeg($imagen, $jpg, 95);
+    imagedestroy($imagen);
+
+    $opt = ImageOptimizer::optimize(['tmp_name' => $jpg, 'size' => (int) filesize($jpg)]);
+    check(
+        $opt['mime'] === 'image/webp' && $opt['bytes'] < $opt['original_bytes'] && (int) $opt['width'] <= 2560,
+        'JPG -> WebP mas ligero y limitado (' . ImageOptimizer::mime($jpg) . ' ' . $opt['original_bytes']
+            . ' B -> webp ' . $opt['bytes'] . ' B, ' . (int) $opt['width'] . 'px)'
+    );
+    if (!empty($opt['temporary'])) {
+        @unlink((string) $opt['path']);
+    }
+    @unlink($jpg);
+
+    // SVG: se respeta tal cual (es vectorial, convertirlo no aporta nada).
+    $svg = sys_get_temp_dir() . '/tienda_verify_' . getmypid() . '.svg';
+    file_put_contents($svg, '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 4"><rect width="4" height="4"/></svg>');
+    $optSvg = ImageOptimizer::optimize(['tmp_name' => $svg, 'size' => (int) filesize($svg)]);
+    check(
+        $optSvg['mime'] === 'image/svg+xml' && $optSvg['optimized'] === false && $optSvg['path'] === $svg,
+        'SVG sin reconvertir'
+    );
+    @unlink($svg);
+}
 
 echo "\n== Servidor web (Apache / nginx) ==\n";
 echo '  Detectado: ' . Server::label() . ' · /public -> ' . Server::publicPath() . "\n";
