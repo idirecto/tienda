@@ -1,8 +1,8 @@
 # =============================================================================
 #  nginx + PHP-FPM para la plataforma multi-tienda
 #
-#  Plantilla: los marcadores __DOMINIO__, __RAIZ__ y __FPM_ADDR__ los sustituye
-#  deploy/setup-nginx-domain.sh, que es la forma recomendada de instalarla:
+#  Plantilla: los marcadores de dominio, raiz del proyecto y socket de PHP-FPM
+#  los sustituye deploy/setup-nginx-domain.sh, que es la forma recomendada:
 #
 #      sudo bash deploy/setup-nginx-domain.sh valduran.com
 #

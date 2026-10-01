@@ -35,11 +35,23 @@ sudo tail -30 /var/log/apache2/local.tienda-access.log
 sudo bash deploy/setup-nginx-domain.sh valduran.com
 sudo FPM_SOCK=/run/php/php8.4-fpm.sock bash deploy/setup-nginx-domain.sh otro-dominio.com
 
+# Ver que haria sin tocar nada (vale sin sudo)
+bash deploy/setup-nginx-domain.sh valduran.com --dry-run
+
+# Otras rutas / usuarios: el script toma ROOT de su propia ubicacion
+sudo ROOT=/var/www/vhosts/valduran/tienda WEB_USER=nginx bash deploy/setup-nginx-domain.sh valduran.com
+
 sudo nginx -t                    # validar antes de recargar
 sudo systemctl reload nginx      # aplicar cambios
 sudo tail -30 /var/log/nginx/valduran.com-error.log
 sudo tail -30 /var/log/nginx/valduran.com-access.log
 ```
+
+**Plesk / cPanel:** el panel gestiona nginx (y sobrescribe `/etc/nginx/plesk.conf.d`),
+asi que el script avisa y se detiene. La via correcta ahi es: PHP Settings → 8.2+;
+Hosting Settings → *Document root* = `tienda`; nginx como proxy de Apache (asi
+`.htaccess` sigue enrutando y protegiendo) y pegar el bloque `[PLESK]` que imprime
+`setup-nginx-domain.sh --dry-run` en *Additional nginx directives*.
 
 Comprobar el bloqueo de rutas internas y el enrutado (nginx no lee `.htaccess`):
 

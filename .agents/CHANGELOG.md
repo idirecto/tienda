@@ -5,6 +5,36 @@ El detalle línea a línea está en `git log`.
 
 ---
 
+## 2026-10-01 · Publicar en otro servidor: script de nginx más seguro y Plesk
+
+**Motivo:** el dueño va a poner la web en `https://valduran.com` desde
+`/var/www/vhosts/valduran/tienda` (ruta típica de Plesk), sobre un dominio que
+antes servía otra web. Hacía falta poder instalarlo sin riesgo y saber qué
+comando ejecutar en cada tipo de servidor.
+
+**Cambios** (`deploy/setup-nginx-domain.sh`):
+
+- `--dry-run` (funciona sin `sudo`): muestra lo que haría y el `server` block
+  que generaría, sin tocar nada.
+- **Detecta Plesk/cPanel y se detiene** (el panel sobrescribe
+  `/etc/nginx/plesk.conf.d`), imprimiendo en su lugar las instrucciones del panel
+  y las directivas equivalentes para pegar en *Additional nginx directives*
+  (bloque `[PLESK]` al final del script).
+- `ROOT`, `WEB_USER` y `FPM_SOCK` configurables; también detecta el socket de
+  PHP-FPM por dominio de Plesk (`/var/www/vhosts/system/<dominio>/php-fpm.sock`).
+- Avisa si **otro sitio ya declara el mismo `server_name`** (la web anterior que
+  sigue activa), si existe el sitio `default` o si Apache ocupa el puerto 80.
+- Al terminar imprime los pasos que faltan: `.env` de producción,
+  `php database/migrate.php --seed`, `certbot` y las comprobaciones con `curl`.
+- `deploy/nginx-site.conf.tpl`: el comentario de cabecera ya no contiene los
+  marcadores (se sustituían por el dominio/ruta al renderizar).
+
+**Verificación:** `bash -n`, `--dry-run` con la ruta y el dominio reales, y el
+fichero generado pasa `nginx -t` con el binario real (raíz, dominio y socket
+sustituidos correctamente).
+
+---
+
 ## 2026-10-01 · «Error interno»: permisos de `.env` y diagnóstico en el log
 
 **Motivo:** `http://local.tienda/` devolvía `500 «Error interno»`. No era el

@@ -95,9 +95,16 @@ Funciona igual que con Apache, pero nginx **no lee `.htaccess`**: el enrutado al
 front controller y el bloqueo de rutas internas se definen en el `server` block.
 
 ```bash
-cd /var/www/html/tienda
+cd /var/www/vhosts/valduran/tienda        # la raiz del proyecto
 sudo bash deploy/setup-nginx-domain.sh valduran.com
+
+# Ver que haria, sin tocar nada (no necesita sudo):
+bash deploy/setup-nginx-domain.sh valduran.com --dry-run
 ```
+
+La raíz y el dominio se detectan/reciben por argumento, así que el script sirve
+para cualquier ruta (`ROOT=/otra/ruta`), dominio y usuario web
+(`WEB_USER=nginx`, `FPM_SOCK=/run/php/php8.4-fpm.sock`).
 
 El script (idempotente, requiere nginx y PHP-FPM instalados) hace:
 
@@ -120,6 +127,13 @@ actualiza `APP_URL`, `BASE_DOMAINS` y `PLATFORM_CNAME` en `.env`. Con HTTPS:
 ```bash
 sudo certbot --nginx -d valduran.com -d www.valduran.com
 ```
+
+> **¿Servidor con panel (Plesk, cPanel)?** `/var/www/vhosts/...` es la ruta típica
+> de Plesk: el panel gestiona nginx y sobrescribe `/etc/nginx/plesk.conf.d`, así
+> que **no** uses este script (te avisará y se detendrá). En ese caso:
+> PHP Settings → 8.2+; Hosting Settings → **Document root** = `tienda`; deja
+> nginx como proxy de Apache (así `.htaccess` sigue funcionando) y pega en
+> *Additional nginx directives* el bloque `[PLESK]` que imprime el script.
 
 > La aplicación detecta el servidor (`app/Core/Server.php`): calcula la ruta
 > pública de `/public`, el esquema real (también detrás de un proxy/CDN con
