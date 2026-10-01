@@ -220,8 +220,14 @@ for otro in /etc/nginx/sites-enabled/*; do
     [[ -e "$otro" ]] || continue
     [[ "$(basename "$otro")" == "${DOMAIN}.conf" ]] && continue
     if grep -qsE "server_name[^;]*[[:space:]]${DOMAIN}([[:space:];]|$)" "$otro" 2>/dev/null; then
-        echo "    AVISO: $(basename "$otro") tambien declara ${DOMAIN}."
-        echo "           Desactivalo (sudo rm '$otro') para que no gane el sitio antiguo."
+        echo "    AVISO: $(basename "$otro") tambien declara ${DOMAIN}, y nginx se queda"
+        echo "           con el PRIMERO: hasta que lo desactives seguira sirviendo la"
+        echo "           web antigua. Pasos:"
+        echo "               sudo cat '$otro'          # mirar que sirve antes de tocarlo"
+        echo "               sudo rm '$otro'           # quitar el enlace"
+        echo "               sudo systemctl reload nginx"
+        echo "           (si quieres conservar esa web, cambiale el server_name,"
+        echo "            p. ej. a viejo.${DOMAIN})"
     fi
 done
 
@@ -266,7 +272,7 @@ echo "        done"
 echo "        # esperado: 404 en todo menos /public/assets/... (200)"
 echo
 echo "  https://${DOMAIN}/           (tienda)"
-echo "  http://${DOMAIN}/panel      (panel)"
+echo "  https://${DOMAIN}/panel      (panel)"
 echo "  Logs: /var/log/nginx/${DOMAIN}.error.log"
 echo
 
