@@ -2,6 +2,9 @@
 # =============================================================================
 #  Instala (o actualiza) el sitio nginx de la plataforma multi-tienda.
 #
+#  Version del script: 2026-10-01b  (si en el servidor no coincide, el repo
+#  esta desactualizado:  git pull)
+#
 #  Es IDEMPOTENTE: se puede ejecutar tantas veces como haga falta.
 #
 #  Uso:
