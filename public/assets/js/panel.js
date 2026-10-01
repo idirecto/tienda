@@ -253,6 +253,245 @@
         frame.addEventListener('load', function () { actualizar(); });
     }
 
+    /* =====================================================================
+       PEDIDOS
+       =====================================================================
+       1) Editor de lineas: buscador de productos (catalogo + propios) que va
+          anadiendo filas y recalcula los totales del pedido.
+       2) Envio a idirecto: las casillas de la tabla se asocian al formulario
+          de envio con el atributo `form` de HTML5, asi que la tabla puede
+          quedar fuera del formulario (cada linea tiene su boton de borrar sin
+          anidar formularios). Aqui solo se suman las lineas seleccionadas.
+       ===================================================================== */
+
+    /** Numero a partir de un texto con coma o punto decimal. */
+    function num(value) {
+        var s = String(value === null || value === undefined ? '' : value).trim().replace(/\s|€/g, '');
+        if (s === '') { return 0; }
+        if (s.indexOf(',') > -1) { s = s.replace(/\./g, '').replace(',', '.'); }
+        var n = parseFloat(s);
+        return isNaN(n) ? 0 : n;
+    }
+
+    function eur(n) {
+        return n.toFixed(2).replace('.', ',') + ' €';
+    }
+
+    function initLineEditors() {
+        document.querySelectorAll('[data-line-editor]').forEach(function (editor) {
+            var tbody = editor.querySelector('[data-lines]');
+            var template = editor.querySelector('[data-line-template]');
+            var search = editor.querySelector('[data-product-search]');
+            var results = editor.querySelector('[data-search-results]');
+            var url = editor.getAttribute('data-search-url');
+            var shipping = document.querySelector('[name="shipping"]');
+            if (!tbody || !template) { return; }
+
+            /** Renumera los `lines[i]` de todas las filas y recalcula totales. */
+            function renumber() {
+                Array.prototype.forEach.call(tbody.querySelectorAll('[data-line]'), function (row, i) {
+                    Array.prototype.forEach.call(row.querySelectorAll('input[name]'), function (input) {
+                        input.name = input.name.replace(/^lines\[\d+\]/, 'lines[' + i + ']');
+                    });
+                });
+                recalc();
+            }
+
+            function recalc() {
+                var subtotal = 0;
+                var impuestos = 0;
+
+                Array.prototype.forEach.call(tbody.querySelectorAll('[data-line]'), function (row) {
+                    var qty = num(row.querySelector('.line-qty') ? row.querySelector('.line-qty').value : 1);
+                    var price = num(row.querySelector('.line-price') ? row.querySelector('.line-price').value : 0);
+                    var tax = num(row.querySelector('.line-tax') ? row.querySelector('.line-tax').value : 0);
+                    var base = qty * price;
+
+                    subtotal += base;
+                    impuestos += base * tax / 100;
+
+                    var celda = row.querySelector('[data-line-total]');
+                    if (celda) { celda.textContent = eur(base); }
+                });
+
+                var set = function (selector, value) {
+                    var el = document.querySelector(selector);
+                    if (el) { el.textContent = eur(value); }
+                };
+                var envio = shipping ? num(shipping.value) : 0;
+
+                set('[data-total-subtotal]', subtotal);
+                set('[data-total-tax]', impuestos);
+                set('[data-total-grand]', subtotal + impuestos + envio);
+            }
+
+            function addRow(data) {
+                var fragment = template.content.cloneNode(true);
+                var row = fragment.querySelector('[data-line]');
+
+                var set = function (selector, value, attribute) {
+                    var el = row.querySelector(selector);
+                    if (!el) { return; }
+                    if (attribute) { el.setAttribute(attribute, value); } else { el.value = value; }
+                };
+
+                set('.line-name', data.name || '');
+                set('.line-qty', data.qty || 1);
+                set('.line-price', data.price !== undefined ? String(data.price).replace('.', ',') : '0,00');
+                set('.line-tax', data.tax_rate !== undefined ? String(data.tax_rate).replace('.', ',') : '21,00');
+                set('input[name$="[source]"]', data.source || 'catalog');
+                set('input[name$="[product_id]"]', data.id || 0);
+                set('input[name$="[sku]"]', data.sku || '');
+
+                var sku = row.querySelector('[data-sku]');
+                if (sku) { sku.textContent = data.sku || ''; }
+
+                var propio = row.querySelector('[data-own]');
+                if (propio) { propio.hidden = !data.own; }
+
+                tbody.appendChild(fragment);
+                renumber();
+            }
+
+            function ocultarResultados() {
+                if (results) { results.hidden = true; results.innerHTML = ''; }
+            }
+
+            function pintarResultados(lista) {
+                if (!results) { return; }
+                results.innerHTML = '';
+                if (!lista.length) {
+                    results.hidden = false;
+                    results.innerHTML = '<div class="search-result muted">Sin resultados.</div>';
+                    return;
+                }
+                lista.forEach(function (item) {
+                    var boton = document.createElement('button');
+                    boton.type = 'button';
+                    boton.className = 'search-result';
+                    var precio = item.price ? ' · ' + eur(num(item.price)) : '';
+                    boton.innerHTML = '<strong></strong><small></small>';
+                    boton.querySelector('strong').textContent = item.name;
+                    boton.querySelector('small').textContent =
+                        (item.sku ? item.sku + ' · ' : '') +
+                        (item.own ? 'producto propio (no se envia a idirecto)' : 'catalogo del mayorista') +
+                        precio;
+                    boton.addEventListener('click', function () {
+                        addRow(item);
+                        ocultarResultados();
+                        if (search) { search.value = ''; search.focus(); }
+                    });
+                    results.appendChild(boton);
+                });
+                results.hidden = false;
+            }
+
+            if (search) {
+                var timer = null;
+                search.addEventListener('input', function () {
+                    var q = search.value.trim();
+                    if (timer) { window.clearTimeout(timer); }
+                    if (q.length < 2) { ocultarResultados(); return; }
+                    timer = window.setTimeout(function () {
+                        fetch(url + '?q=' + encodeURIComponent(q), {
+                            credentials: 'same-origin',
+                            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                        })
+                            .then(function (r) { return r.json(); })
+                            .then(function (data) { pintarResultados(data && data.results ? data.results : []); })
+                            .catch(function () { ocultarResultados(); });
+                    }, 250);
+                });
+
+                document.addEventListener('click', function (evento) {
+                    if (!editor.contains(evento.target)) { ocultarResultados(); }
+                });
+            }
+
+            editor.addEventListener('input', recalc);
+            editor.addEventListener('click', function (evento) {
+                var quitar = evento.target.closest('[data-remove-line]');
+                if (quitar) {
+                    var fila = quitar.closest('[data-line]');
+                    if (fila) { fila.remove(); renumber(); }
+                    return;
+                }
+                if (evento.target.closest('[data-add-line]')) {
+                    addRow({ name: '', source: 'catalog', id: 0, qty: 1, price: 0, tax_rate: 21 });
+                }
+            });
+
+            // Una linea en blanco de partida si el editor esta vacio.
+            if (!tbody.querySelector('[data-line]')) {
+                addRow({ name: '', source: 'catalog', id: 0, qty: 1, price: 0, tax_rate: 21 });
+            }
+
+            recalc();
+        });
+    }
+
+    /** Totales del pedido que se enviara a idirecto segun lo seleccionado. */
+    function initOrderSend() {
+        var form = document.querySelector('[data-send-form]');
+        if (!form) { return; }
+
+        var checks = document.querySelectorAll('input[data-send-check]');
+        var todos = document.querySelector('[data-send-all]');
+        var subtotalEl = document.querySelector('[data-send-subtotal]');
+        var taxEl = document.querySelector('[data-send-tax]');
+        var totalEl = document.querySelector('[data-send-total]');
+        var countEl = document.querySelector('[data-send-count]');
+        var boton = document.querySelector('[data-send-button]');
+
+        function recalc() {
+            var subtotal = 0;
+            var impuestos = 0;
+            var total = 0;
+            var n = 0;
+
+            Array.prototype.forEach.call(checks, function (check) {
+                if (!check.checked) { return; }
+                var row = check.closest('[data-send-row]');
+                if (!row) { return; }
+                subtotal += num(row.getAttribute('data-base'));
+                impuestos += num(row.getAttribute('data-iva'));
+                total += num(row.getAttribute('data-total'));
+                n++;
+            });
+
+            if (subtotalEl) { subtotalEl.textContent = eur(subtotal); }
+            if (taxEl) { taxEl.textContent = eur(impuestos); }
+            if (totalEl) { totalEl.textContent = eur(total); }
+            if (countEl) { countEl.textContent = String(n); }
+            if (boton) { boton.disabled = n === 0; }
+        }
+
+        Array.prototype.forEach.call(checks, function (check) {
+            check.addEventListener('change', recalc);
+        });
+
+        if (todos) {
+            todos.addEventListener('change', function () {
+                Array.prototype.forEach.call(checks, function (check) { check.checked = todos.checked; });
+                recalc();
+            });
+        }
+
+        recalc();
+    }
+
+    /** El bloque de direccion de envio solo se muestra si no va a la tienda. */
+    function initShipToggle() {
+        var check = document.querySelector('[data-ship-to-store]');
+        if (!check) { return; }
+        var campos = document.querySelector('[data-ship-fields]');
+        if (!campos) { return; }
+
+        var sync = function () { campos.hidden = check.checked; };
+        check.addEventListener('change', sync);
+        sync();
+    }
+
     document.addEventListener('DOMContentLoaded', function () {
         document.querySelectorAll('.uploader').forEach(initUploader);
 
@@ -260,5 +499,9 @@
         if (designForm) {
             initDesignPreview(designForm);
         }
+
+        initLineEditors();
+        initOrderSend();
+        initShipToggle();
     });
 })();

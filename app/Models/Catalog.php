@@ -259,6 +259,44 @@ final class Catalog
         return $row === null ? null : self::decorate($row);
     }
 
+    /**
+     * Busqueda ligera del catalogo para el selector de productos del panel
+     * (pedidos). Devuelve solo lo que necesita el autocompletado: id, nombre,
+     * referencia, precio e IVA, sin hidratar ni pintar tarjetas.
+     *
+     * @return array<int,array{id:int,nombre:string,sku:string,marca:string,precio:?float,impuestos:float}>
+     */
+    public static function search(string $q, int $limit = 8): array
+    {
+        $q = trim($q);
+        if ($q === '' || !self::isAvailable()) {
+            return [];
+        }
+        $limit = max(1, min(20, $limit));
+
+        $like = '%' . self::escapeLike($q) . '%';
+        $rows = Database::select(
+            'SELECT p.id, p.nombre, p.part_number AS sku, p.marca AS marca, p.impuestos,
+                    ' . self::precioSql() . ' AS precio
+             FROM productos p
+             WHERE ' . self::baseConditions() . '
+               AND (p.nombre LIKE :q1 OR p.part_number LIKE :q2 OR p.marca LIKE :q3
+                    OR p.id_marca IN (SELECT mq.id FROM marcas mq WHERE mq.marca LIKE :q4))
+             ORDER BY p.id DESC
+             LIMIT ' . $limit,
+            ['q1' => $like, 'q2' => $like, 'q3' => $like, 'q4' => $like]
+        );
+
+        return array_map(static fn (array $row): array => [
+            'id'        => (int) $row['id'],
+            'nombre'    => (string) $row['nombre'],
+            'sku'       => (string) ($row['sku'] ?? ''),
+            'marca'     => (string) ($row['marca'] ?? ''),
+            'precio'    => $row['precio'] === null ? null : round((float) $row['precio'], 2),
+            'impuestos' => (float) ($row['impuestos'] ?? 0),
+        ], $rows);
+    }
+
     // =====================================================================
     // HIDRATACION (consultas por lote)
     // =====================================================================

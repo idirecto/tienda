@@ -7,6 +7,12 @@ salvo `mt_migrations`, `mt_plans` y `mt_themes`, tienen FK a `mt_stores(id)` con
 > Las tablas del mayorista (`productos`, `precios`, `stock`, `almacenes`,
 > `marcas`, `categorias`, `subcategorias`, `productos_ext`, `productos_resenas`)
 > son de **solo lectura** y no se documentan aquí.
+>
+> **Única excepción:** al enviar líneas de un pedido se escriben filas en
+> `pedidos_addr`, `pedidos` y `pedidos_det` (y se descuenta `stock`/`reserva` en
+> los almacenes tipo 0 y 4), replicando el flujo web de idirecto. Solo lo hace
+> `Core/Idirecto/OrderGateway` y se puede desactivar con `IDIRECTO_ENABLED=false`
+> o `IDIRECTO_RESERVE_STOCK=false`.
 
 ## Tiendas, planes y usuarios
 
@@ -25,6 +31,10 @@ salvo `mt_migrations`, `mt_plans` y `mt_themes`, tienen FK a `mt_stores(id)` con
 
 - `own_products_quota_override` gana sobre la cuota del plan (`-1` = ilimitado).
 - `show_prices` / `allow_orders` permiten una tienda "escaparate" sin compra.
+- `id_tienda_idirecto` → `tiendas.id` (la cuenta con la que la tienda compra al
+  mayorista) e `id_margen` → `precios.id_margen` (su tarifa). Los edita el dueño en
+  Ajustes; la tarifa vacía cae a `tiendas.id_margen` y, si no, a
+  `IDIRECTO_DEFAULT_ID_MARGEN` (12).
 
 **`mt_store_users`** — usuarios del panel.
 `id`, `store_id`, `name`, `email`, `password_hash` (*bcrypt/argon*), `role`,
@@ -52,6 +62,30 @@ salvo `mt_migrations`, `mt_plans` y `mt_themes`, tienen FK a `mt_stores(id)` con
 planes). `id`, `store_id`, `sku`, `name`, `description`, `price`, `sale_price`,
 `tax_rate`, `stock`, `supplier`, `category`, `media_id`, `image_url`, `status`,
 `created_at`, `updated_at`
+
+## Pedidos
+
+**`mt_orders`** — pedidos que la tienda recibe de **sus** clientes.
+`id`, `store_id`, `code` (número visible `P26-00001`), `status`
+(`0` borrador, `1` activo, `2` preparado, `3` enviado, `4` facturado,
+`5` cancelado, `6` borrado/papelera), `customer_name`, `customer_email`,
+`customer_phone`, `customer_tax_id`, `ship_name`, `ship_tax_id`, `ship_address`,
+`ship_city`, `ship_province`, `ship_postal_code`, `ship_country`, `notes`,
+`subtotal`, `tax_total`, `shipping`, `total`, `id_tienda_idirecto`
+(cuenta usada al enviar), `idirecto_ref` (`TIENDA-<slug>-<código>`), `sent_at`,
+`created_at`, `updated_at`.
+
+**`mt_order_items`** — líneas del pedido.
+`id`, `order_id`, `store_id`, `line_no`, `source` (`catalog`|`own`), `product_id`
+(`productos.id` o `mt_own_products.id`), `sku`, `name`, `qty`, `price_customer`
+(lo que paga el cliente), `tax_rate`, `price_idirecto` (tarifa de la tienda),
+`cost_idirecto` (coste del mayorista), `sent_at`, `idirecto_pedido_id`
+(`pedidos.id` creado) y `created_at`.
+
+- El envío al mayorista es **por línea**: `sent_at` + `idirecto_pedido_id` marcan
+  cada línea ya enviada, de modo que un pedido de 4 líneas se puede mandar en dos
+  veces (2+2) sin repetir nada.
+- Los productos `own` **no** se envían al mayorista (no están en su catálogo).
 
 ## Medios
 

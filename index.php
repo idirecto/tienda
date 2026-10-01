@@ -37,6 +37,7 @@ use Tienda\Controllers\Admin\DesignController;
 use Tienda\Controllers\Admin\DomainController;
 use Tienda\Controllers\Admin\MediaController;
 use Tienda\Controllers\Admin\NoticeController;
+use Tienda\Controllers\Admin\OrderController;
 use Tienda\Controllers\Admin\ProductController;
 use Tienda\Controllers\Admin\SettingsController;
 use Tienda\Controllers\StorefrontController;
@@ -86,6 +87,21 @@ $router->post('/panel/productos',      [ProductController::class, 'store']);
 $router->get('/panel/productos/{id}/editar', [ProductController::class, 'edit']);
 $router->post('/panel/productos/{id}', [ProductController::class, 'update']);
 $router->post('/panel/productos/{id}/borrar', [ProductController::class, 'destroy']);
+
+// Pedidos de la tienda. Ojo con el orden: 'nuevo' y 'buscar' son rutas fijas y
+// tienen que ir ANTES de '/panel/pedidos/{id}'.
+$router->get('/panel/pedidos',             [OrderController::class, 'index']);
+$router->get('/panel/pedidos/nuevo',       [OrderController::class, 'create']);
+$router->get('/panel/pedidos/buscar',      [OrderController::class, 'search']);
+$router->post('/panel/pedidos',            [OrderController::class, 'store']);
+$router->get('/panel/pedidos/{id}',        [OrderController::class, 'show']);
+$router->post('/panel/pedidos/{id}/lineas', [OrderController::class, 'addLines']);
+$router->post('/panel/pedidos/{id}/lineas/{line}/borrar', [OrderController::class, 'destroyLine']);
+$router->post('/panel/pedidos/{id}/estado', [OrderController::class, 'status']);
+// Envio de las lineas elegidas al mayorista (tablas pedidos/pedidos_det).
+$router->post('/panel/pedidos/{id}/idirecto', [OrderController::class, 'send']);
+$router->post('/panel/pedidos/{id}/borrar', [OrderController::class, 'destroy']);
+$router->post('/panel/pedidos/{id}/restaurar', [OrderController::class, 'restore']);
 
 $router->get('/panel/dominios',        [DomainController::class, 'index']);
 $router->post('/panel/dominios',       [DomainController::class, 'store']);

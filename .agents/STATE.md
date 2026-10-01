@@ -8,12 +8,14 @@
 ## Resumen
 
 La plataforma está **funcionando** en http://local.tienda: storefront con
-catálogo real, ficha de producto y panel completo. Falta el ciclo de compra
-(carrito y pago) para poder vender.
+catálogo real, ficha de producto, panel completo y **pedidos con envío por líneas
+al mayorista**. Falta el ciclo de compra en la tienda (carrito y pago) para que
+los pedidos entren solos: hoy se dan de alta a mano o los meterá el futuro
+checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
 
 > ✅ **Entorno (2026-10-01).** `idirecto_db` está **completa** (239 tablas:
 > catálogo con 41.289 productos con stock, 33 categorías con stock, y las `mt_`),
-> la web responde 200 y `php tools/verify.php` da **TODO OK (62)**.
+> la web responde 200 y `php tools/verify.php` da **TODO OK (78)**.
 >
 > ⚠️ **Si vuelve a salir un 500 con «Error interno»**: casi siempre es que el
 > usuario del servidor web (`www-data`) **no puede leer `.env`**, no un fallo de
@@ -32,13 +34,14 @@ catálogo real, ficha de producto y panel completo. Falta el ciclo de compra
 | **Portada (slider + accesos rápidos) y tarjetas con specs y stock** | ✅ Completo |
 | **Filtros avanzados (socket, gráfica, memoria, formato, almacenamiento, marca, precio)** | ✅ Completo |
 | Panel de la tienda (diseño, banners, avisos, productos, dominios, ajustes) | ✅ Completo |
+| **Pedidos: listado por estados, ficha y envío por líneas a idirecto** | ✅ Completo |
 | Dominios propios + verificación DNS | ✅ Completo |
 | Almacenamiento (local / S3) | ✅ Completo (S3 sin probar contra bucket real) |
 | Subida de imágenes (carpetas `tienda_<tipo>`, id en el nombre, WebP) | ✅ Completo |
 | Entorno local (`http://local.tienda`) | ✅ Completo |
 | **Despliegue Apache y nginx** | ✅ Completo (nginx verificado con binario real) |
-| **Checkout: carrito, pago y envío** | ❌ **No existe** |
-| **Precio según tarifa de la tienda** | ⚠️ Provisional (`MIN(precios.precio)`) |
+| **Checkout: carrito, pago y envío** | ❌ **No existe** (modelo de pedidos y envío al mayorista, sí) |
+| **Precio según tarifa de la tienda** | ⚠️ Provisional en el storefront (`MIN(precios.precio)`); los **pedidos** ya usan la tarifa de la tienda (`mt_stores.id_margen`) |
 | Temas `moderno` y `minimal` | ⚠️ Sembrados, sin maquetar (los tokens valen para cualquiera) |
 | Panel maestro del mayorista | ❌ No existe |
 | Tests automatizados / CI | ❌ No existe |
@@ -108,6 +111,33 @@ catálogo real, ficha de producto y panel completo. Falta el ciclo de compra
 - Subida de imágenes con validación de MIME real y vista previa.
 - Alta de dominios propios con instrucciones DNS y verificación.
 
+### Pedidos y envío al mayorista (2026-10-01)
+- Tablas propias `mt_orders` (pedido) y `mt_order_items` (líneas) con **envío por
+  línea**: cada línea que va a idirecto queda marcada con su `sent_at` y el
+  `pedido id` creado, así un pedido de 4 líneas se puede mandar en dos veces (2+2)
+  sin repetir nada. Migración `003` (idempotente).
+- **Listado** con pestañas: Todos, Activos, Borradores, Facturados, Cancelados y
+  Borrados (papelera restaurable), con buscador por número, cliente o email y
+  paginación. Se puede filtrar además por estado concreto (`?estado=4`).
+- **Ficha del pedido**: cliente, entrega, notas, líneas con su estado de envío
+  (pendiente / enviado #id / producto propio), cambio de estado y alta de líneas
+  con buscador de productos (catálogo del mayorista + propios).
+- **Envío al mayorista** (`Core/Idirecto`): replica el flujo web de idirecto
+  (`pedidos_addr` + `pedidos` + `pedidos_det`, `web = 1`, `estado = NULL`,
+  `referencia = TIENDA-<slug>-<código>`), con la **tarifa de la tienda**
+  (`mt_stores.id_margen`) y los mismos criterios de coste/ganancia/IVA de
+  idirecto. Antes de enviar, la ficha muestra la **vista previa** con los importes
+  reales (subtotal, IVA y total) y los avisos.
+- La dirección de facturación es la de la tienda; la de envío, la del pedido si la
+  hay y, si no, la de la tienda.
+- La **reserva de stock** de los almacenes exteriores (tipo 0 y 4) se replica, pero
+  se puede desactivar con `IDIRECTO_RESERVE_STOCK=false`; todo el envío se puede
+  apagar con `IDIRECTO_ENABLED=false`.
+- Los **productos propios no se envían** al mayorista (no están en su catálogo): el
+  panel los marca y los deja fuera de la selección.
+- Alta manual de pedidos (el checkout aún no existe) y **pedido de ejemplo**
+  `P26-00001` en la tienda demo para ver la pantalla con datos.
+
 ### Rendimiento (2026-10-01)
 - La condición de stock pasó de `EXISTS` correlacionado a **semijoin**
   (`part_number IN (SELECT …)`): mismo resultado (41.289 productos), pero el
@@ -128,8 +158,8 @@ catálogo real, ficha de producto y panel completo. Falta el ciclo de compra
   en **nginx + PHP-FPM** (`sudo bash deploy/setup-nginx-domain.sh valduran.com`).
 - La app detecta el servidor (`app/Core/Server.php`): ruta pública de `/public`,
   esquema real (incluido proxy) y host de las URLs canónicas.
-- `tools/verify.php`: 62 comprobaciones automáticas (diseño, facetas, catálogo,
-  almacenamiento, DNS, servidor).
+- `tools/verify.php`: 78 comprobaciones automáticas (diseño, facetas, catálogo,
+  almacenamiento, DNS, servidor, pedidos y envío al mayorista).
 - Documentación interna en `.agents/`, blindada frente a la web.
 - Repositorio publicado en GitHub (`main`).
 
@@ -138,18 +168,23 @@ catálogo real, ficha de producto y panel completo. Falta el ciclo de compra
 ## Pendiente (por orden sugerido)
 
 ### 1. Precio según la tarifa de la tienda ⚠️
-Hoy `Catalog::decorate()` usa `MIN(precios.precio)` sobre todas las tarifas, así
-que puede mostrar un precio que no corresponde a esa tienda.
+En el **storefront** `Catalog::decorate()` sigue usando `MIN(precios.precio)` sobre
+todas las tarifas, así que la web puede mostrar un precio que no corresponde a esa
+tienda. Los **pedidos** ya usan la tarifa de la tienda (`mt_stores.id_margen`, con
+respaldo en `tiendas.id_margen`) porque el envío al mayorista la necesita. Lo que
+falta es aplicar esa misma tarifa a los precios del catálogo público.
 
-**Decisión pendiente del dueño:** ¿la tarifa la asigna el mayorista a cada
-tienda, la elige la tienda, o se deriva del plan contratado? Sin esa decisión no
-se puede implementar.
+**Decisión pendiente del dueño:** ¿la tarifa la asigna el mayorista a cada tienda, la
+elige la tienda, o se deriva del plan contratado? Ahora mismo se puede fijar a mano
+en Ajustes.
 
 ### 2. Checkout
 Carrito (sesión), pasarelas de pago **de la tienda** (no del mayorista), cálculo
-de envío y registro del pedido. Requiere tablas nuevas (`mt_orders`,
-`mt_order_items`) y, si se quiere cumplir la regla de negocio original, dejar
-constancia de las ventas para la política de precios por volumen.
+de envío y registro del pedido. El modelo de pedidos **ya existe**
+(`mt_orders`/`mt_order_items`) y el envío al mayorista también: el checkout solo
+tiene que crear el pedido con `Order::createWithItems()` (mismo camino que el alta
+manual del panel), de modo que las líneas del catálogo se puedan enviar luego a
+idirecto como ya hace la ficha del pedido.
 
 ### 3. Panel maestro del mayorista
 Supervisión de tiendas, asignación de tarifas, auditoría de ventas.
@@ -190,11 +225,25 @@ No hay ninguno. Prioridad: `Specs` (parseo de especificaciones),
   escribe colores: si aparece uno literal, es un error.
 - **La vista previa del panel usa el generador real** (`/panel/diseno/tokens`) y
   no una reimplementación en JavaScript.
+- **Los pedidos de la tienda son nuestros** (`mt_orders`/`mt_order_items`): el
+  mayorista no guarda los pedidos de nuestros clientes. Se envían a idirecto por
+  líneas, y solo los productos del catálogo central (los propios no existen allí).
+- **El envío al mayorista escribe de verdad** en `pedidos_addr`, `pedidos` y
+  `pedidos_det` (decisión expresa del dueño), replicando su flujo web; se puede
+  apagar con `IDIRECTO_ENABLED=false` o dejar sin reserva de stock con
+  `IDIRECTO_RESERVE_STOCK=false`.
+- **Cada tienda dice con qué cuenta compra** (`mt_stores.id_tienda_idirecto` e
+  `id_margen`) desde Ajustes, en vez de adivinarlo por CIF o email.
 
 ---
 
 ## Riesgos conocidos
 
+- **El envío a idirecto escribe en tablas de producción del mayorista**
+  (`pedidos`, `pedidos_det`, `pedidos_addr`, y descuenta `stock`/`reserva`). Está
+  aislado en `Core/Idirecto/OrderGateway`, con vista previa obligatoria y
+  transacción única, pero una tienda mal configurada podría crear pedidos reales:
+  conviene dejar `IDIRECTO_ENABLED=false` hasta tener la cuenta asignada.
 - `CATALOG_IMAGE_URL` apunta a `https://idirecto.es/img_products`. Si el
   mayorista bloquea el *hotlinking* o cambia las rutas, las imágenes dejan de
   verse (el *fallback* de marcador funciona, no rompe la página).

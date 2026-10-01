@@ -5,6 +5,85 @@ El detalle línea a línea está en `git log`.
 
 ---
 
+## 2026-10-01 · Pedidos en el panel y envío por líneas a idirecto
+
+**Motivo:** el dueño pide, en el panel de la tienda, un listado de pedidos con todos
+los estados (activos, los ya facturados, borrados…), poder verlos y **enviar a la
+tabla `pedidos` de idirecto solo las líneas que elija** (por ejemplo, de un pedido con
+4 líneas de productos, mandar 2). Decisiones confirmadas por el dueño antes de
+empezar: (1) los pedidos se guardan en tablas propias `mt_` —el mayorista no tiene
+pedidos de nuestros clientes—, (2) cada tienda se enlaza con su cuenta del mayorista
+desde Ajustes, y (3) el envío **escribe de verdad** en `pedidos`/`pedidos_det`.
+
+**Cambios**
+
+- `database/migrations/003_orders.sql` (nueva, idempotente): columnas
+  `mt_stores.id_tienda_idirecto` (cuenta en `tiendas.id`) y `mt_stores.id_margen`
+  (tarifa en `precios.id_margen`); tablas `mt_orders` (pedido) y `mt_order_items`
+  (líneas, con el envío **por línea**: `sent_at` + `idirecto_pedido_id`).
+- `app/Models/Order.php` (nuevo): 7 estados (borrador, activo, preparado, enviado,
+  facturado, cancelado, borrado), pestañas del listado, filtros con búsqueda,
+  paginación, papelera restaurable y recálculo de totales.
+- `app/Models/OrderItem.php` (nuevo): normaliza las líneas del formulario (precio con
+  coma, cantidad mínima), resume enviables/enviadas/propias y marca el envío.
+- `app/Core/Idirecto/` (nuevo):
+  - `Account`: resuelve la cuenta del mayorista de una tienda (tarifa, sucursal,
+    comercial, forma de pago, país/provincia y dirección de facturación).
+  - `Pricing`: precio de tarifa, coste, almacén, IVA, sujeto y canon de un producto,
+    con los mismos criterios que `getPrecio()`/`getCosto()` de idirecto.
+  - `OrderGateway`: vista previa (mismos cálculos, sin escribir) y escritura en
+    `pedidos_addr`, `pedidos` y `pedidos_det` replicando `guardaPedido()` de
+    idirecto, con reserva de stock opcional.
+- `app/Controllers/Admin/OrderController.php` (nuevo) y rutas `/panel/pedidos*`:
+  listado con pestañas, ficha, alta manual, añadir/quitar líneas, cambio de estado,
+  papelera/restaurar, envío al mayorista y buscador JSON de productos.
+- Vistas `panel/orders.php`, `panel/order.php`, `panel/order_form.php` y
+  `panel/_order_lines.php` (editor de líneas reutilizable); CSS y JS del panel
+  (pestañas, editor con buscador y totales en vivo, selección de líneas con los
+  totales del envío).
+- Ajustes: campos de la cuenta del mayorista (id y tarifa) con validación de que la
+  cuenta existe de verdad; menú del panel con **Pedidos** y contador de pedidos
+  activos en el resumen.
+- `config/idirecto.php` (nuevo) y claves `IDIRECTO_*` en `.env.example`.
+- `Catalog::search()` y `OwnProduct::searchForStore()`: búsqueda ligera para el
+  selector de productos del panel (el listado del storefront no cambia).
+- `tools/verify.php`: 62 → **78** comprobaciones.
+
+**Decisiones de negocio aplicadas**
+
+- La dirección de **facturación** del pedido en el mayorista son los datos de la
+  tienda (lo que maneja esta web); la de **envío** es la del pedido si el tendero la
+  escribe y, si no, la de la tienda. Así funciona tanto la venta normal como el
+  *dropshipping* al cliente final.
+- `pedidos_det.costo` es el coste del mayorista y `ganancia = precio de tarifa −
+  coste`, igual que en su propio flujo; el pedido va con `web = 1`, `estado = NULL`
+  (activo), `referencia = TIENDA-<slug>-<código>` y `comentario` con la tienda, para
+  que el mayorista pueda localizarlo.
+- La reserva de stock (almacenes tipo 0 y 4) se replica, pero se puede desactivar con
+  `IDIRECTO_RESERVE_STOCK=false` sin dejar de crear el pedido.
+- **Los productos propios no se envían** al mayorista (no existen en su catálogo): el
+  panel los marca y los deja fuera de la selección.
+
+**Verificación:** `php tools/verify.php` → TODO OK (78). Con HTTP real (Apache,
+`http://local.tienda`): alta de un pedido con 2 líneas (una de catálogo y una propia),
+ficha con la previsión del envío (base 144,74 € + IVA 31,03 € = 178,77 €), pestañas de
+estado, buscador, cambio de estado, papelera y restaurar, añadir y quitar líneas, y
+**envío real de una sola línea** (creó el pedido #925415 en `pedidos`); después se
+borró para no dejar rastro y los contadores de `pedidos` (852.570), `pedidos_det`
+(1.407.955) y `pedidos_addr` (1.648.269) volvieron a su valor previo. El envío
+completo (parcial, pedido completo, repetición rechazada y reserva de stock) se probó
+en una transacción deshecha al final. Los totales del JS se comprobaron con Chrome
+headless sobre un banco de pruebas (230,00 + 48,30 + 5,00 = 283,30 € en el editor y
+144,74/31,03/178,77 € en el envío).
+
+**Nota para el dueño:** queda en la base de datos un **pedido de ejemplo**
+(`P26-00001`, cliente "Cliente de prueba") para poder ver la pantalla con datos; se
+puede mover a la papelera o dejar como está. La tienda demo **no** tiene cuenta de
+idirecto configurada a propósito: hay que poner el id de cuenta (y, si procede, la
+tarifa) en Ajustes antes de enviar nada.
+
+---
+
 ## 2026-10-01 · 20 productos por página en los listados
 
 **Motivo:** el dueño ve 12 productos en los listados y quiere 20.

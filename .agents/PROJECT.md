@@ -58,16 +58,19 @@ index.php                  Front controller y TODAS las rutas
 app/
   bootstrap.php            Autoload PSR-4 (Tienda\ -> app/), .env, helpers
   Core/                    Infraestructura (ver §4)
+  Core/Idirecto/           Puente con el mayorista: Account, Pricing y OrderGateway
   Controllers/             StorefrontController + Admin/* (panel)
   Models/                  Acceso a datos (una clase por concepto)
   Views/
     layouts/               shop.php (web), panel.php, panel_blank.php
-    panel/                 Pantallas del panel (design_preview.php = vista previa)
+    panel/                 Pantallas del panel (orders.php, order.php, order_form.php,
+                           _order_lines.php = editor de líneas, design_preview.php)
     themes/idirecto/       Tema público (home, _hero, catalog, product, page, _card)
-config/                    app, appearance, database, storage, tenant, catalog
+config/                    app, appearance, database, storage, tenant, catalog, idirecto
 database/
   migrations/001_schema.sql      13 tablas mt_ (idempotente)
   migrations/002_design_tokens.sql  Columnas de identidad visual en mt_stores
+  migrations/003_orders.sql      Cuenta del mayorista en mt_stores + mt_orders/mt_order_items
   seeds/001_seed.sql             Planes, temas y tienda demo
   migrate.php                    Ejecutor de migraciones + semillas
 deploy/                    Vhosts de Apache, plantilla de nginx y scripts
@@ -75,7 +78,7 @@ public/                    ÚNICO directorio servido como estático
   assets/css|js            shop.css, panel.css, shop.js, panel.js
   uploads/                 Archivos locales (si STORAGE_DRIVER=local)
 storage/                   cache/ y logs/ (escritura de la app)
-tools/verify.php           62 comprobaciones automáticas
+tools/verify.php           78 comprobaciones automáticas
 ```
 
 ---
@@ -98,7 +101,14 @@ tools/verify.php           62 comprobaciones automáticas
 | `Specs` | Parsea características y especificaciones; `quickHighlights()` alimenta los chips de la tarjeta |
 | `Str` | `slugify()` (mismo criterio que idirecto) y `excerpt()` |
 | `Dns` | Verificación de dominios por A/CNAME/TXT (con *lookup* inyectable) |
+| `Core/Idirecto/Account` | Cuenta del mayorista de la tienda: tarifa, sucursal, comercial, forma de pago, país/provincia |
+| `Core/Idirecto/Pricing` | Tarifa, coste, almacén, IVA, sujeto y canon de un producto del catálogo |
+| `Core/Idirecto/OrderGateway` | Vista previa y envío de líneas a `pedidos_addr`/`pedidos`/`pedidos_det` |
 | `Validation`/`Storage` `Exception` | Errores de dominio |
+
+> `Models/Order` es el pedido que recibe la tienda de **su** cliente (estados,
+> pestañas, papelera) y `Models/OrderItem` sus líneas; `OrderGateway` es lo único
+> que escribe en las tablas del mayorista.
 
 ### Ciclo de una petición
 
@@ -140,18 +150,20 @@ las rutas internas los pone el servidor: `.htaccess` en Apache y
 
 ## 5. Modelo de datos
 
-### Tablas propias (prefijo `mt_`) — 13
+### Tablas propias (prefijo `mt_`) — 15
 
 | Tabla | Contenido |
 |---|---|
 | `mt_plans` | Planes y cuota de productos propios (`-1` = ilimitado) |
 | `mt_themes` | Temas disponibles (catálogo cerrado) |
-| `mt_stores` | Tiendas: slug, plan, tema, colores, hosts, ajustes |
+| `mt_stores` | Tiendas: slug, plan, tema, colores, hosts, ajustes y **cuenta del mayorista** |
 | `mt_store_users` | Usuarios del panel (`password_hash`) |
 | `mt_media` | Archivos subidos: `key`, `url`, `driver`, dimensiones |
 | `mt_banners` | Banners de portada |
 | `mt_notices` | Avisos (barra superior / modal) |
 | `mt_own_products` | Productos propios de la tienda |
+| `mt_orders` | **Pedidos** que la tienda recibe de sus clientes (estados + papelera) |
+| `mt_order_items` | **Líneas** del pedido, con el envío a idirecto por línea |
 | `mt_domains` | Dominios propios + estado de verificación |
 | `mt_dns_log` | Historial de comprobaciones DNS |
 | `mt_content_blocks` | Páginas de contenido (`/pagina/{slug}`) |
@@ -160,16 +172,33 @@ las rutas internas los pone el servidor: `.htaccess` en Apache y
 
 Todas con `utf8mb4_unicode_ci` y FK a `mt_stores(id) ON DELETE CASCADE`.
 
-`mt_stores` guarda además la **identidad visual** (migración `002`):
+`mt_stores` guarda la **identidad visual** (migración `002`):
 `color_primary`, `color_secondary`, `color_accent`, `color_bg`, `color_surface`,
 `color_text`, `color_border`, `color_scheme` (`light|dark|auto`),
 `radius_scale` (`compact|standard|rounded`), `font`, `theme_tokens` (JSON) y
 `custom_css`. Los colores opcionales en `NULL` significan «usa el valor del tema».
 
-### Tablas del mayorista — **SOLO LECTURA**
+`mt_stores` guarda además el **enlace con el mayorista** (migración `003`):
+`id_tienda_idirecto` (cuenta en `tiendas.id`) e `id_margen` (`precios.id_margen`).
+Se editan en Ajustes; la tarifa vacía cae a la de la cuenta y, si no hay, a
+`IDIRECTO_DEFAULT_ID_MARGEN`.
+
+`mt_orders` / `mt_order_items` (migración `003`): el pedido (cliente, entrega,
+importes que paga el cliente, estado, papelera) y sus líneas (`source` =
+`catalog|own`, cantidades, precio de cliente, **tarifa y coste del mayorista** y el
+envío por línea: `sent_at` + `idirecto_pedido_id`). Ver §7bis.
+
+### Tablas del mayorista — solo lectura (con una excepción)
 
 `productos`, `productos_ext`, `precios`, `stock`, `almacenes`, `marcas`,
-`categorias`, `subcategorias`, `productos_resenas`.
+`categorias`, `subcategorias`, `tiendas`, `paises`, `provincias`, `canon`,
+`tarifas`, `formas_pago`, `comerciales`, `productos_resenas`.
+
+**Excepción (decisión del dueño):** al enviar líneas de un pedido al mayorista se
+escriben filas en `pedidos_addr`, `pedidos` y `pedidos_det`, y se descuenta
+`stock`/`reserva` en los almacenes tipo 0 y 4. Todo eso ocurre **solo** en
+`Core/Idirecto/OrderGateway` (con vista previa y transacción única) y se puede
+desactivar con `IDIRECTO_ENABLED=false` / `IDIRECTO_RESERVE_STOCK=false`.
 
 ---
 
@@ -314,6 +343,60 @@ para la vista previa), `banners`, `avisos`, `productos` (CRUD), `dominios` (alta
 verificar, borrar), `ajustes`, `media/subir` y `media/{id}/borrar`. Todas exigen
 sesión + CSRF, y filtran por el `store_id` de la sesión.
 
+Además, el módulo de pedidos (ver §7bis):
+
+| Ruta | Contenido |
+|---|---|
+| `/panel/pedidos` | Listado con pestañas de estado, buscador y paginación |
+| `/panel/pedidos/nuevo` · `POST /panel/pedidos` | Alta manual de un pedido |
+| `/panel/pedidos/buscar` | JSON: buscador de productos (catálogo + propios) |
+| `/panel/pedidos/{id}` | Ficha: cliente, entrega, líneas y envío al mayorista |
+| `POST /panel/pedidos/{id}/lineas` · `.../lineas/{line}/borrar` | Añadir / quitar líneas |
+| `POST /panel/pedidos/{id}/estado` | Cambiar de estado |
+| `POST /panel/pedidos/{id}/idirecto` | Enviar **solo las líneas marcadas** a idirecto |
+| `POST /panel/pedidos/{id}/borrar` · `.../restaurar` | Papelera y restaurar |
+
+Las rutas `nuevo` y `buscar` van **antes** de `/panel/pedidos/{id}` (el router
+resuelve en orden de declaración).
+
+### 7bis. Pedidos y envío al mayorista
+
+Un pedido es lo que **un cliente de la tienda** ha comprado: `mt_orders`
+(cliente, entrega, notas, importes que paga el cliente, estado) + `mt_order_items`
+(líneas). No hay checkout todavía: los pedidos se dan de alta a mano en el panel
+(o los creará el checkout con `Order::createWithItems()`).
+
+**Estados** (`mt_orders.status`): `0` borrador, `1` activo, `2` preparado,
+`3` enviado, `4` facturado, `5` cancelado, `6` borrado (papelera restaurable). El
+listado los agrupa en pestañas y admite además un estado concreto (`?estado=4`).
+
+**Envío por líneas.** En la ficha se marcan las líneas que se quieren mandar (por
+ejemplo 2 de 4) y `OrderGateway::send()` escribe en el mayorista:
+
+1. `pedidos_addr` con la dirección de **facturación** (datos de la tienda) y, si el
+   pedido trae dirección de entrega propia, otra para el **envío** (si no, se
+   reutiliza la de facturación).
+2. `pedidos` con `web = 1`, `estado = NULL` (activo), `fecha = NOW()`,
+   `referencia = TIENDA-<slug>-<código>`, `id_tienda` = cuenta de la tienda,
+   `forma`/`plazo`/`dias`/`sucursal_id` de la cuenta y los totales del mayorista.
+3. `pedidos_det` por línea con `costo` (coste del mayorista), `ganancia`
+   (`precio de tarifa − coste`), `impuestos` (IVA del producto o de la tienda),
+   `sujeto`, `canon`, `id_almacen` y `precio_actual`.
+4. Descuenta `stock` y suma `reserva` en los almacenes tipo 0/4 (igual que
+   idirecto; `IDIRECTO_RESERVE_STOCK=false` lo desactiva).
+5. Marca las líneas en `mt_order_items` (`sent_at`, `idirecto_pedido_id`,
+   `price_idirecto`, `cost_idirecto`), actualiza `mt_orders` y, si ya no queda
+   ninguna línea del catálogo pendiente, pasa el pedido a **enviado**.
+
+La tarifa sale de `precios` con el `id_margen` de la tienda (respaldo:
+`tiendas.id_margen` → `IDIRECTO_DEFAULT_ID_MARGEN`) y el coste de `stock` +
+`tarifas`, con los mismos criterios que `getPrecio()`/`getCosto()` de idirecto
+(`app/Core/Idirecto/Pricing.php`). Los **productos propios** no se pueden enviar
+(no existen en el catálogo del mayorista): el panel los marca y quedan fuera.
+
+`OrderGateway::preview()` hace exactamente los mismos cálculos **sin escribir**, y
+es lo que la ficha muestra antes de confirmar (base, IVA y total).
+
 ### Temas
 
 Catálogo cerrado en `mt_themes`. Implementado: **`idirecto`**.
@@ -396,7 +479,7 @@ servidores no los traen en `/etc/mime.types` y servirían la imagen sin
 
 ```bash
 sudo bash deploy/setup-local-domain.sh     # /etc/hosts + VirtualHost + permisos
-php tools/verify.php                       # 62 comprobaciones
+php tools/verify.php                       # 78 comprobaciones
 php -S 127.0.0.1:8099 index.php            # servidor embebido (alternativa)
 ```
 
@@ -423,13 +506,18 @@ con repetir el script con el nuevo nombre y tocar esas tres claves del `.env`.
 ## 10. Verificación antes de dar algo por hecho
 
 ```bash
-php tools/verify.php                 # debe decir: TODO OK (62 comprobaciones)
+php tools/verify.php                 # debe decir: TODO OK (78 comprobaciones)
 curl -s -o /dev/null -w '%{http_code}\n' http://local.tienda/
 curl -s -o /dev/null -w '%{http_code}\n' http://local.tienda/catalogo
 curl -s -o /dev/null -w '%{http_code}\n' "http://local.tienda/catalogo?cat=9&subcat=102&f%5Bsocket%5D%5B0%5D=am5"
 curl -s -o /dev/null -w '%{http_code}\n' http://local.tienda/panel/login
 bash .agents/scripts/check-privacidad.sh    # la documentación no debe ser web
 ```
+
+Para probar el envío a idirecto **sin dejar rastro** en las tablas del mayorista,
+`OrderGateway::send()` se une a una transacción ya abierta (`Database::pdo()`), así
+que se puede ejecutar dentro de un `beginTransaction()` y hacer `rollBack()` al
+terminar: sirve para comprobar que todo se escribe bien sin crear pedidos reales.
 
 Los listados del catálogo no deben tardar segundos: si vuelven a ir lentos, mirar
 el plan de la consulta de stock (ver §11, «Semijoin de stock»).
@@ -460,6 +548,11 @@ google-chrome --headless=new --disable-gpu --no-sandbox \
 | Ordenar por precio en el catálogo entero tarda ~4 s | `ORDER BY` con la subconsulta de `precios` se calcula para cada candidato | Ofrecer el orden por precio solo cuando el listado está acotado (`Catalog::sorts($acotado)`) |
 | Un `Warning` de PHP aparece **dentro** del `href` de un enlace | En una vista, el closure no capturaba una variable (`use (…)`) y con `html_errors` el aviso se imprime como HTML | Los closures de las vistas deben capturar todo lo que usan; comprobar el HTML con `curl \| grep -i warning` |
 | La previa del panel parece no aplicar el modo oscuro | `getComputedStyle` leído justo tras cambiar `data-color-scheme` devuelve el color **a mitad de transición** | Leer los tokens de `:root` con `getPropertyValue('--c-…')` o esperar un *tick* |
+| No se puede insertar en `pedidos` del mayorista | `pedidos.id_facturacion` es `NOT NULL` (y sin valor por defecto) | Crear **antes** la fila de `pedidos_addr` y usar su `id`; `OrderGateway` lo hace en la misma transacción |
+| "¿Y si se envía dos veces el mismo pedido a idirecto?" | El envío por pedido duplicaría líneas | El envío es **por línea** (`mt_order_items.sent_at` + `idirecto_pedido_id`) y `OrderGateway::loadItems()` solo carga líneas del catálogo pendientes: repetir el envío no duplica nada |
+| Botones de borrar de cada línea dentro del formulario de envío | HTML **no permite anidar formularios**: el navegador desarma el marcado | Las casillas se asocian al formulario con el atributo `form="..."` de HTML5 y la tabla queda fuera de él |
+| El buscador de productos del panel devuelve productos de otra marca | `productos.marca` es un dato del mayorista que a veces no coincide con el nombre | El buscador filtra por nombre, referencia y marca a propósito; la marca puede ser imprecisa |
+| `/panel/pedidos/nuevo` mostraba la ficha de un pedido | El router resuelve **en orden de declaración**: `{id}` capturaba `nuevo` | Declarar `nuevo` y `buscar` **antes** de `/panel/pedidos/{id}` |
 
 ### 11bis. Semijoin de stock (rendimiento)
 
@@ -482,9 +575,12 @@ frescura de datos del dueño, no un cambio que deba hacer un agente por su cuent
 
 Ver [`STATE.md`](STATE.md) para el estado detallado. Pendiente principal:
 
-1. **Precio por tarifa de tienda** — hoy se usa `MIN(precios.precio)`; debería
-   aplicar el margen/tarifa que corresponda a cada tienda.
-2. **Checkout** — carrito, pasarelas de pago de la tienda y envío.
+1. **Precio por tarifa de tienda en el storefront** — el catálogo sigue usando
+   `MIN(precios.precio)`; debería aplicar la tarifa de la tienda
+   (`mt_stores.id_margen`), que los pedidos ya usan.
+2. **Checkout** — carrito, pasarelas de pago de la tienda y envío. Debe crear el
+   pedido con `Order::createWithItems()` para que entre por el mismo circuito que
+   el alta manual y se pueda enviar al mayorista por líneas.
 3. **Panel maestro del mayorista** — supervisión, tarifas y auditoría de ventas.
 4. **Materializar el stock válido** (`mt_` refrescada por tarea) para eliminar el
    pico del contador y permitir orden por precio en todo el catálogo.

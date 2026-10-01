@@ -10,6 +10,11 @@ $quotaText = $stats['cuota_ilimitada']
 ?>
 <section class="cards">
     <article class="stat">
+        <span class="stat-label">Pedidos activos</span>
+        <strong class="stat-value"><?= (int) ($stats['pedidos_activos'] ?? 0) ?></strong>
+        <span class="stat-hint"><a href="<?= e($base) ?>/panel/pedidos">Ver pedidos</a></span>
+    </article>
+    <article class="stat">
         <span class="stat-label">Productos propios</span>
         <strong class="stat-value"><?= e($quotaText) ?></strong>
         <span class="stat-hint"><?= $stats['cuota_ilimitada'] ? 'Plan premium' : 'Cuota de tu plan' ?></span>

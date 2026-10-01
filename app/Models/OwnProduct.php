@@ -41,4 +41,27 @@ final class OwnProduct extends Model
             ['id' => $id, 'store_id' => $storeId]
         );
     }
+
+    /**
+     * Busqueda publicada para el selector de productos del panel (pedidos).
+     * Solo productos propios publicados; los ocultos o en borrador no entran.
+     */
+    public static function searchForStore(int $storeId, string $q, int $limit = 5): array
+    {
+        $q = trim($q);
+        if ($q === '') {
+            return [];
+        }
+        $limit = max(1, min(20, $limit));
+        $like = '%' . str_replace(['%', '_'], ['\%', '\_'], $q) . '%';
+
+        return \Tienda\Core\Database::select(
+            "SELECT id, name, sku, price, sale_price, tax_rate
+             FROM mt_own_products
+             WHERE store_id = :store_id AND status = 1 AND (name LIKE :q1 OR sku LIKE :q2)
+             ORDER BY id DESC
+             LIMIT $limit",
+            ['store_id' => $storeId, 'q1' => $like, 'q2' => $like]
+        );
+    }
 }

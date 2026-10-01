@@ -16,6 +16,9 @@ require dirname(__DIR__) . '/app/bootstrap.php';
 use Tienda\Core\Database;
 use Tienda\Core\Dns;
 use Tienda\Core\Appearance;
+use Tienda\Core\Idirecto\Account;
+use Tienda\Core\Idirecto\OrderGateway;
+use Tienda\Core\Idirecto\Pricing;
 use Tienda\Core\Media\ImageOptimizer;
 use Tienda\Core\Media\MediaRules;
 use Tienda\Core\Server;
@@ -27,6 +30,8 @@ use Tienda\Core\Storage\StorageManager;
 use Tienda\Core\Tenant;
 use Tienda\Core\TenantResolver;
 use Tienda\Models\Catalog;
+use Tienda\Models\Order;
+use Tienda\Models\OrderItem;
 use Tienda\Models\Plan;
 use Tienda\Models\Store;
 use Tienda\Models\Theme;
@@ -60,7 +65,7 @@ try {
 
 $tables = ['mt_plans', 'mt_themes', 'mt_stores', 'mt_store_users', 'mt_media',
     'mt_banners', 'mt_notices', 'mt_own_products', 'mt_domains', 'mt_dns_log',
-    'mt_content_blocks', 'mt_settings', 'mt_migrations'];
+    'mt_content_blocks', 'mt_settings', 'mt_migrations', 'mt_orders', 'mt_order_items'];
 
 $missing = [];
 try {
@@ -418,6 +423,151 @@ check(
     ($chipsPares[0]['v'] ?? '') === 'AM5' && str_contains((string) ($chipsPares[1]['v'] ?? ''), 'DDR5'),
     'chips desde caracteristicas y sin prefijos redundantes: ' . json_encode($chipsPares, JSON_UNESCAPED_UNICODE)
 );
+
+echo "\n== Pedidos de la tienda ==\n";
+// Enlace con el mayorista (migracion 003): cuenta y tarifa de cada tienda.
+$storeColumns = ['id_tienda_idirecto', 'id_margen'];
+$missingStore = [];
+foreach ($storeColumns as $column) {
+    try {
+        Database::scalar("SELECT `$column` FROM mt_stores LIMIT 1");
+    } catch (\Throwable $e) {
+        $missingStore[] = $column;
+    }
+}
+check($missingStore === [], 'cuenta del mayorista en mt_stores' . ($missingStore ? ' (faltan: ' . implode(', ', $missingStore) . ')' : ''));
+
+check(
+    count(Order::statuses()) === 7 && Order::statusLabel(Order::STATUS_INVOICED) === 'Facturado',
+    'estados de pedido (' . implode(', ', array_values(Order::statuses())) . ')'
+);
+$grupos = Order::statusGroups();
+check(
+    isset($grupos['todos'], $grupos['activos'], $grupos['facturados'], $grupos['borrados'])
+        && $grupos['todos']['statuses'] === null
+        && in_array(Order::STATUS_INVOICED, $grupos['facturados']['statuses'], true),
+    'pestanas del listado: ' . implode(', ', array_column($grupos, 'label'))
+);
+check(
+    Order::statusesForGroup('facturados') === [Order::STATUS_INVOICED]
+        && Order::statusesForGroup((string) Order::STATUS_DELETED) === [Order::STATUS_DELETED]
+        && Order::statusesForGroup('inventado') === null
+        && Order::statusesForGroup('todos') === null,
+    'filtro por pestana y por estado concreto'
+);
+check(Order::normalizeStatus(99) === Order::STATUS_ACTIVE, 'estado invalido cae a activo');
+
+// Normalizacion de las lineas del formulario (precio con coma, cantidad minima)
+$normalizadas = OrderItem::normalizeLines([
+    ['source' => 'catalog', 'product_id' => '7', 'name' => 'Producto del catalogo', 'qty' => '2', 'price_customer' => '95,50', 'tax_rate' => '21'],
+    ['source' => 'own', 'product_id' => '3', 'name' => 'Producto propio', 'qty' => '0', 'price_customer' => '10', 'tax_rate' => '21'],
+    ['source' => 'catalog', 'product_id' => '0', 'name' => '  ', 'qty' => '1', 'price_customer' => '0', 'tax_rate' => '21'],
+]);
+check(
+    count($normalizadas['lines']) === 2
+        && $normalizadas['lines'][0]['price_customer'] === 95.5
+        && $normalizadas['lines'][0]['qty'] === 2
+        && $normalizadas['lines'][1]['source'] === 'own',
+    'lineas del pedido normalizadas (2 de 3: la vacia se ignora)'
+);
+check(
+    $normalizadas['lines'][1]['qty'] === 1 && count($normalizadas['errors']) === 1,
+    'cantidad minima 1 con aviso: ' . ($normalizadas['errors'][0] ?? '')
+);
+
+// Resumen de lineas: enviadas, pendientes y propias (no enviables)
+$resumen = OrderItem::summary([
+    ['source' => 'catalog', 'product_id' => 5, 'qty' => 2, 'price_customer' => 10, 'sent_at' => null],
+    ['source' => 'catalog', 'product_id' => 6, 'qty' => 1, 'price_customer' => 10, 'sent_at' => '2026-01-01 10:00:00'],
+    ['source' => 'own', 'product_id' => 9, 'qty' => 1, 'price_customer' => 30, 'sent_at' => null],
+]);
+check(
+    $resumen['lines'] === 3 && $resumen['lines_sendable'] === 1 && $resumen['lines_sent'] === 1
+        && $resumen['lines_own'] === 1 && $resumen['amount_sendable'] === 20.0,
+    'resumen de lineas del pedido (' . $resumen['lines_sendable'] . ' enviables, ' . $resumen['lines_sent'] . ' enviadas)'
+);
+check(
+    OrderItem::isSendable(['source' => 'catalog', 'product_id' => 1, 'sent_at' => null])
+        && !OrderItem::isSendable(['source' => 'own', 'product_id' => 1, 'sent_at' => null])
+        && !OrderItem::isSendable(['source' => 'catalog', 'product_id' => 1, 'sent_at' => '2026-01-01 10:00:00']),
+    'solo se envian lineas del catalogo pendientes'
+);
+
+if (Catalog::isAvailable()) {
+    $busqueda = Catalog::search('ssd', 3);
+    check(
+        count($busqueda) > 0 && isset($busqueda[0]['nombre'], $busqueda[0]['id']),
+        'busqueda de productos para el selector (' . count($busqueda) . ' resultados)'
+    );
+}
+
+echo "\n== Envio a idirecto (solo lectura en esta comprobacion) ==\n";
+echo '  Puente disponible: ' . (OrderGateway::isAvailable() ? 'si' : 'no') . "\n";
+if (OrderGateway::isAvailable()) {
+    $tiendaVerificada = Store::allWithPlan()[0] ?? [];
+    $cuenta = Account::forStore($tiendaVerificada);
+    check(
+        isset($cuenta['id_margen']) && (int) $cuenta['id_margen'] > 0 && array_key_exists('configurada', $cuenta),
+        'cuenta del mayorista resuelta (tarifa ' . ($cuenta['id_margen'] ?? '?') . ', origen ' . ($cuenta['margen_origen'] ?? '?') . ')'
+    );
+
+    $margen = (int) $cuenta['id_margen'];
+    $productoId = (int) Database::scalar(
+        'SELECT pr.id_producto
+         FROM precios pr
+         INNER JOIN stock s ON s.id = pr.id_stock
+         INNER JOIN almacenes a ON a.id = s.id_almacen
+         INNER JOIN productos p ON p.id = pr.id_producto
+         WHERE pr.id_margen = :margen AND pr.precio > 0 AND s.stock > 0 AND s.activo = 1
+           AND a.tipo <> 2 AND p.estado <> 4
+         LIMIT 1',
+        ['margen' => $margen]
+    );
+    $tarifa = $productoId > 0 ? Pricing::forProduct($productoId, $margen, 1) : null;
+    check(
+        $tarifa !== null && $tarifa['precio'] > 0 && $tarifa['coste'] > 0 && $tarifa['tarifa_conocida'],
+        'tarifa del mayorista para un producto real'
+            . ($tarifa ? ' (#' . $productoId . ': precio ' . $tarifa['precio'] . ', coste ' . $tarifa['coste'] . ')' : '')
+    );
+
+    // La vista previa no debe escribir NADA en las tablas del mayorista.
+    $pedidosAntes = Database::tableExists('pedidos')
+        ? [(int) Database::scalar('SELECT COUNT(*) FROM pedidos'), (int) Database::scalar('SELECT COALESCE(MAX(id), 0) FROM pedidos')]
+        : null;
+
+    $pedidoPrueba = ['id' => 0, 'code' => 'VERIFY-1', 'status' => Order::STATUS_ACTIVE, 'customer_phone' => '', 'ship_name' => '', 'ship_address' => ''];
+    $lineasPrueba = [[
+        'id' => 1, 'order_id' => 0, 'source' => 'catalog', 'product_id' => $productoId,
+        'name' => 'Producto de prueba', 'qty' => 2, 'price_customer' => 1.0, 'tax_rate' => 21,
+    ]];
+    $previa = OrderGateway::preview($tiendaVerificada, $pedidoPrueba, $lineasPrueba);
+    check(
+        $previa['errors'] === [] && count($previa['lines']) === 1
+            && $previa['totals']['subtotal'] > 0 && $previa['totals']['impuestos'] > 0
+            && $previa['totals']['total'] >= $previa['totals']['subtotal'],
+        'vista previa del pedido antes de enviar (subtotal ' . $previa['totals']['subtotal']
+            . ', IVA ' . $previa['totals']['impuestos'] . ', total ' . $previa['totals']['total'] . ')'
+    );
+
+    $previaPropia = OrderGateway::preview($tiendaVerificada, $pedidoPrueba, [[
+        'id' => 2, 'order_id' => 0, 'source' => 'own', 'product_id' => 9,
+        'name' => 'Producto propio', 'qty' => 1, 'price_customer' => 1.0, 'tax_rate' => 21,
+    ]]);
+    check(
+        $previaPropia['errors'] !== [] && str_contains(implode(' ', $previaPropia['errors']), 'no se puede enviar'),
+        'un producto propio no se puede enviar al mayorista'
+    );
+
+    check(
+        OrderGateway::reference(['slug' => 'mi-tienda'], ['code' => 'P26-00007']) === 'TIENDA-mi-tienda-P26-00007',
+        'referencia del pedido en el mayorista'
+    );
+
+    if ($pedidosAntes !== null) {
+        $pedidosDespues = [(int) Database::scalar('SELECT COUNT(*) FROM pedidos'), (int) Database::scalar('SELECT COALESCE(MAX(id), 0) FROM pedidos')];
+        check($pedidosAntes === $pedidosDespues, 'la vista previa no escribe en las tablas del mayorista');
+    }
+}
 
 echo "\n==============================================================\n";
 if ($fail === 0) {

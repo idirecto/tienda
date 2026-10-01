@@ -21,6 +21,38 @@ _(vacío — sin petición pendiente)_
 
 Cada petición terminada se anota aquí con la fecha, qué se pidió y qué se hizo.
 
+### 2026-10-01 · Pedidos en el panel y envío por líneas a la tabla `pedidos` de idirecto (petición por chat)
+
+**Pedido:** «en el panel de la tienda, crea un listado de pedidos, tantos activos,
+ya facturados, borrados, todos los estados y la posibilidad de verlos; y que se
+envíe a la tabla `pedidos` de idirecto eligiendo por línea de los pedidos, por
+ejemplo si un pedido tiene 4 líneas de productos, se puede hacer un pedido hacia
+idirecto (tabla `pedidos`) con los datos de la tienda que maneja la web y elegir
+productos del pedido hecho por el cliente, por ejemplo elegir dos de los productos
+para enviar a idirecto».
+
+**Decisiones confirmadas antes de empezar:** (1) los pedidos se guardan en tablas
+propias (`mt_orders`/`mt_order_items`), (2) cada tienda se enlaza con su cuenta del
+mayorista desde Ajustes, y (3) el envío **escribe de verdad** en
+`pedidos`/`pedidos_det`.
+
+**Hecho:** módulo de pedidos completo en el panel (listado con pestañas
+Todos/Activos/Borradores/Facturados/Cancelados/Borrados, buscador, paginación y
+papelera restaurable; ficha con cliente, entrega, líneas y cambio de estado; alta
+manual y añadir/quitar líneas con buscador de productos). El envío al mayorista va
+**por línea** (`OrderGateway`): crea `pedidos_addr` + `pedidos` + `pedidos_det`
+replicando el flujo web de idirecto (`web = 1`, `estado = NULL`,
+`referencia = TIENDA-<slug>-<código>`), con la tarifa de la tienda
+(`mt_stores.id_margen`), vista previa de importes antes de confirmar y reserva de
+stock opcional. Cada línea enviada queda marcada, así que un pedido de 4 líneas se
+puede mandar en dos veces (2+2) sin repetir nada; los productos propios no se
+envían. Migración `003`, `config/idirecto.php` y claves `IDIRECTO_*` en el
+`.env.example`. `verify.php` 62 → **78**. Detalle en `CHANGELOG.md`.
+
+**Nota:** queda un pedido de ejemplo (`P26-00001`, cliente «Cliente de prueba») en
+la tienda demo para ver la pantalla con datos, y la tienda demo **no** tiene cuenta
+de idirecto configurada a propósito (hay que poner el id de cuenta en Ajustes).
+
 ### 2026-10-01 · Ver 20 productos por página en los listados (petición por chat)
 
 **Pedido:** «en los listados, que aparezcan más productos; actualmente veo 12 y

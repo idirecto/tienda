@@ -16,6 +16,7 @@ $error = Session::pullFlash('error');
 
 $nav = [
     ['panel',          'Panel',            'Resumen de tu tienda'],
+    ['panel/pedidos',  'Pedidos',          'Pedidos de tus clientes'],
     ['panel/diseno',   'Diseno',           'Plantilla, colores y textos'],
     ['panel/banners',  'Banners',          'Imagenes destacadas'],
     ['panel/avisos',   'Avisos',           'Anuncios para tus clientes'],

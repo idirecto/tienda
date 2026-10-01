@@ -10,6 +10,7 @@ use Tienda\Models\Banner;
 use Tienda\Models\Catalog;
 use Tienda\Models\Domain;
 use Tienda\Models\Notice;
+use Tienda\Models\Order;
 use Tienda\Models\OwnProduct;
 use Tienda\Models\Store;
 
@@ -41,6 +42,7 @@ final class DashboardController extends Controller
                 'avisos'            => count(Notice::forStore($storeId)),
                 'max_avisos'        => $tenant->maxNotices(),
                 'dominios'          => count(Domain::forStore($storeId)),
+                'pedidos_activos'   => Order::countActiveForStore($storeId),
             ],
             'catalogReady' => Catalog::isAvailable(),
             'activity'     => array_slice(OwnProduct::forStore($storeId), 0, 5),
