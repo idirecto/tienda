@@ -39,6 +39,7 @@ set -euo pipefail
 DOMAIN=""
 DRY_RUN="${DRY_RUN:-0}"
 FORZAR="${FORZAR:-0}"
+SCRIPT_VERSION="2026-10-01b"
 
 for arg in "$@"; do
     case "$arg" in
@@ -59,6 +60,7 @@ LINK="/etc/nginx/sites-enabled/${DOMAIN}.conf"
 
 resumen() {
     echo
+    echo "  script  : v${SCRIPT_VERSION}"
     echo "  dominio : ${DOMAIN}"
     echo "  raiz    : ${ROOT}"
     echo "  usuario : ${WEB_USER}"
