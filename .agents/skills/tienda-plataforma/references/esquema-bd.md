@@ -35,10 +35,18 @@ salvo `mt_migrations`, `mt_plans` y `mt_themes`, tienen FK a `mt_stores(id)` con
   mayorista) e `id_margen` → `precios.id_margen` (su tarifa). Los edita el dueño en
   Ajustes; la tarifa vacía cae a `tiendas.id_margen` y, si no, a
   `IDIRECTO_DEFAULT_ID_MARGEN` (12).
+- Las tiendas **nuevas se dan de alta en `/registro`** (`Core/Registration`), y
+  solo con una **cuenta activa del mayorista**: el tendero entra con su email y
+  contraseña de idirecto (`Account::login()`, `activo = 2` y la firma
+  `hash('sha256', md5(sha1($clave)))`) y la tienda nace ya enlazada, con los datos
+  de la cuenta y su tarifa. Una cuenta = una tienda.
 
 **`mt_store_users`** — usuarios del panel.
 `id`, `store_id`, `name`, `email`, `password_hash` (*bcrypt/argon*), `role`,
 `active`, `last_login_at`, `created_at`
+
+- El registro crea un `owner` con el email de la cuenta del mayorista y una
+  contraseña propia; la del mayorista no se guarda.
 
 **`mt_settings`** — ajustes clave/valor por tienda: `id`, `store_id`, `key`, `value`
 

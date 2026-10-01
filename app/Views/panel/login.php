@@ -22,3 +22,7 @@ use Tienda\Core\Csrf;
 <p class="auth-hint">
     Demo: <code>admin@demo.test</code> / <code>demo1234</code>
 </p>
+
+<p class="auth-hint">
+    ¿Todavia no tienes tienda? <a href="<?= e($base) ?>/registro">Registra la tuya con tu cuenta de idirecto</a>
+</p>

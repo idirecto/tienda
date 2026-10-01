@@ -126,6 +126,50 @@ final class Account
         );
     }
 
+    /**
+     * Hash con el que el mayorista guarda las contrasenas de sus tiendas.
+     *
+     * OJO: NO es `password_hash()`, asi que `password_verify()` no vale para
+     * `tiendas.password`. idirecto hace exactamente esto en su login
+     * (`index_controller::login()`), y es lo que hay que replicar para
+     * comprobar una cuenta.
+     */
+    public static function signature(string $password): string
+    {
+        return hash('sha256', md5(sha1($password)));
+    }
+
+    /**
+     * Comprueba las credenciales de una cuenta del mayorista y la devuelve.
+     *
+     * Mismo criterio que el login de idirecto: `activo = 2` y la contrasena
+     * firmada; ademas exigimos que la cuenta no este cerrada ni borrada. La
+     * contrasena NO se guarda en ningun sitio: solo se comprueba aqui.
+     *
+     * @return array|null Fila de `tiendas` o null si no vale
+     */
+    public static function login(string $email, string $password): ?array
+    {
+        $email = mb_strtolower(trim($email));
+        if ($email === '' || $password === '' || !Database::tableExists('tiendas')) {
+            return null;
+        }
+
+        return Database::first(
+            'SELECT id, nombre, nombre_sociedad, nif_cif, email, id_pais, id_provincia, direccion,
+                    cp, poblacion, localidad, telefono, movil, id_margen, sucursal_id, id_comercial,
+                    forma, vencimiento, dia, activo, cerrada, deleted
+             FROM tiendas
+             WHERE LOWER(email) = :email
+               AND password = :password
+               AND activo = 2
+               AND COALESCE(cerrada, 0) = 0
+               AND COALESCE(deleted, 0) = 0
+             LIMIT 1',
+            ['email' => $email, 'password' => self::signature($password)]
+        );
+    }
+
     /** Id del pais a partir de su codigo ISO-2 (ES by defecto). */
     public static function paisId(string $iso2): ?int
     {
@@ -182,6 +226,26 @@ final class Account
         }
         $forma = Database::scalar('SELECT forma FROM formas_pago WHERE id = :id LIMIT 1', ['id' => $formaId]);
         return $forma === null ? null : (string) $forma;
+    }
+
+    /** Nombre de la provincia a partir de su id (el inverso de `provinceId`). */
+    public static function provinceName(int $idProvincia): string
+    {
+        if ($idProvincia <= 0 || !Database::tableExists('provincias')) {
+            return '';
+        }
+        $nombre = Database::scalar('SELECT provincia FROM provincias WHERE id = :id LIMIT 1', ['id' => $idProvincia]);
+        return $nombre === null ? '' : (string) $nombre;
+    }
+
+    /** Nombre del pais a partir de su id (`paises`). */
+    public static function countryName(int $idPais): string
+    {
+        if ($idPais <= 0 || !Database::tableExists('paises')) {
+            return '';
+        }
+        $pais = Database::scalar('SELECT pais FROM paises WHERE id = :id LIMIT 1', ['id' => $idPais]);
+        return $pais === null ? '' : (string) $pais;
     }
 
     /** Comercial valido (la FK de `pedidos` lo exige) o el de configuracion. */

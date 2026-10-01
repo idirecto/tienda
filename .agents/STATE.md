@@ -15,7 +15,7 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
 
 > ✅ **Entorno (2026-10-01).** `idirecto_db` está **completa** (239 tablas:
 > catálogo con 41.289 productos con stock, 33 categorías con stock, y las `mt_`),
-> la web responde 200 y `php tools/verify.php` da **TODO OK (78)**.
+> la web responde 200 y `php tools/verify.php` da **TODO OK (90)**.
 >
 > ⚠️ **Si vuelve a salir un 500 con «Error interno»**: casi siempre es que el
 > usuario del servidor web (`www-data`) **no puede leer `.env`**, no un fallo de
@@ -28,6 +28,7 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
 | Área | Estado |
 |---|---|
 | Multi-tienda (resolución por hostname) | ✅ Completo |
+| **Registro de tiendas (solo con cuenta activa del mayorista)** | ✅ Completo |
 | Catálogo central (stock, búsqueda, paginación) | ✅ Completo (**listados en ~20 ms**, ver notas) |
 | Ficha de producto (galería + especificaciones) | ✅ Completo (colores ya tokenizados) |
 | **Sistema de diseño white-label (tokens, claro/oscuro, presets, previa en vivo)** | ✅ Completo |
@@ -43,7 +44,7 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
 | **Checkout: carrito, pago y envío** | ❌ **No existe** (modelo de pedidos y envío al mayorista, sí) |
 | **Precio según tarifa de la tienda** | ⚠️ Provisional en el storefront (`MIN(precios.precio)`); los **pedidos** ya usan la tarifa de la tienda (`mt_stores.id_margen`) |
 | Temas `moderno` y `minimal` | ⚠️ Sembrados, sin maquetar (los tokens valen para cualquiera) |
-| Panel maestro del mayorista | ❌ No existe |
+| Panel maestro del mayorista | ❌ No existe (el alta pública ya enlaza cada tienda con su cuenta) |
 | Tests automatizados / CI | ❌ No existe |
 
 ---
@@ -52,11 +53,27 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
 
 ### Infraestructura
 - MVC propio con autoload PSR-4 (`Tienda\` → `app/`), sin framework.
-- 13 tablas `mt_` idempotentes + semillas (3 planes, 3 temas, tienda demo).
+- 15 tablas `mt_` idempotentes + semillas (3 planes, 3 temas, tienda demo).
 - Multi-tenant por hostname (subdominio → dominio propio verificado → demo).
 - Sesión, CSRF y `password_hash` en el panel.
 - Almacenamiento conmutable local/S3 (en BD solo claves y URLs).
 - Verificación DNS (A/CNAME) con *lookup* inyectable para poder testear sin red.
+
+### Registro de tiendas (solo clientes del mayorista)
+- **`/registro`** (público): el tendero entra con el email y la contraseña de **su
+  cuenta de idirecto** y se crea su tienda. Sin cuenta activa no hay tienda: es
+  la conexión que faltaba con la tabla `tiendas`.
+- Se comprueba con el criterio de idirecto (`activo = 2`, ni cerrada ni borrada) y
+  su misma firma de contraseña (`hash('sha256', md5(sha1($clave)))`, **no** es
+  `password_hash`); la contraseña del mayorista no se guarda.
+- La tienda nace **activa y enlazada** (`id_tienda_idirecto` + `id_margen`), con
+  los datos fiscales y de contacto de la cuenta (razón social, NIF, dirección,
+  provincia y país resueltos por id), plan por defecto, slug único y su usuario de
+  panel con contraseña propia. Al terminar queda dentro del panel y su storefront
+  ya funciona.
+- Una cuenta = una tienda: si esa cuenta ya tiene tienda, se le manda al panel.
+- Límite de intentos por sesión (5 / 15 min) y registro de los rechazos en el log,
+  para que el formulario no sirva para probar contraseñas del mayorista.
 
 ### Storefront
 - Catálogo filtrado a **productos con stock**, con las mismas condiciones que
@@ -158,8 +175,8 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
   en **nginx + PHP-FPM** (`sudo bash deploy/setup-nginx-domain.sh valduran.com`).
 - La app detecta el servidor (`app/Core/Server.php`): ruta pública de `/public`,
   esquema real (incluido proxy) y host de las URLs canónicas.
-- `tools/verify.php`: 78 comprobaciones automáticas (diseño, facetas, catálogo,
-  almacenamiento, DNS, servidor, pedidos y envío al mayorista).
+- `tools/verify.php`: 90 comprobaciones automáticas (diseño, facetas, catálogo,
+  almacenamiento, DNS, servidor, registro de tiendas, pedidos y envío al mayorista).
 - Documentación interna en `.agents/`, blindada frente a la web.
 - Repositorio publicado en GitHub (`main`).
 
@@ -187,7 +204,13 @@ manual del panel), de modo que las líneas del catálogo se puedan enviar luego 
 idirecto como ya hace la ficha del pedido.
 
 ### 3. Panel maestro del mayorista
-Supervisión de tiendas, asignación de tarifas, auditoría de ventas.
+Supervisión de tiendas, asignación de tarifas y auditoría de ventas.
+
+El **alta** ya está resuelta por el registro público (`/registro`, cada tienda nace
+enlazada a su cuenta de `tiendas`), así que lo que falta aquí es el punto de vista
+del mayorista: ver todas las tiendas, cambiarles plan/tarifa, suspenderlas y
+auditar sus ventas. Requiere un acceso maestro propio (tabla + login), que no se
+ha hecho por no inventar el modelo de permisos sin que lo pida el dueño.
 
 ### 4. Temas `moderno` y `minimal`
 Están en `mt_themes` pero sin vistas. El sistema de temas ya cae a la vista base
@@ -234,11 +257,22 @@ No hay ninguno. Prioridad: `Specs` (parseo de especificaciones),
   `IDIRECTO_RESERVE_STOCK=false`.
 - **Cada tienda dice con qué cuenta compra** (`mt_stores.id_tienda_idirecto` e
   `id_margen`) desde Ajustes, en vez de adivinarlo por CIF o email.
+- **Solo los clientes del mayorista pueden tener tienda aquí**: el alta es pública
+  (`/registro`) pero exige una cuenta activa en `tiendas`; la tienda nace enlazada
+  a esa cuenta y con su tarifa. Se entra al panel con un **usuario propio** (no
+  con las credenciales del mayorista, que no se guardan).
 
 ---
 
 ## Riesgos conocidos
 
+- **La contraseña de `tiendas` no es `password_hash`**: es
+  `hash('sha256', md5(sha1($clave)))` (ver `Account::signature()`). Si el
+  mayorista cambia su login, el registro deja de validar cuentas (y hay que
+  ajustar `Account::login()`). La comprobación está limitada por sesión
+  (`IDIRECTO_REGISTER_ATTEMPTS`) porque este formulario autentica contra las
+  cuentas del mayorista; si algún día se abre mucho, conviene limitar también por
+  IP y añadir captcha.
 - **El envío a idirecto escribe en tablas de producción del mayorista**
   (`pedidos`, `pedidos_det`, `pedidos_addr`, y descuenta `stock`/`reserva`). Está
   aislado en `Core/Idirecto/OrderGateway`, con vista previa obligatoria y

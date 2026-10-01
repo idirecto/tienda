@@ -21,6 +21,31 @@ _(vacío — sin petición pendiente)_
 
 Cada petición terminada se anota aquí con la fecha, qué se pidió y qué se hizo.
 
+### 2026-10-01 · Registro de tiendas: solo clientes del mayorista (petición por chat)
+
+**Pedido:** «las tiendas que pueden usar esta web deben estar registradas en la
+tabla `tienda` [del mayorista]; ¿eso está conectado en algún lado? Sin conexión, no
+se puede registrar su tienda en la web».
+
+**Qué había:** `tiendas` solo se usaba en el módulo de pedidos (cuenta y tarifa en
+`mt_stores`, leídas por `Account`/`OrderGateway`) y en Ajustes para validar el id
+de cuenta. **No existía ningún alta de tienda**: `mt_stores` nacía de la semilla o
+a mano, y el enlace con `tiendas` se ponía manualmente.
+
+**Decisión confirmada:** registro **público** con la cuenta de idirecto
+(`/registro`) y, después, entrar al panel con un **usuario propio**.
+
+**Hecho:** `/registro` (público) valida el email y la contraseña de la cuenta de
+idirecto contra `tiendas` (mismo criterio que su login: `activo = 2`, ni cerrada ni
+borrada, y su firma de contraseña `hash('sha256', md5(sha1($clave)))`) y crea en
+una transacción la tienda de `mt_stores` **ya enlazada** (`id_tienda_idirecto` +
+`id_margen`), activa, con slug único, los datos fiscales/de contacto de la cuenta y
+su usuario de panel con contraseña propia. Una cuenta = una tienda; límite de
+intentos por sesión para no servir de banco de pruebas de contraseñas; la
+contraseña del mayorista no se guarda. `Controller::requireCsrf()` pasa a responder
+403 (el 419 acababa en 500) y admite a qué ruta volver. Claves `IDIRECTO_REGISTER*`
+en `.env.example`. `verify.php` 78 → **90**. Detalle en `CHANGELOG.md`.
+
 ### 2026-10-01 · Pedidos en el panel y envío por líneas a la tabla `pedidos` de idirecto (petición por chat)
 
 **Pedido:** «en el panel de la tienda, crea un listado de pedidos, tantos activos,

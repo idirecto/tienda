@@ -40,6 +40,7 @@ use Tienda\Controllers\Admin\NoticeController;
 use Tienda\Controllers\Admin\OrderController;
 use Tienda\Controllers\Admin\ProductController;
 use Tienda\Controllers\Admin\SettingsController;
+use Tienda\Controllers\RegistrationController;
 use Tienda\Controllers\StorefrontController;
 use Tienda\Core\Router;
 use Tienda\Core\TenantResolver;
@@ -57,6 +58,14 @@ $router->get('/producto/{slug}/{id}',  [StorefrontController::class, 'product'])
 $router->get('/producto/{id}',         [StorefrontController::class, 'productLegacy']);
 $router->get('/contacto',              [StorefrontController::class, 'contact']);
 $router->get('/pagina/{slug}',         [StorefrontController::class, 'page']);
+
+// -----------------------------------------------------------------------------
+// REGISTRO DE UNA TIENDA NUEVA
+// Solo se puede registrar quien tiene una cuenta activa en el mayorista: se
+// comprueban sus credenciales de idirecto contra la tabla `tiendas`.
+// -----------------------------------------------------------------------------
+$router->get('/registro',              [RegistrationController::class, 'show']);
+$router->post('/registro',             [RegistrationController::class, 'store']);
 
 // -----------------------------------------------------------------------------
 // PANEL DE LA TIENDA

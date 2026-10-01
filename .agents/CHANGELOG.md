@@ -5,6 +5,73 @@ El detalle línea a línea está en `git log`.
 
 ---
 
+## 2026-10-01 · Registro de tiendas: solo clientes del mayorista
+
+**Motivo:** el dueño pregunta si la tabla `tiendas` (la de clientes del
+mayorista) está conectada en algún sitio y avisa de que **sin esa conexión no se
+puede registrar una tienda en la web**. Hasta ahora no había ningún alta: las
+tiendas (`mt_stores`) solo nacían de la semilla o a mano en la base de datos, y
+el enlace con `tiendas` se ponía manualmente en Ajustes.
+
+**Decisión confirmada:** registro **público** con la cuenta de idirecto
+(`/registro`), y después se entra al panel con un **usuario propio** (no con las
+credenciales del mayorista).
+
+**Cambios**
+
+- `app/Core/Registration.php` (nuevo): alta de una tienda a partir de una cuenta
+  del mayorista. La tienda nace **activa y enlazada** (`id_tienda_idirecto` +
+  `id_margen` de la cuenta) y con los datos fiscales/de contacto copiados
+  (razón social, NIF, dirección, población, provincia y país resueltos por id),
+  plan por defecto, slug único y su usuario de panel.
+- `Account::login()` + `Account::signature()` (nuevos): comprueban la cuenta
+  contra `tiendas` con el mismo criterio que el login de idirecto
+  (`activo = 2`, sin cerrar ni borrar) y **su misma firma de contraseña**
+  (`hash('sha256', md5(sha1($clave)))` — **no** es `password_hash`).
+- `RegistrationController` + rutas `GET|POST /registro` (públicas) y vista
+  `register.php` (layout de acceso): email y contraseña de idirecto, dirección de
+  tienda opcional y contraseña nueva para este panel.
+- Límite de intentos por sesión (`IDIRECTO_REGISTER_ATTEMPTS`, 5 por 15 min) para
+  que el formulario no sirva para probar contraseñas del mayorista, más registro
+  en el log de los rechazos. La contraseña de idirecto **no se guarda**.
+- `config/idirecto.php` y `.env.example`: `IDIRECTO_REGISTER`,
+  `IDIRECTO_REGISTER_PLAN`, `IDIRECTO_REGISTER_ATTEMPTS` y
+  `IDIRECTO_REGISTER_WINDOW`.
+- `Controller::requireCsrf()`: responde **403** (el 419 lo convertía Apache en
+  500) y admite a qué ruta volver, para que los formularios públicos vuelvan a su
+  página y no al panel. El login del panel enlaza con el registro.
+- `tools/verify.php`: 78 → **90** comprobaciones.
+
+**Cómo funciona el alta**
+
+1. El tendero entra con el email y la contraseña de **su cuenta de idirecto**.
+2. Se comprueba la cuenta (activa, no cerrada, no borrada) y que esa cuenta no
+   tenga ya tienda en la web (si la tiene, se le manda al panel).
+3. Se crea `mt_stores` (slug libre, plan por defecto, datos de la cuenta,
+   `id_tienda_idirecto` + `id_margen`) y `mt_store_users` (contraseña propia con
+   `password_hash`), y se le deja dentro del panel.
+4. Su tienda funciona al momento en `https://<slug>.<dominio base>` y ya puede
+   enviar pedidos al mayorista sin configurar nada.
+
+**Verificación:** `php tools/verify.php` → TODO OK (90). La cadena completa
+(comprobar cuenta → crear tienda → usuario de panel → entrar) se prueba en
+`verify.php` dentro de una transacción que se deshace, así que no queda ninguna
+tienda de prueba. Con HTTP real se probaron además el formulario (sin token,
+contraseñas distintas, credenciales incorrectas y bloqueo por intentos) y el alta
+completa: se insertó una **cuenta temporal** en `tiendas` (nombre "VERIFICACION
+AGENTE"), se registró la tienda por HTTP (302 → `/panel`, aviso con la URL
+pública, `id_tienda_idirecto` ya relleno en Ajustes y storefront respondiendo 200)
+y acto seguido se borraron la tienda, el usuario y la cuenta: los contadores de
+`tiendas` (9.539), `mt_stores` (1) y `mt_store_users` (1) volvieron a su valor
+previo y no queda ningún rastro.
+
+**Nota para el dueño:** el registro se puede cerrar con `IDIRECTO_REGISTER=false`
+(la página informa y no da de alta a nadie). Las tiendas creadas a mano en la
+base de datos siguen funcionando sin cuenta del mayorista, pero no pueden enviar
+pedidos: para eso hay que rellenar el id de cuenta en Ajustes.
+
+---
+
 ## 2026-10-01 · Pedidos en el panel y envío por líneas a idirecto
 
 **Motivo:** el dueño pide, en el panel de la tienda, un listado de pedidos con todos

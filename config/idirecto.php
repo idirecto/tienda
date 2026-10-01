@@ -37,4 +37,26 @@ return [
 
     // Pais de las direcciones que se crean en `pedidos_addr` (ISO-2).
     'country_code' => (string) Env::get('IDIRECTO_COUNTRY_CODE', 'ES'),
+
+    // -------------------------------------------------------------------------
+    // REGISTRO PUBLICO DE TIENDAS
+    //
+    // Solo puede registrarse quien tenga una cuenta ACTIVA en el mayorista: el
+    // tendero entra en /registro con su email y contrasena de idirecto, se
+    // comprueban contra `tiendas` (activo = 2, ni cerrada ni borrada) y se crea
+    // su tienda ya enlazada (`id_tienda_idirecto` + `id_margen`) con su propio
+    // usuario de panel. Su contrasena del mayorista NO se guarda.
+    // -------------------------------------------------------------------------
+    // Interruptor del registro (con `false`, /registro solo informa).
+    'register' => Env::bool('IDIRECTO_REGISTER', true),
+
+    // Plan con el que nace la tienda (code de `mt_plans`). El mayorista puede
+    // cambiarlo despues; el dueño de la tienda no lo elige en el registro.
+    'register_plan' => (string) Env::get('IDIRECTO_REGISTER_PLAN', 'basico'),
+
+    // Limite de intentos de registro (y de comprobacion de credenciales) por
+    // sesion, para que el formulario no sirva para probar contrasenas del
+    // mayorista a la fuerza.
+    'register_attempts' => Env::int('IDIRECTO_REGISTER_ATTEMPTS', 5),
+    'register_window'   => Env::int('IDIRECTO_REGISTER_WINDOW', 900),
 ];

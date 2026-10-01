@@ -59,10 +59,12 @@ app/
   bootstrap.php            Autoload PSR-4 (Tienda\ -> app/), .env, helpers
   Core/                    Infraestructura (ver §4)
   Core/Idirecto/           Puente con el mayorista: Account, Pricing y OrderGateway
-  Controllers/             StorefrontController + Admin/* (panel)
+  Core/Registration.php    Alta de una tienda a partir de una cuenta de `tiendas`
+  Controllers/             StorefrontController, RegistrationController + Admin/* (panel)
   Models/                  Acceso a datos (una clase por concepto)
   Views/
     layouts/               shop.php (web), panel.php, panel_blank.php
+    register.php           Registro público de tienda (/registro)
     panel/                 Pantallas del panel (orders.php, order.php, order_form.php,
                            _order_lines.php = editor de líneas, design_preview.php)
     themes/idirecto/       Tema público (home, _hero, catalog, product, page, _card)
@@ -78,7 +80,7 @@ public/                    ÚNICO directorio servido como estático
   assets/css|js            shop.css, panel.css, shop.js, panel.js
   uploads/                 Archivos locales (si STORAGE_DRIVER=local)
 storage/                   cache/ y logs/ (escritura de la app)
-tools/verify.php           78 comprobaciones automáticas
+tools/verify.php           90 comprobaciones automáticas
 ```
 
 ---
@@ -104,6 +106,7 @@ tools/verify.php           78 comprobaciones automáticas
 | `Core/Idirecto/Account` | Cuenta del mayorista de la tienda: tarifa, sucursal, comercial, forma de pago, país/provincia |
 | `Core/Idirecto/Pricing` | Tarifa, coste, almacén, IVA, sujeto y canon de un producto del catálogo |
 | `Core/Idirecto/OrderGateway` | Vista previa y envío de líneas a `pedidos_addr`/`pedidos`/`pedidos_det` |
+| `Registration` | Alta de una tienda desde una cuenta del mayorista (alta pública `/registro`) |
 | `Validation`/`Storage` `Exception` | Errores de dominio |
 
 > `Models/Order` es el pedido que recibe la tienda de **su** cliente (estados,
@@ -267,6 +270,35 @@ las que dan 404, y reutiliza la imagen grande si solo falta la miniatura.
 | `/catalogo` | Catálogo con buscador (`?q`), categoría (`?cat`), subcategoría (`?subcat`), **facetas** (`?f[clave][]=valor`), **precio** (`?pmin`/`?pmax`), orden (`?orden`) y paginación |
 | `/producto/{slug}/{id}` | Ficha (**URL SEO**); `/producto/{id}` redirige 301 |
 | `/contacto`, `/pagina/{slug}` | Contacto y páginas de contenido |
+| `/registro` | **Alta de una tienda nueva** con la cuenta de idirecto (ver más abajo) |
+
+### Registro de tiendas (solo clientes del mayorista)
+
+**En esta plataforma solo puede tener tienda quien ya es cliente del mayorista.**
+No hay altas sueltas: el tendero entra en `/registro` con el email y la contraseña
+de su cuenta de idirecto y `Account::login()` la comprueba contra `tiendas` con el
+mismo criterio que el login de idirecto:
+
+```sql
+… WHERE LOWER(email) = :email AND password = :password
+     AND activo = 2 AND COALESCE(cerrada,0) = 0 AND COALESCE(deleted,0) = 0
+```
+
+`password` es `hash('sha256', md5(sha1($clave)))` (**no** es `password_hash`, ver
+§11). Con la cuenta verificada, `Registration::register()` crea en una transacción:
+
+1. `mt_stores`: slug único (el pedido o derivado del nombre), plan por defecto
+   (`IDIRECTO_REGISTER_PLAN`), `status = 1`, datos fiscales/de contacto copiados de
+   la cuenta (razón social, NIF, dirección, población, provincia y país resueltos
+   por id) y, sobre todo, **`id_tienda_idirecto` + `id_margen`**: la tienda nace
+   enlazada y puede enviar pedidos sin configurar nada.
+2. `mt_store_users`: usuario `owner` con el email de la cuenta y **contraseña
+   propia** (`password_hash`). La contraseña del mayorista no se guarda.
+
+Una cuenta = una tienda (si ya la tiene, se le manda al panel). El formulario
+lleva límite de intentos por sesión (`IDIRECTO_REGISTER_ATTEMPTS`) porque
+autentica contra las cuentas del mayorista. Con `IDIRECTO_REGISTER=false` queda
+cerrado. Al terminar, la tienda responde ya en `https://<slug>.<dominio base>`.
 
 ### Sistema de diseño (white-label)
 
@@ -479,7 +511,7 @@ servidores no los traen en `/etc/mime.types` y servirían la imagen sin
 
 ```bash
 sudo bash deploy/setup-local-domain.sh     # /etc/hosts + VirtualHost + permisos
-php tools/verify.php                       # 78 comprobaciones
+php tools/verify.php                       # 90 comprobaciones
 php -S 127.0.0.1:8099 index.php            # servidor embebido (alternativa)
 ```
 
@@ -506,10 +538,11 @@ con repetir el script con el nuevo nombre y tocar esas tres claves del `.env`.
 ## 10. Verificación antes de dar algo por hecho
 
 ```bash
-php tools/verify.php                 # debe decir: TODO OK (78 comprobaciones)
+php tools/verify.php                 # debe decir: TODO OK (90 comprobaciones)
 curl -s -o /dev/null -w '%{http_code}\n' http://local.tienda/
 curl -s -o /dev/null -w '%{http_code}\n' http://local.tienda/catalogo
 curl -s -o /dev/null -w '%{http_code}\n' "http://local.tienda/catalogo?cat=9&subcat=102&f%5Bsocket%5D%5B0%5D=am5"
+curl -s -o /dev/null -w '%{http_code}\n' http://local.tienda/registro
 curl -s -o /dev/null -w '%{http_code}\n' http://local.tienda/panel/login
 bash .agents/scripts/check-privacidad.sh    # la documentación no debe ser web
 ```
@@ -553,6 +586,8 @@ google-chrome --headless=new --disable-gpu --no-sandbox \
 | Botones de borrar de cada línea dentro del formulario de envío | HTML **no permite anidar formularios**: el navegador desarma el marcado | Las casillas se asocian al formulario con el atributo `form="..."` de HTML5 y la tabla queda fuera de él |
 | El buscador de productos del panel devuelve productos de otra marca | `productos.marca` es un dato del mayorista que a veces no coincide con el nombre | El buscador filtra por nombre, referencia y marca a propósito; la marca puede ser imprecisa |
 | `/panel/pedidos/nuevo` mostraba la ficha de un pedido | El router resuelve **en orden de declaración**: `{id}` capturaba `nuevo` | Declarar `nuevo` y `buscar` **antes** de `/panel/pedidos/{id}` |
+| `password_verify()` no valida ninguna cuenta de `tiendas` | La contraseña del mayorista **no** es `password_hash`: es `hash('sha256', md5(sha1($clave)))` | Usar `Account::signature()` / `Account::login()`; si cambian su login, ajustar ahí |
+| Un cliente del mayorista no puede registrarse y su contraseña es correcta | `tiendas.activo` **no** vale `1`: idirecto marca las cuentas activas con `activo = 2` (y hay que descartar `cerrada` y `deleted`) | Mismo filtro que el login de idirecto: `activo = 2 AND COALESCE(cerrada,0)=0 AND COALESCE(deleted,0)=0` |
 
 ### 11bis. Semijoin de stock (rendimiento)
 
@@ -582,6 +617,8 @@ Ver [`STATE.md`](STATE.md) para el estado detallado. Pendiente principal:
    pedido con `Order::createWithItems()` para que entre por el mismo circuito que
    el alta manual y se pueda enviar al mayorista por líneas.
 3. **Panel maestro del mayorista** — supervisión, tarifas y auditoría de ventas.
+   El alta ya existe (`/registro`, con la cuenta del mayorista); falta el punto de
+   vista del mayorista para gestionar todas las tiendas.
 4. **Materializar el stock válido** (`mt_` refrescada por tarea) para eliminar el
    pico del contador y permitir orden por precio en todo el catálogo.
 5. **Temas `moderno` y `minimal`**.

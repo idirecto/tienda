@@ -522,13 +522,13 @@ tienda/
 ├── app/
 │   ├── bootstrap.php        Autoload, entorno, sesion, helpers
 │   ├── Core/                Env, Config, Appearance, Database, Router, View, Controller, Model,
-│   │   │                    Auth, Csrf, Session, Tenant, TenantResolver, Dns, Specs, Str
+│   │   │                    Auth, Csrf, Session, Tenant, TenantResolver, Dns, Specs, Str, Registration
 │   │   ├── Idirecto/        Account, Pricing, OrderGateway (envio de pedidos al mayorista)
 │   │   └── Storage/         StorageInterface, LocalStorage, S3Storage, StorageManager
-│   ├── Controllers/         StorefrontController + Admin/* (incl. OrderController)
+│   ├── Controllers/         StorefrontController, RegistrationController + Admin/* (incl. OrderController)
 │   ├── Models/              Store, StoreUser, Plan, Theme, Banner, Notice, Order, OrderItem,
 │   │                        OwnProduct, Media, Domain, DnsLog, ContentBlock, Setting, Catalog
-│   └── Views/               layouts/, panel/ (pedidos, diseno... y design_preview.php),
+│   └── Views/               register.php, layouts/, panel/ (pedidos, diseno... y design_preview.php),
 │                            themes/idirecto|moderno|minimal/ (home, _hero, _card, …), errors/
 ├── public/assets/           css/ y js/ del storefront y del panel
 ├── public/uploads/          destino del driver local (no versionado)
@@ -536,7 +536,7 @@ tienda/
 │   ├── migrations/          001_schema.sql · 002_design_tokens.sql · 003_orders.sql (mt_)
 │   ├── seeds/               001_seed.sql (planes, temas, tienda demo)
 │   └── migrate.php          Ejecutor de migraciones y semillas
-├── tools/verify.php         Comprobacion automatica (78)
+├── tools/verify.php         Comprobacion automatica (90)
 └── deploy/                  Vhosts/plantillas de Apache y nginx + scripts
 ```
 
@@ -554,6 +554,7 @@ tienda/
 | `/producto/{id}` | Redirige 301 a la URL canónica con slug |
 | `/contacto` | Datos de contacto de la tienda |
 | `/pagina/{slug}` | Bloques de contenido (sobre nosotros, envíos...) |
+| `/registro` | **Alta de tienda**: solo con una cuenta activa del mayorista (ver §8.ter) |
 
 **Panel de la tienda**
 
@@ -658,6 +659,39 @@ el mayorista.
 
 ---
 
+## 8.ter Registro de tiendas (solo clientes del mayorista)
+
+**En esta plataforma solo puede tener tienda quien ya es cliente del mayorista.**
+No hay altas sueltas: en `/registro` el tendero introduce el email y la contraseña
+de **su cuenta de idirecto**, se comprueban contra `tiendas` (activo, sin cerrar y
+sin borrar) y se crea su tienda **ya enlazada** con esa cuenta y su tarifa.
+
+```bash
+IDIRECTO_REGISTER=true                 # false = alta cerrada (la pagina informa)
+IDIRECTO_REGISTER_PLAN=basico          # plan (code de mt_plans) con el que nace
+IDIRECTO_REGISTER_ATTEMPTS=5           # intentos por sesion antes de bloquear
+IDIRECTO_REGISTER_WINDOW=900           # ventana de esos intentos (segundos)
+```
+
+Qué se crea:
+
+- `mt_stores`: activa, con **slug único** (el que pida el tendero o uno derivado
+  del nombre), plan por defecto, datos fiscales y de contacto copiados de la
+  cuenta (razón social, NIF, dirección, población, provincia y país) y el enlace
+  `id_tienda_idirecto` + `id_margen`.
+- `mt_store_users`: usuario `owner` con el email de la cuenta y una **contraseña
+  propia** para este panel (`password_hash`). La contraseña del mayorista **no se
+  guarda**: solo se comprueba.
+
+Una cuenta = una tienda. Al terminar, la tienda queda accesible en
+`https://<slug>.<BASE_DOMAINS>` y ya puede enviar pedidos al mayorista.
+
+> Ojo: la contraseña de `tiendas` **no** es `password_hash`, sino
+> `hash('sha256', md5(sha1($clave)))`; lo replica `Account::signature()`. Si el
+> mayorista cambia su login, hay que ajustar `Account::login()`.
+
+---
+
 ## 9. Base de datos
 
 Tablas propias (prefijo `mt_`, aditivas sobre la BD central):
@@ -685,7 +719,8 @@ php database/migrate.php --seed     # + semillas
 ## 10. Estado y siguientes pasos
 
 **Hecho y verificado:** núcleo MVC, configuración BD/S3, migraciones y semillas,
-multi-tenant por hostname, storefront con **sistema de diseño tokenizado**
+multi-tenant por hostname, **registro de tiendas solo con cuenta activa del
+mayorista**, storefront con **sistema de diseño tokenizado**
 (claro/oscuro/auto, presets y vista previa en vivo), portada con slider y accesos
 rápidos, tarjetas de producto con especificaciones clave y etiqueta de stock,
 filtros avanzados por socket/gráfica/memoria/formato/marca/precio, panel completo
@@ -700,7 +735,8 @@ aplicada en servidor.
 - Aplicar la tarifa de la tienda (`mt_stores.id_margen`) a los precios del
   catálogo público (los pedidos ya la usan).
 - Temas `moderno` y `minimal` (ahora hay base + variables de tema).
-- Panel maestro del mayorista (supervisión, tarifas, auditoría de ventas).
+- Panel maestro del mayorista (supervisión, tarifas, auditoría de ventas); el alta
+  ya la resuelve el registro público.
 - Recuperación de contraseña y 2FA en el panel.
 - Tests automatizados (PHPUnit) y CI.
 
@@ -712,5 +748,8 @@ aplicada en servidor.
 - Todas las consultas usan sentencias preparadas.
 - Token CSRF en todos los formularios y en el endpoint de subida.
 - Contraseñas con `password_hash` (bcrypt/argon).
+- El registro (`/registro`) valida las cuentas contra `tiendas` con la firma del
+  mayorista (`hash('sha256', md5(sha1($clave)))`), **no guarda** esa contraseña y
+  limita los intentos por sesión (`IDIRECTO_REGISTER_ATTEMPTS`).
 - Validación de MIME real y tamaño en las subidas; nombre de objeto saneado.
 - Aislamiento por tienda: cada consulta del panel filtra por `store_id` de la sesión.

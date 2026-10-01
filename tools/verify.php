@@ -13,6 +13,7 @@ declare(strict_types=1);
 
 require dirname(__DIR__) . '/app/bootstrap.php';
 
+use Tienda\Core\Auth;
 use Tienda\Core\Database;
 use Tienda\Core\Dns;
 use Tienda\Core\Appearance;
@@ -21,6 +22,7 @@ use Tienda\Core\Idirecto\OrderGateway;
 use Tienda\Core\Idirecto\Pricing;
 use Tienda\Core\Media\ImageOptimizer;
 use Tienda\Core\Media\MediaRules;
+use Tienda\Core\Registration;
 use Tienda\Core\Server;
 use Tienda\Core\Specs;
 use Tienda\Core\Storage\LocalStorage;
@@ -34,6 +36,7 @@ use Tienda\Models\Order;
 use Tienda\Models\OrderItem;
 use Tienda\Models\Plan;
 use Tienda\Models\Store;
+use Tienda\Models\StoreUser;
 use Tienda\Models\Theme;
 
 $fail = 0;
@@ -423,6 +426,72 @@ check(
     ($chipsPares[0]['v'] ?? '') === 'AM5' && str_contains((string) ($chipsPares[1]['v'] ?? ''), 'DDR5'),
     'chips desde caracteristicas y sin prefijos redundantes: ' . json_encode($chipsPares, JSON_UNESCAPED_UNICODE)
 );
+
+echo "\n== Registro de tiendas (solo clientes del mayorista) ==\n";
+// La contrasena de `tiendas` no es password_hash: idirecto usa esta firma.
+check(
+    Account::signature('clave-de-prueba') === hash('sha256', md5(sha1('clave-de-prueba'))),
+    'firma de la contrasena del mayorista (sha256+md5+sha1)'
+);
+check(Account::login('', '') === null && Account::login('no-existe@verificacion.test', 'x') === null, 'credenciales invalidas no dan cuenta');
+check(Registration::isOpen(), 'registro abierto (' . (Registration::isOpen() ? 'si' : 'no') . ')');
+check(Registration::defaultPlanId() !== null, 'plan por defecto del registro (' . (Registration::defaultPlanId() ?? '?') . ')');
+check(
+    Registration::uniqueSlug('Mi Tienda SL') === 'mi-tienda-sl'
+        && Registration::uniqueSlug('idirecto-demo') === 'idirecto-demo-2'
+        && Registration::uniqueSlug('') === 'tienda',
+    'slug unico para la tienda nueva (evita repetidos)'
+);
+check(Registration::existingStoreFor(0) === null, 'sin cuenta no hay tienda registrada');
+
+// Datos de la tienda a partir de la cuenta: no escribe nada, solo copia.
+$cuentaPrueba = [
+    'id' => 1, 'nombre' => 'Tienda de prueba', 'nombre_sociedad' => 'Tienda de Prueba S.L.',
+    'email' => 'Prueba@Ejemplo.test', 'id_pais' => 66, 'id_provincia' => 52,
+    'direccion' => 'Calle Mayor 1', 'cp' => '50001', 'poblacion' => 'Zaragoza',
+    'telefono' => '976000000', 'id_margen' => 12,
+];
+$borrador = Registration::dataFromAccount($cuentaPrueba);
+check(
+    ($borrador['id_tienda_idirecto'] ?? 0) === 1
+        && ($borrador['id_margen'] ?? 0) === 12
+        && $borrador['status'] === Registration::STORE_ACTIVE
+        && $borrador['name'] === 'Tienda de prueba'
+        && $borrador['legal_name'] === 'Tienda de Prueba S.L.'
+        && $borrador['email'] === 'prueba@ejemplo.test'
+        && $borrador['province'] === 'Zaragoza'
+        && $borrador['country'] === 'España'
+        && $borrador['slug'] !== '',
+    'la tienda nace enlazada a la cuenta y con sus datos'
+);
+check(
+    Registration::dataFromAccount($cuentaPrueba, 'otro-slug')['slug'] === 'otro-slug',
+    'se respeta la direccion de tienda pedida'
+);
+
+// La cadena completa (comprobar cuenta -> crear tienda -> usuario de panel) se
+// prueba en una transaccion que se DESHACE: no queda ninguna tienda de prueba.
+$pdoRegistro = Database::pdo();
+$pdoRegistro->beginTransaction();
+try {
+    $emailPrueba = 'verificacion-' . bin2hex(random_bytes(4)) . '@ejemplo.test';
+    $resultado = Registration::register($cuentaPrueba, $emailPrueba, 'clave-verificacion-1234');
+
+    $creada = Store::findWithPlan($resultado['store_id']);
+    $usuario = StoreUser::findBy('email', $emailPrueba);
+    check(
+        $creada !== null && (int) $creada['id_tienda_idirecto'] === 1 && (int) $creada['id_margen'] === 12
+            && $usuario !== null && (int) $usuario['store_id'] === $resultado['store_id'],
+        'registro: tienda + usuario de panel enlazados a la cuenta'
+    );
+    check(Auth::attempt($emailPrueba, 'clave-verificacion-1234'), 'despues del registro se puede entrar al panel');
+    check(Auth::storeId() === $resultado['store_id'], 'la sesion apunta a la tienda recien creada');
+} catch (\Throwable $e) {
+    check(false, 'registro completo: ' . $e->getMessage());
+} finally {
+    $pdoRegistro->rollBack();
+}
+check(StoreUser::findBy('email', $emailPrueba) === null, 'la prueba de registro no deja rastro (rollback)');
 
 echo "\n== Pedidos de la tienda ==\n";
 // Enlace con el mayorista (migracion 003): cuenta y tarifa de cada tienda.

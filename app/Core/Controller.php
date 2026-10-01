@@ -65,13 +65,19 @@ abstract class Controller
         }
     }
 
-    /** Valida el token CSRF de la peticion POST. */
-    protected function requireCsrf(): void
+    /**
+     * Valida el token CSRF de la peticion POST.
+     *
+     * @param string $redirect Donde volver si el token no vale (por defecto, el
+     *                         panel; las paginas publicas pasan su propia ruta)
+     */
+    protected function requireCsrf(string $redirect = 'panel'): void
     {
         if (!Csrf::validate($_POST['_token'] ?? null)) {
-            http_response_code(419);
+            // 419 no lo entienden Apache/PHP y acaba en 500: se responde 403.
+            http_response_code(403);
             Session::flash('error', 'Token de seguridad invalido. Vuelve a enviar el formulario.');
-            $this->redirect('panel');
+            $this->redirect($redirect);
         }
     }
 
