@@ -74,7 +74,7 @@ public/                    ÚNICO directorio servido como estático
   assets/css|js            shop.css, panel.css, shop.js, panel.js
   uploads/                 Archivos locales (si STORAGE_DRIVER=local)
 storage/                   cache/ y logs/ (escritura de la app)
-tools/verify.php           32 comprobaciones automáticas
+tools/verify.php           33 comprobaciones automáticas
 ```
 
 ---
@@ -306,6 +306,27 @@ Todo pasa por `Tienda\Core\Media\MediaUploader::upload()` (subida HTTP) o
   privacidad: GPS, número de serie…).
 - Interruptor de emergencia: `IMAGE_OPTIMIZE=false` guarda el original.
 
+### Límites por tipo (`MediaRules`)
+
+`Tienda\Core\Media\MediaRules` resuelve peso, calidad y tamaño máximo **por
+tipo** (`config/storage.php` → `storage.types`, que pisa a los valores
+generales). Por defecto los **banners admiten 8 MB** (`STORAGE_MAX_BYTES_BANNERS`)
+y se comprimen con **calidad 86** (`IMAGE_QUALITY_BANNERS`) porque son fotos
+grandes de portada donde se notan los degradados; el resto se queda en 5 MB y
+calidad 82. El panel lee el límite del propio tipo (`data-max-bytes`) y avisa
+antes de subir.
+
+Dos cosas que hay que tener presentes al tocar estos límites:
+
+- **PHP** corta antes que la aplicación: `upload_max_filesize` (2 MB por
+  defecto) y `post_max_size`. En Apache se ajustan en `.htaccess`
+  (`12M`/`13M`); con PHP-FPM, en el pool. `deploy/setup-nginx-domain.sh` avisa
+  si el `php.ini` de FPM sigue corto.
+- Si el fichero no llega, el panel lo explica: `413`/422 con
+  «La imagen supera el límite de subida del servidor…». Ojo: por encima de
+  `post_max_size` PHP vacía también `$_POST`, así que esa comprobación va **antes**
+  del CSRF en `MediaController::upload()`.
+
 Los tipos MIME de `.webp`/`.avif` se declaran en `.htaccess` porque algunos
 servidores no los traen en `/etc/mime.types` y servirían la imagen sin
 `Content-Type`.
@@ -316,7 +337,7 @@ servidores no los traen en `/etc/mime.types` y servirían la imagen sin
 
 ```bash
 sudo bash deploy/setup-local-domain.sh     # /etc/hosts + VirtualHost + permisos
-php tools/verify.php                       # 32 comprobaciones
+php tools/verify.php                       # 33 comprobaciones
 php -S 127.0.0.1:8099 index.php            # servidor embebido (alternativa)
 ```
 
@@ -343,7 +364,7 @@ con repetir el script con el nuevo nombre y tocar esas tres claves del `.env`.
 ## 10. Verificación antes de dar algo por hecho
 
 ```bash
-php tools/verify.php                 # debe decir: TODO OK (32 comprobaciones)
+php tools/verify.php                 # debe decir: TODO OK (33 comprobaciones)
 curl -s -o /dev/null -w '%{http_code}\n' http://local.tienda/
 curl -s -o /dev/null -w '%{http_code}\n' http://local.tienda/catalogo
 curl -s -o /dev/null -w '%{http_code}\n' http://local.tienda/panel/login

@@ -105,7 +105,7 @@ SELECT id, store_id, domain, status, last_result FROM mt_domains;
 ## Verificación
 
 ```bash
-php tools/verify.php                        # 32 comprobaciones del proyecto
+php tools/verify.php                        # 33 comprobaciones del proyecto
 bash .agents/scripts/check-privacidad.sh    # la documentación NO debe ser web
 ```
 

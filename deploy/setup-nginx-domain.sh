@@ -188,6 +188,28 @@ if [[ "$FPM_SOCK" == /* && ! -S "$FPM_SOCK" ]]; then
 fi
 echo "    php-fpm: ${FPM_ADDR}"
 
+# Limites de subida de PHP: los banners admiten hasta 8 MB, pero PHP trae 2 MB
+# por defecto y rechazaria el fichero antes de llegar a la aplicacion.
+if [[ "$FPM_SOCK" =~ php([0-9]+\.[0-9]+)-fpm ]]; then
+    INI_FPM="/etc/php/${BASH_REMATCH[1]}/fpm/php.ini"
+    if [[ -f "$INI_FPM" ]]; then
+        LIMITE=$(sed -n 's/^upload_max_filesize[[:space:]]*=[[:space:]]*//p' "$INI_FPM" | tail -1 | tr -d ' ')
+        case "$LIMITE" in
+            *[Gg]) MB=$(( ${LIMITE%[Gg]} * 1024 )) ;;
+            *[Mm]) MB=${LIMITE%[Mm]} ;;
+            *[Kk]) MB=0 ;;
+            *)     MB=0 ;;
+        esac
+        echo "    upload_max_filesize: ${LIMITE:-?} (${INI_FPM})"
+        if [[ "$MB" =~ ^[0-9]+$ ]] && (( MB < 12 )); then
+            echo "    AVISO: con ${LIMITE} no se pueden subir banners de 8 MB. Ajustalo con:"
+            echo "        sudo sed -i 's/^upload_max_filesize.*/upload_max_filesize = 12M/' '$INI_FPM'"
+            echo "        sudo sed -i 's/^post_max_size.*/post_max_size = 13M/' '$INI_FPM'"
+            echo "        sudo systemctl reload php${BASH_REMATCH[1]}-fpm"
+        fi
+    fi
+fi
+
 # -----------------------------------------------------------------------------
 #  3) Sitio
 # -----------------------------------------------------------------------------

@@ -26,17 +26,21 @@ final class MediaController extends Controller
         $this->requireAuth();
         $storeId = $this->requireStoreId();
 
+        // Si el cuerpo de la peticion supera `post_max_size`, PHP descarta
+        // $_FILES **y** $_POST (incluido el token CSRF): hay que contestar el
+        // motivo real antes de comprobar el token, o el usuario veria un
+        // "token invalido" que no tiene nada que ver.
+        if (MediaUploader::excedePostMaxSize()) {
+            return $this->json(['ok' => false, 'error' => MediaUploader::mensajeLimitePhp()], 413);
+        }
+
         if (!$this->csrfValid()) {
-            return $this->json(['ok' => false, 'error' => 'Token de seguridad invalido.'], 419);
+            // 403 y no 419: Apache/PHP no saben responder 419 y lo convierten en
+            // un 500, que confunde al panel (el JS lee el mensaje del cuerpo).
+            return $this->json(['ok' => false, 'error' => 'Token de seguridad invalido.'], 403);
         }
 
         if (empty($_FILES['file'])) {
-            // Si la peticion superaba post_max_size, PHP deja $_FILES vacio sin
-            // decir nada: aqui se explica el motivo real.
-            if (MediaUploader::excedePostMaxSize()) {
-                return $this->json(['ok' => false, 'error' => MediaUploader::mensajeLimitePhp()], 413);
-            }
-
             return $this->json(['ok' => false, 'error' => 'No se ha recibido ningun fichero.'], 422);
         }
 

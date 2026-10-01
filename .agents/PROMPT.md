@@ -21,6 +21,19 @@ _(vacío — sin petición pendiente)_
 
 Cada petición terminada se anota aquí con la fecha, qué se pidió y qué se hizo.
 
+### 2026-10-01 · Banners de hasta 8 MB con buena calidad (petición por chat)
+
+**Pedido:** permitir banners de hasta 8 MB, pero que se compriman en buena
+calidad.
+
+**Hecho:** límites **por tipo** en `MediaRules` (banners 8 MB y calidad 86; el
+resto 5 MB y 82, configurable en `storage.types`), aviso en el panel antes de
+subir, y los límites de PHP ajustados en `.htaccess` (venía con 2 MB, así que
+ningún fichero grande llegaba) con aviso equivalente para PHP-FPM en el script
+de nginx. De paso: los ficheros que superan `post_max_size` ya no confunden con
+«token inválido» (la comprobación va antes del CSRF) y el CSRF responde 403 en
+vez de 419 (que Apache convertía en 500). `verify.php` 32 → 33.
+
 ### 2026-10-01 · Imágenes de cada tienda: carpetas `tienda_<tipo>`, id en el nombre y WebP (petición por chat)
 
 **Pedido:** que las imágenes que suben las tiendas (banners, productos y demás)

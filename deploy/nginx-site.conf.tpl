@@ -36,8 +36,11 @@ server {
 
     charset utf-8;
 
-    # Subidas de imagenes desde el panel (banners, productos, logo).
-    client_max_body_size 12M;
+    # Subidas de imagenes desde el panel: los banners admiten hasta 8 MB, asi
+    # que el cuerpo de la peticion tiene que pasar de ahi. OJO: ademas hay que
+    # subir en PHP  upload_max_filesize = 12M  y  post_max_size = 13M  (en el
+    # pool de PHP-FPM: /etc/php/*/fpm/php.ini).
+    client_max_body_size 16M;
 
     access_log /var/log/nginx/__DOMINIO__.access.log;
     error_log  /var/log/nginx/__DOMINIO__.error.log;

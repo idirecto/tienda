@@ -241,6 +241,7 @@ persisten key y URL (`mt_media`), nunca binarios.
 ```ini
 IMAGE_OPTIMIZE=true            # false = guardar el original tal cual
 IMAGE_QUALITY=82               # calidad WebP (1-100)
+IMAGE_QUALITY_BANNERS=86       # los banners, con algo más de calidad
 IMAGE_MAX_WIDTH=2560           # si es mayor se reduce; nunca se amplía
 IMAGE_MAX_HEIGHT=2560
 IMAGE_KEEP_ANIMATED_GIF=true
@@ -256,6 +257,22 @@ IMAGE_KEEP_ANIMATED_GIF=true
 Además se corrige la orientación EXIF (fotos de móvil), se limita el tamaño
 máximo y se eliminan los metadatos EXIF (peso y privacidad). El panel muestra el
 ahorro al subir cada imagen (`JPG 2,4 MB → WEBP 380 KB, -84%`).
+
+**Límite de peso por tipo** (`app/Core/Media/MediaRules.php`): los **banners
+admiten 8 MB** y el resto 5 MB, configurable por tipo:
+
+```ini
+STORAGE_MAX_BYTES=5242880            # general: 5 MB
+STORAGE_MAX_BYTES_BANNERS=8388608    # banners: 8 MB
+```
+
+> ⚠️ Para que un banner de 8 MB llegue a la aplicación, **PHP** tiene que
+> permitirlo. En Apache queda ajustado en `.htaccess`
+> (`upload_max_filesize 12M`, `post_max_size 13M`); con **PHP-FPM** hay que
+> ponerlo en el pool (`/etc/php/*/fpm/php.ini`) y en nginx
+> `client_max_body_size 16M;` (ya viene en `deploy/nginx-site.conf.tpl`).
+> Si el fichero no llega, el panel lo dice: *«La imagen supera el límite de
+> subida del servidor (12M)…»*.
 
 ### Multi-tenant
 

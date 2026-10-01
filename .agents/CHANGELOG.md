@@ -5,6 +5,52 @@ El detalle línea a línea está en `git log`.
 
 ---
 
+## 2026-10-01 · Banners de hasta 8 MB, con buena calidad (límites por tipo)
+
+**Motivo:** el dueño quiere admitir banners de hasta 8 MB sin perder calidad al
+comprimirlos.
+
+**Cambios**
+
+- `app/Core/Media/MediaRules.php` (nuevo): resuelve peso, calidad y tamaño
+  máximo **por tipo** (`config/storage.php` → `storage.types`, que pisa a los
+  valores generales). Por defecto los **banners admiten 8 MB**
+  (`STORAGE_MAX_BYTES_BANNERS`) y se recomprimen con **calidad 86**
+  (`IMAGE_QUALITY_BANNERS`) porque son fotos grandes de portada; el resto sigue
+  en 5 MB y 82.
+- `MediaUploader` valida contra el límite del tipo y `ImageOptimizer` aplica su
+  calidad y su tamaño máximo. El panel avisa **antes** de subir
+  (`data-max-bytes` en el input, límite del fichero calculado en el servidor).
+- **`.htaccess`**: `upload_max_filesize 12M` y `post_max_size 13M`. Este Apache
+  venía con **2M/8M**, así que ningún fichero de más de 2 MB llegaba a la
+  aplicación: el ajuste de 8 MB no habría servido de nada. Va dentro de
+  `<IfModule>` para no romper si algún día se sirve con PHP-FPM.
+  `deploy/nginx-site.conf.tpl` sube `client_max_body_size` a 16M y
+  `deploy/setup-nginx-domain.sh` avisa si el `php.ini` de FPM sigue en 2M.
+- `MediaUploader::excedePostMaxSize()` + `mensajeLimitePhp()`: mensajes claros
+  cuando el fichero no llega (antes el panel decía «no se ha recibido ningún
+  fichero», o incluso «Token de seguridad inválido», porque al superar
+  `post_max_size` PHP vacía también `$_POST` con el token). La comprobación va
+  **antes** del CSRF en `MediaController::upload()`.
+- El fallo de CSRF del endpoint de subida responde **403** y no 419: Apache/PHP
+  no saben responder 419 y lo convertían en un 500.
+- `tools/verify.php`: 32 → **33** comprobaciones (límites por tipo).
+
+**Verificación (HTTP real, sesión de panel + multipart):**
+
+| Caso | Resultado |
+|---|---|
+| Banner de **6,0 MB** | `ok` · WebP 2560×1024 · 6.328.029 B → 17.144 B (**−99,7 %**) |
+| El mismo fichero como `productos` | `422` «La imagen pesa 6,0 MB y el maximo para "productos" es 5,0 MB.» |
+| Banner de **12,7 MB** (> `upload_max_filesize`) | `422` con el aviso del límite de PHP |
+| Banner de **14 MB** (> `post_max_size`) | `413` con el mismo aviso |
+| CSRF inválido / sin fichero | `403` / `422` |
+
+`php tools/verify.php` → TODO OK (33). El fichero subido en la prueba se borró
+desde el panel (desaparece del disco y de `mt_media`).
+
+---
+
 ## 2026-10-01 · Imágenes de las tiendas: carpetas `tienda_<tipo>`, id en el nombre y WebP
 
 **Motivo:** el dueño quiere que las imágenes que sube cada tienda (banners,
