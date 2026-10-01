@@ -5,6 +5,26 @@ Options +FollowSymLinks -MultiViews
 DirectoryIndex index.php
 
 # -----------------------------------------------------------------------------
+# LIMITES DE SUBIDA DE PHP
+# Los banners admiten hasta 8 MB (ver app/Core/Media/MediaRules.php), pero PHP
+# rechaza por defecto cualquier fichero mayor de 2 MB. Estas dos directivas solo
+# las entiende Apache con mod_php; con PHP-FPM (p. ej. nginx) se ajustan en el
+# pool (/etc/php/*/fpm/php.ini o el pool del dominio):
+#     upload_max_filesize = 12M
+#     post_max_size = 13M
+# post_max_size tiene que ser mayor que upload_max_filesize (los formularios
+# multipart anaden cabeceras).
+# -----------------------------------------------------------------------------
+<IfModule php_module>
+    php_value upload_max_filesize 12M
+    php_value post_max_size 13M
+</IfModule>
+<IfModule mod_php.c>
+    php_value upload_max_filesize 12M
+    php_value post_max_size 13M
+</IfModule>
+
+# -----------------------------------------------------------------------------
 # TIPOS MIME DE LAS IMAGENES SUBIDAS
 # Las fotos se guardan en WebP (ver app/Core/Media/ImageOptimizer.php). Algunos
 # servidores no traen "webp" en /etc/mime.types y servirian la imagen SIN

@@ -53,6 +53,21 @@ return [
         'keep_animated_gif' => Env::bool('IMAGE_KEEP_ANIMATED_GIF', true),
     ],
 
+    /**
+     * Ajustes por tipo de imagen (el tipo es la carpeta logica que manda el
+     * panel: banners, productos, logo, general...). Lo que no se indique usa
+     * los valores generales de arriba. Ver Tienda\Core\Media\MediaRules.
+     *
+     * Los banners son fotos grandes de portada: se admiten hasta 8 MB y se
+     * recomprimen con algo mas de calidad para que no se noten los degradados.
+     */
+    'types' => [
+        'banners' => [
+            'max_bytes' => (int) Env::get('STORAGE_MAX_BYTES_BANNERS', 8 * 1024 * 1024),
+            'quality'   => (int) Env::get('IMAGE_QUALITY_BANNERS', 86),
+        ],
+    ],
+
     // Formatos de entrada aceptados (mime real detectado por contenido).
     'mime' => [
         'image/jpeg'      => 'jpg',

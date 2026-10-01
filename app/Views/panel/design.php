@@ -53,6 +53,7 @@ $v = static fn (string $k, string $d = '') => e($store[$k] ?? $d);
         <label class="field">Logotipo
             <div class="uploader" data-folder="logo">
                 <input type="file" accept="image/*" data-upload data-folder="logo"
+                       data-max-bytes="<?= \Tienda\Core\Media\MediaRules::maxBytes('logo') ?>"
                        data-url-target="#logo_url" data-key-target="#logo_key" data-preview="#logo-preview">
                 <input type="hidden" name="logo_url" id="logo_url" value="<?= $v('logo_url') ?>">
                 <input type="hidden" name="logo_key" id="logo_key" value="<?= $v('logo_key') ?>">

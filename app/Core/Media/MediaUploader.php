@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Tienda\Core\Media;
 
-use Tienda\Core\Config;
 use Tienda\Core\Storage\StorageManager;
 use Tienda\Core\ValidationException;
 
@@ -51,10 +50,11 @@ final class MediaUploader
         }
 
         $bytes = (int) (@filesize($path) ?: 0);
-        $maxBytes = self::maxBytes();
+        $maxBytes = MediaRules::maxBytes($folder);
         if ($maxBytes > 0 && $bytes > $maxBytes) {
             throw new ValidationException(
-                'El fichero supera el tamano maximo permitido (' . self::formatoBytes($maxBytes) . ').'
+                'La imagen pesa ' . MediaRules::formatoBytes($bytes) . ' y el maximo para "'
+                . $folder . '" es ' . MediaRules::formatoBytes($maxBytes) . '.'
             );
         }
 
@@ -62,7 +62,7 @@ final class MediaUploader
             'tmp_name' => $path,
             'name'     => $originalName,
             'size'     => $bytes,
-        ]);
+        ], $folder);
 
         try {
             $guardado = StorageManager::driver()->put(
@@ -84,32 +84,62 @@ final class MediaUploader
         ]);
     }
 
-    /** Limite de subida en bytes (0 = sin limite). */
-    public static function maxBytes(): int
+    /**
+     * true cuando la peticion no ha llegado entera porque supera
+     * `post_max_size`: en ese caso PHP vacia $_FILES y $_POST sin avisar, y sin
+     * esto el usuario solo veria "no se ha recibido ningun fichero".
+     */
+    public static function excedePostMaxSize(): bool
     {
-        return (int) Config::get('storage.max_bytes', 5 * 1024 * 1024);
+        $enviado = (int) ($_SERVER['CONTENT_LENGTH'] ?? 0);
+        $limite = self::bytesDeIni((string) ini_get('post_max_size'));
+
+        return $enviado > 0 && $limite > 0 && $enviado > $limite;
     }
 
-    /** Tamano legible para los mensajes de error. */
-    public static function formatoBytes(int $bytes): string
+    /** Limite de subida que impone PHP (`upload_max_filesize`), en bytes. */
+    public static function limitePhp(): int
     {
-        if ($bytes >= 1048576) {
-            return round($bytes / 1048576, 1) . ' MB';
-        }
-        if ($bytes >= 1024) {
-            return round($bytes / 1024) . ' KB';
+        return self::bytesDeIni((string) ini_get('upload_max_filesize'));
+    }
+
+    /** Mensaje claro cuando el fichero no ha llegado por los limites de PHP. */
+    public static function mensajeLimitePhp(): string
+    {
+        return 'La imagen supera el limite de subida del servidor ('
+            . ini_get('upload_max_filesize') . '). Pide que suban upload_max_filesize/post_max_size '
+            . 'en la configuracion de PHP o sube una imagen mas ligera.';
+    }
+
+    /** Convierte "12M", "1G", "512K" a bytes. */
+    private static function bytesDeIni(string $valor): int
+    {
+        $valor = trim($valor);
+        if ($valor === '') {
+            return 0;
         }
 
-        return $bytes . ' bytes';
+        $numero = (int) $valor;
+        return match (strtolower(substr($valor, -1))) {
+            'g'     => $numero * 1024 * 1024 * 1024,
+            'm'     => $numero * 1024 * 1024,
+            'k'     => $numero * 1024,
+            default => $numero,
+        };
     }
 
     private static function assertValidUpload(array $file): void
     {
+        $error = $file['error'] ?? UPLOAD_ERR_OK;
+
+        if ($error === UPLOAD_ERR_INI_SIZE || $error === UPLOAD_ERR_FORM_SIZE) {
+            throw new ValidationException(self::mensajeLimitePhp());
+        }
+        if ($error !== UPLOAD_ERR_OK) {
+            throw new ValidationException('Error en la subida (codigo ' . $error . ').');
+        }
         if (empty($file['tmp_name']) || !is_uploaded_file($file['tmp_name'])) {
             throw new ValidationException('No se ha recibido un fichero valido.');
-        }
-        if (($file['error'] ?? UPLOAD_ERR_OK) !== UPLOAD_ERR_OK) {
-            throw new ValidationException('Error en la subida (codigo ' . $file['error'] . ').');
         }
     }
 }

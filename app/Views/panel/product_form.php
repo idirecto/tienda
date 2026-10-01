@@ -38,6 +38,7 @@ $v = static fn (string $k, string $d = '') => e($product[$k] ?? $d);
         <h2>Imagen</h2>
         <div class="uploader" data-folder="productos">
             <input type="file" accept="image/*" data-upload data-folder="productos"
+                   data-max-bytes="<?= \Tienda\Core\Media\MediaRules::maxBytes('productos') ?>"
                    data-url-target="#product_image_url" data-url-id="#product_media_id" data-preview="#product-preview">
             <input type="hidden" name="image_url" id="product_image_url" value="<?= $v('image_url') ?>">
             <input type="hidden" name="media_id" id="product_media_id" value="<?= $v('media_id') ?>">

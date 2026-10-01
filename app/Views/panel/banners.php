@@ -54,10 +54,15 @@ use Tienda\Core\Csrf;
                 <label class="field">Imagen
                     <div class="uploader" data-folder="banners">
                         <input type="file" accept="image/*" data-upload data-folder="banners"
+                               data-max-bytes="<?= \Tienda\Core\Media\MediaRules::maxBytes('banners') ?>"
+                               data-status="#banner-status"
                                data-url-target="#banner_image_url" data-preview="#banner-preview">
                         <input type="hidden" name="image_url" id="banner_image_url">
                         <div id="banner-preview" class="preview"></div>
                     </div>
+                    <span class="muted" id="banner-status">JPG, PNG o WebP hasta
+                        <?= \Tienda\Core\Media\MediaRules::formatoBytes(\Tienda\Core\Media\MediaRules::maxBytes('banners')) ?>.
+                        Se optimiza a WebP al subirla.</span>
                 </label>
                 <div class="field-grid">
                     <label>Orden<input type="number" name="sort" value="0"></label>

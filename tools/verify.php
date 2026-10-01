@@ -16,6 +16,7 @@ require dirname(__DIR__) . '/app/bootstrap.php';
 use Tienda\Core\Database;
 use Tienda\Core\Dns;
 use Tienda\Core\Media\ImageOptimizer;
+use Tienda\Core\Media\MediaRules;
 use Tienda\Core\Server;
 use Tienda\Core\Storage\LocalStorage;
 use Tienda\Core\Storage\S3Storage;
@@ -149,6 +150,18 @@ if (function_exists('imagecreatetruecolor')) {
     );
     @unlink($svg);
 }
+
+// Limites por tipo: los banners admiten mas peso (8 MB) y se recomprimen con
+// mejor calidad que el resto, sin tocar el limite general.
+check(
+    MediaRules::maxBytes('banners') >= 8 * 1024 * 1024
+        && MediaRules::maxBytes('banners') > MediaRules::maxBytes('productos')
+        && MediaRules::quality('banners') >= MediaRules::quality('productos'),
+    'limites por tipo: banners ' . MediaRules::formatoBytes(MediaRules::maxBytes('banners'))
+        . ' calidad ' . MediaRules::quality('banners')
+        . ' - productos ' . MediaRules::formatoBytes(MediaRules::maxBytes('productos'))
+        . ' calidad ' . MediaRules::quality('productos')
+);
 
 echo "\n== Servidor web (Apache / nginx) ==\n";
 echo '  Detectado: ' . Server::label() . ' · /public -> ' . Server::publicPath() . "\n";

@@ -31,6 +31,12 @@ final class MediaController extends Controller
         }
 
         if (empty($_FILES['file'])) {
+            // Si la peticion superaba post_max_size, PHP deja $_FILES vacio sin
+            // decir nada: aqui se explica el motivo real.
+            if (MediaUploader::excedePostMaxSize()) {
+                return $this->json(['ok' => false, 'error' => MediaUploader::mensajeLimitePhp()], 413);
+            }
+
             return $this->json(['ok' => false, 'error' => 'No se ha recibido ningun fichero.'], 422);
         }
 

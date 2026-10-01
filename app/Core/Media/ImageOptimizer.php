@@ -39,12 +39,14 @@ final class ImageOptimizer
     ];
 
     /**
-     * @param array $file Entrada de $_FILES (tmp_name, size, name...)
+     * @param array  $file Entrada de $_FILES (tmp_name, size, name...)
+     * @param string $tipo Tipo logico (banners, productos, logo...): define la
+     *                     calidad y el tamano maximo (ver {@see MediaRules}).
      *
      * @return array{path:string,temporary:bool,mime:string,ext:string,bytes:int,
      *               width:?int,height:?int,optimized:bool,original_mime:string,original_bytes:int}
      */
-    public static function optimize(array $file): array
+    public static function optimize(array $file, string $tipo = ''): array
     {
         $path = (string) ($file['tmp_name'] ?? '');
         if (!is_file($path)) {
@@ -93,13 +95,13 @@ final class ImageOptimizer
 
         $imagen = self::leer($path);
         $imagen = self::orientar($imagen, $path);
-        $imagen = self::limitar($imagen);
+        $imagen = self::limitar($imagen, $tipo);
 
         $ancho = imagesx($imagen);
         $alto  = imagesy($imagen);
         self::prepararTransparencia($imagen);
 
-        $calidad = max(1, min(100, (int) Config::get('storage.image.quality', 82)));
+        $calidad = MediaRules::quality($tipo);
         $tmp = tempnam(sys_get_temp_dir(), 'tienda_webp_');
         if ($tmp === false) {
             imagedestroy($imagen);
@@ -216,11 +218,11 @@ final class ImageOptimizer
         return $imagen;
     }
 
-    /** Reduce la imagen si pasa del maximo configurado. Nunca amplia. */
-    private static function limitar(\GdImage $imagen): \GdImage
+    /** Reduce la imagen si pasa del maximo de su tipo. Nunca amplia. */
+    private static function limitar(\GdImage $imagen, string $tipo): \GdImage
     {
-        $maxAncho = (int) Config::get('storage.image.max_width', 2560);
-        $maxAlto  = (int) Config::get('storage.image.max_height', 2560);
+        $maxAncho = MediaRules::maxWidth($tipo);
+        $maxAlto  = MediaRules::maxHeight($tipo);
 
         $ancho = imagesx($imagen);
         $alto  = imagesy($imagen);

@@ -33,12 +33,23 @@
      * Sube un fichero al endpoint de media y rellena los campos indicados.
      */
     function uploadFile(file, opts) {
+        var status = opts.statusEl ? document.querySelector(opts.statusEl) : null;
+
+        // Limite por tipo (banners 8 MB, resto 5 MB por defecto): se avisa antes
+        // de subir nada, sin esperar al servidor.
+        var maxBytes = Number(opts.maxBytes || 0);
+        if (maxBytes > 0 && file.size > maxBytes) {
+            var aviso = 'La imagen pesa ' + fmtBytes(file.size) + ' y el maximo es ' + fmtBytes(maxBytes) + '.';
+            if (status) { status.textContent = 'Error: ' + aviso; }
+            window.alert(aviso + ' Reduce la imagen o sube una mas ligera.');
+            return Promise.reject(new Error(aviso));
+        }
+
         var body = new FormData();
         body.append('file', file);
         body.append('folder', opts.folder || 'general');
         body.append('_token', CFG.csrf || '');
 
-        var status = opts.statusEl ? document.querySelector(opts.statusEl) : null;
         if (status) { status.textContent = 'Subiendo...'; }
 
         return fetch(CFG.uploadUrl, {
@@ -86,6 +97,8 @@
 
         var opts = {
             folder: input.getAttribute('data-folder') || container.getAttribute('data-folder') || 'general',
+            maxBytes: input.getAttribute('data-max-bytes') || container.getAttribute('data-max-bytes') || 0,
+            statusEl: input.getAttribute('data-status') || container.getAttribute('data-status'),
             urlTarget: input.getAttribute('data-url-target'),
             keyTarget: input.getAttribute('data-key-target'),
             idTarget: input.getAttribute('data-url-id'),
