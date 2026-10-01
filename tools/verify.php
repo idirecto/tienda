@@ -226,6 +226,21 @@ if (Catalog::isAvailable()) {
     $page = Catalog::paginate(1, 4);
     check(count($page['items']) <= 4, 'paginacion de catalogo (' . $page['total'] . ' productos)');
 
+    // Productos por pagina de los listados (CATALOG_PER_PAGE) y destacados de
+    // portada (CATALOG_HOME_FEATURED): van por separado a proposito.
+    $listado = Catalog::paginate(1);
+    check(
+        $listado['per_page'] === (int) config('catalog.per_page')
+            && $listado['per_page'] > 4
+            && count($listado['items']) === min($listado['per_page'], $listado['total']),
+        'productos por pagina en los listados (' . $listado['per_page'] . ')'
+    );
+    $destacados = (int) config('catalog.home_featured', 12);
+    check(
+        $destacados >= 4 && $destacados <= 24 && count(Catalog::featured($destacados)) <= $destacados,
+        'destacados de la portada (' . $destacados . ')'
+    );
+
     // Menu de categorias -> subcategorias (mismo arbol que usa el storefront).
     $menu = Catalog::menuTree();
     check($menu !== [] && isset($menu[0]['subcategories'][0]['id']), 'menu de categorias (' . count($menu) . ' categorias)');

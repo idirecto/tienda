@@ -28,7 +28,15 @@ return [
     // Margen (%) aplicado cuando el producto no tiene precio propio de tarifa.
     'markup'    => (float) Env::get('CATALOG_MARKUP', 30),
 
-    'per_page'  => Env::int('CATALOG_PER_PAGE', 12),
+    // Productos por pagina en los LISTADOS (catalogo, categoria, busqueda y
+    // filtros). 20 llena bien la rejilla en escritorio (3-4 filas) sin alargar
+    // demasiado la pagina; el tope duro esta en Catalog::paginate().
+    'per_page'  => Env::int('CATALOG_PER_PAGE', 20),
+
+    // Productos destacados de la PORTADA. Va aparte porque no es un listado
+    // paginado sino una seleccion editorial: interesa que no crezca sola cada
+    // vez que se sube el numero de productos por pagina.
+    'home_featured' => Env::int('CATALOG_HOME_FEATURED', 12),
 
     // Unidades por debajo de las cuales se avisa de "ultimas unidades".
     'low_stock_threshold' => Env::int('CATALOG_LOW_STOCK', 5),

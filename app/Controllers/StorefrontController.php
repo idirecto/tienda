@@ -22,7 +22,9 @@ final class StorefrontController extends Controller
     {
         $storeId = $this->tenant->id();
         $base = \Tienda\Core\View::basePath();
-        $perPage = (int) Config::get('catalog.per_page', 12);
+        // Los destacados de portada tienen su propio numero: no es un listado
+        // paginado y no debe crecer porque se suba `CATALOG_PER_PAGE`.
+        $perPage = (int) Config::get('catalog.home_featured', 12);
 
         $own = OwnProduct::publishedForStore($storeId);
         $central = Catalog::featured($perPage);

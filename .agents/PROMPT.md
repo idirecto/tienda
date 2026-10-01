@@ -21,6 +21,17 @@ _(vacío — sin petición pendiente)_
 
 Cada petición terminada se anota aquí con la fecha, qué se pidió y qué se hizo.
 
+### 2026-10-01 · Ver 20 productos por página en los listados (petición por chat)
+
+**Pedido:** «en los listados, que aparezcan más productos; actualmente veo 12 y
+quiero ver 20».
+
+**Hecho:** `CATALOG_PER_PAGE` 12 → 20 (`.env`, `.env.example` y el valor por
+defecto). Los destacados de la portada se separan en su propia clave
+(`CATALOG_HOME_FEATURED=12`) para que aumentar los listados no alargue la
+portada. Comprobado con HTTP real en `/`, `/catalogo`, categoría, subcategoría,
+búsqueda y página 2 (20 tarjetas por página). `verify.php` 60 → 62.
+
 ### 2026-10-01 · Interfaz moderna white-label: design tokens, portada, tarjetas y filtros (petición por chat)
 
 **Pedido:** refactorizar la plantilla como Desarrollador Frontend Senior /

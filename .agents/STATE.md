@@ -13,7 +13,7 @@ catálogo real, ficha de producto y panel completo. Falta el ciclo de compra
 
 > ✅ **Entorno (2026-10-01).** `idirecto_db` está **completa** (239 tablas:
 > catálogo con 41.289 productos con stock, 33 categorías con stock, y las `mt_`),
-> la web responde 200 y `php tools/verify.php` da **TODO OK (60)**.
+> la web responde 200 y `php tools/verify.php` da **TODO OK (62)**.
 >
 > ⚠️ **Si vuelve a salir un 500 con «Error interno»**: casi siempre es que el
 > usuario del servidor web (`www-data`) **no puede leer `.env`**, no un fallo de
@@ -79,7 +79,11 @@ catálogo real, ficha de producto y panel completo. Falta el ciclo de compra
   activos, orden (incluido precio cuando el listado está acotado) y panel lateral
   en móvil. Los filtros son enlaces: funcionan sin JavaScript y cada combinación
   tiene URL propia.
-- Buscador, filtro por categoría y **subcategoría** (`?subcat`) y paginación.
+- Buscador, filtro por categoría y **subcategoría** (`?subcat`) y paginación,
+  con **20 productos por página** (`CATALOG_PER_PAGE`; tope duro 60 en
+  `Catalog::paginate`). Los **destacados de la portada** van aparte
+  (`CATALOG_HOME_FEATURED`, 12) porque son una selección editorial, no un
+  listado.
 - **Menú de categorías (megamenú)** en la cabecera, estilo PuntoByZE: categorías
   + subcategorías con stock (33 y 304), cacheadas 30 min; en móvil pantalla
   completa con botón atrás. El catálogo lista las subcategorías de la categoría
@@ -124,7 +128,7 @@ catálogo real, ficha de producto y panel completo. Falta el ciclo de compra
   en **nginx + PHP-FPM** (`sudo bash deploy/setup-nginx-domain.sh valduran.com`).
 - La app detecta el servidor (`app/Core/Server.php`): ruta pública de `/public`,
   esquema real (incluido proxy) y host de las URLs canónicas.
-- `tools/verify.php`: 60 comprobaciones automáticas (diseño, facetas, catálogo,
+- `tools/verify.php`: 62 comprobaciones automáticas (diseño, facetas, catálogo,
   almacenamiento, DNS, servidor).
 - Documentación interna en `.agents/`, blindada frente a la web.
 - Repositorio publicado en GitHub (`main`).

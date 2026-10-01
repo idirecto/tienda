@@ -291,7 +291,8 @@ CATALOG_IMAGE_URL=https://idirecto.es/img_products
 CATALOG_IMAGE_PATH=               # ruta en disco (opcional, solo desarrollo local)
 CATALOG_CARD_IMAGE_SIZE=l         # talla de imagen en los listados: c | l | f
 CATALOG_MARKUP=30                 # % aplicado si no hay precio de tarifa
-CATALOG_PER_PAGE=12
+CATALOG_PER_PAGE=20               # productos por pagina en los listados
+CATALOG_HOME_FEATURED=12          # destacados de la portada (seleccion editorial)
 ```
 
 ### Catálogo: qué productos se muestran
@@ -535,7 +536,7 @@ tienda/
 │   ├── migrations/          001_schema.sql (tablas mt_) · 002_design_tokens.sql
 │   ├── seeds/               001_seed.sql (planes, temas, tienda demo)
 │   └── migrate.php          Ejecutor de migraciones y semillas
-├── tools/verify.php         Comprobacion automatica (60)
+├── tools/verify.php         Comprobacion automatica (62)
 └── deploy/                  Vhosts/plantillas de Apache y nginx + scripts
 ```
 

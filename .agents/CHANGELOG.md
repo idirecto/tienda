@@ -5,6 +5,29 @@ El detalle línea a línea está en `git log`.
 
 ---
 
+## 2026-10-01 · 20 productos por página en los listados
+
+**Motivo:** el dueño ve 12 productos en los listados y quiere 20.
+
+**Cambios**
+
+- `CATALOG_PER_PAGE` 12 → **20** (`.env`, `.env.example` y el valor por defecto de
+  `config/catalog.php`). Como la rejilla es fluida (`auto-fill`), 20 llenan 3-4
+  filas en escritorio sin tocar el CSS.
+- Los **destacados de la portada** pasan a tener su propia clave
+  (`CATALOG_HOME_FEATURED`, por defecto 12). Antes reutilizaban
+  `catalog.per_page`, así que subir los listados habría alargado la portada sin
+  que nadie lo pidiera: es una selección editorial, no un listado paginado.
+- `tools/verify.php`: 60 → **62** comprobaciones (productos por página en el
+  listado y destacados de portada, para que un cambio de configuración no pase
+  inadvertido).
+
+**Verificación:** `php tools/verify.php` → TODO OK (62). Medido con HTTP real:
+`/`, `/catalogo`, `?cat=9`, `?subcat=102`, `?q=rtx` y `page=2` → 20 tarjetas por
+página (la última página muestra las que quedan); la portada sigue con 12.
+
+---
+
 ## 2026-10-01 · Interfaz moderna, white-label y rendimiento del catálogo
 
 **Motivo:** el dueño pide una plantilla de informática (multi-tienda) con estética
@@ -73,7 +96,7 @@ todo responsive/optimizado.
   de base de datos de esta máquina tiene la caché InnoDB fría a menudo y estos
   recorridos pesados se notaban en la portada.
 
-**Verificación:** `php tools/verify.php` → **TODO OK (60)** (eran 33). Además:
+**Verificación:** `php tools/verify.php` → **TODO OK (62)** (eran 33). Además:
 HTTP real (portada ~30 ms, catálogo ~25 ms), navegación con Chrome headless a
 360/768/1440 px sin desbordamiento horizontal, panel con sesión real (login,
 guardado de preset, tokens JSON válidos e inválidos, vista previa) y comprobación
