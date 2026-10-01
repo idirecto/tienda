@@ -21,6 +21,43 @@ _(vacío — sin petición pendiente)_
 
 Cada petición terminada se anota aquí con la fecha, qué se pidió y qué se hizo.
 
+### 2026-10-01 · Interfaz moderna white-label: design tokens, portada, tarjetas y filtros (petición por chat)
+
+**Pedido:** refactorizar la plantilla como Desarrollador Frontend Senior /
+Arquitecto UI-UX (referencias: elegancia y minimalismo de Scan.co.uk + potencia
+visual y toque gaming de Caseking) siendo **totalmente agnóstica** a colores y
+marca, porque es una plantilla blanca multi-tienda:
+
+1. **Sistema de diseño dinámico**: todos los colores de marca (primario, CTAs,
+   secundario, fondos, modo claro y **modo oscuro nativo**, texto y bordes) como
+   variables CSS, inyectables desde el backend o un fichero de configuración
+   global, para que cada tienda cambie su identidad en segundos sin tocar código.
+2. **Portada y slider principal**: banner full-width responsive con tipografía
+   contundente, subtítulo y CTAs con hover suave; secciones de acceso rápido en
+   grid para Tarjetas Gráficas, Portátiles Ultraligeros, Componentes PC,
+   Periféricos y Setup Gaming.
+3. **Componentes y UX**: fichas de producto minimalistas con transiciones,
+   etiquetas de stock dinámicas y visualización rápida de especificaciones clave
+   (tipo Scan); filtros avanzados por chipset, memoria, socket y precio;
+   microinteracciones cuidadas en botones, tarjetas e iconos.
+4. **Rendimiento y accesibilidad**: código modular, semántico (HTML5), con carga
+   diferida, mobile-first y fluido en móvil, tablet y ultra-ancho.
+
+**Hecho:** sistema de diseño con tokens (`config/appearance.php` +
+`Core/Appearance` + migración `002`), modo claro/oscuro/auto con conmutador,
+5 presets y **vista previa en vivo** en el panel; `shop.css` reescrito sin un solo
+color literal; portada con slider accesible, franja de garantías y grid de accesos
+rápidos; tarjetas con chips de especificaciones y etiqueta de stock dinámica;
+filtros avanzados (socket, gráfica, memoria, formato, almacenamiento, marca y
+precio) como enlaces con URL propia, chips activos, orden y panel lateral en móvil.
+De paso, el catálogo pasó de ~3 s a ~20 ms (semijoin de stock + marca por lote) y
+`verify.php` de 33 a **60** comprobaciones. Detalle en `CHANGELOG.md`.
+
+**Nota para el dueño:** dos decisiones quedan pendientes por su parte y están
+documentadas en `STATE.md` (pendientes 1 y 5): la tarifa de precios por tienda y
+materializar el stock válido en una tabla `mt_` para eliminar el pico periódico
+del contador y permitir orden por precio en todo el catálogo.
+
 ### 2026-10-01 · Banners de hasta 8 MB con buena calidad (petición por chat)
 
 **Pedido:** permitir banners de hasta 8 MB, pero que se compriman en buena

@@ -15,9 +15,11 @@ require dirname(__DIR__) . '/app/bootstrap.php';
 
 use Tienda\Core\Database;
 use Tienda\Core\Dns;
+use Tienda\Core\Appearance;
 use Tienda\Core\Media\ImageOptimizer;
 use Tienda\Core\Media\MediaRules;
 use Tienda\Core\Server;
+use Tienda\Core\Specs;
 use Tienda\Core\Storage\LocalStorage;
 use Tienda\Core\Storage\S3Storage;
 use Tienda\Core\Storage\StorageKey;
@@ -242,6 +244,165 @@ if (Catalog::isAvailable()) {
         check($filtrado['total'] > 0 && $soloSubcategoria, 'filtro por subcategoria (' . $filtrado['total'] . ' productos)');
     }
 }
+
+echo "\n== Sistema de diseno (design tokens) ==\n";
+// Utilidades de color
+check(Appearance::hex('#0AF') === '#00aaff' && Appearance::hex('#abc') === '#aabbcc', 'normaliza colores hexadecimales');
+check(Appearance::hex('rojo') === null && Appearance::hex('#12345') === null, 'rechaza colores invalidos');
+check(Appearance::mix('#000000', '#ffffff', 0.5) === '#808080', 'mezcla de colores');
+check(Appearance::contrast('#ffffff') === '#0b0e13' && Appearance::contrast('#0a0e14') === '#ffffff', 'contraste de texto automatico');
+
+// Tokens de una tienda de prueba
+$tokenTenant = new Tenant([
+    'name'             => 'Tienda tokens',
+    'color_primary'    => '#0b5fff',
+    'color_secondary'  => '#0f172a',
+    'color_accent'     => '#14b8a6',
+    'color_scheme'     => 'auto',
+    'radius_scale'     => 'rounded',
+    'font'             => 'grotesk',
+    'theme_tokens'     => '{"light": {"bg": "#101010"}, "raw": {"--c-container-max": "1400px"}}',
+]);
+$tokens = Appearance::tokens($tokenTenant, 'light');
+check(
+    ($tokens['primary'] ?? '') === '#0b5fff'
+        && ($tokens['accent'] ?? '') === '#14b8a6'
+        && ($tokens['bg'] ?? '') === '#101010'
+        && ($tokens['container-max'] ?? '') === '1400px',
+    'tokens resueltos (marca + theme_tokens)'
+);
+check(($tokens['radius-md'] ?? '') === '16px', 'escala de radios de la tienda (' . ($tokens['radius-md'] ?? '?') . ')');
+check(($tokens['primary-contrast'] ?? '') !== '' && ($tokens['font-head'] ?? '') !== '', 'tokens derivados (contraste y tipografia)');
+$darkTokens = Appearance::tokens($tokenTenant, 'dark');
+check(($darkTokens['bg'] ?? '') !== ($tokens['bg'] ?? ''), 'paleta oscura distinta de la clara');
+
+$css = Appearance::css($tokenTenant);
+check(
+    str_contains($css, ':root{')
+        && str_contains($css, ':root[data-color-scheme="dark"]')
+        && str_contains($css, 'prefers-color-scheme:dark')
+        && str_contains($css, '--c-primary:#0b5fff'),
+    'CSS de tokens con modo claro, oscuro y automatico'
+);
+check(Appearance::scheme($tokenTenant) === 'auto' && Appearance::themeColor($tokenTenant) !== '', 'esquema y color de barra del navegador');
+check(count(Appearance::presets()) >= 3 && Appearance::preset('caseking') !== null && Appearance::preset('no-existe') === null, 'presets de identidad (' . count(Appearance::presets()) . ')');
+
+// Los tokens libres se imprimen dentro de un <style>: no pueden cerrar la etiqueta.
+$evilTenant = new Tenant(['theme_tokens' => '{"raw": {"--c-x": "</style><script>alert(1)</script>"}, "bg": "#123456"}']);
+$evilTokens = Appearance::tokens($evilTenant, 'light');
+check(
+    !str_contains(Appearance::css($evilTenant), '<script')
+        && !isset($evilTokens['x'])
+        && ($evilTokens['bg'] ?? '') === '#123456',
+    'los tokens libres no pueden inyectar HTML'
+);
+
+// Columnas de diseno en mt_stores (migracion 002)
+$designColumns = ['color_accent', 'color_bg', 'color_surface', 'color_text', 'color_border', 'color_scheme', 'radius_scale', 'theme_tokens', 'custom_css'];
+$missingDesign = [];
+foreach ($designColumns as $column) {
+    try {
+        Database::scalar("SELECT `$column` FROM mt_stores LIMIT 1");
+    } catch (\Throwable $e) {
+        $missingDesign[] = $column;
+    }
+}
+check($missingDesign === [], 'columnas de diseno en mt_stores' . ($missingDesign ? ' (faltan: ' . implode(', ', $missingDesign) . ')' : ''));
+
+echo "\n== Filtros avanzados (facets) ==\n";
+$selection = Catalog::selectionFromQuery([
+    'f'    => ['socket' => ['am5', 'inventado'], 'marca' => ['7']],
+    'pmin' => '50',
+    'pmax' => '400,50',
+]);
+check(
+    ($selection['terms']['socket'] ?? []) === ['am5'] && ($selection['terms']['marca'] ?? []) === ['7'],
+    'la seleccion de filtros se sanea contra la configuracion'
+);
+check($selection['price_min'] === 50.0 && $selection['price_max'] === 400.5, 'rango de precio parseado (coma decimal)');
+check(count($selection['flat']) === 3, 'chips de filtros activos (' . count($selection['flat']) . ')');
+check(
+    Catalog::selectionFromQuery(['pmin' => '900', 'pmax' => '100'])['price_min'] === 100.0,
+    'rango de precio invertido se ordena solo'
+);
+
+$sortsConPrecio = Catalog::sorts(true);
+$sortsSinPrecio = Catalog::sorts(false);
+check(
+    isset($sortsConPrecio['precio-asc']) && !isset($sortsSinPrecio['precio-asc']) && isset($sortsSinPrecio['relevancia']),
+    'orden por precio solo cuando el listado esta acotado'
+);
+check(Catalog::sortKey('inventado') === 'relevancia' && Catalog::sortKey('precio-asc', false) === 'relevancia', 'orden invalido cae a relevancia');
+
+if (Catalog::isAvailable()) {
+    // Facets declarados para una categoria real (placas base: socket, memoria...).
+    $facets = Catalog::facets(9, 102);
+    $claves = array_column($facets, 'key');
+    check(in_array('socket', $claves, true) && in_array('precio', $claves, true), 'facets del contexto: ' . implode(', ', $claves));
+
+    $precio = Catalog::priceBounds();
+    check($precio['max'] > $precio['min'] && $precio['max'] > 0, 'rango de precios del catalogo (' . $precio['min'] . ' - ' . $precio['max'] . ')');
+
+    // Filtro real por socket: todos los resultados deben mencionarlo.
+    $filtrado = Catalog::paginate(1, 6, null, 9, 102, ['terms' => ['socket' => ['am5']]]);
+    $soloAm5 = $filtrado['total'] > 0;
+    foreach ($filtrado['items'] as $item) {
+        $texto = mb_strtoupper((string) $item['nombre']);
+        $specs = (string) Database::scalar(
+            'SELECT caracteristicas FROM productos_ext WHERE id_producto = :id',
+            ['id' => (int) $item['id']]
+        );
+        if (!str_contains($texto, 'AM5') && !str_contains(mb_strtoupper($specs), 'AM5')) {
+            $soloAm5 = false;
+            break;
+        }
+    }
+    check($soloAm5, 'filtro por socket AM5 (' . $filtrado['total'] . ' productos)');
+
+    // Filtro por precio.
+    $porPrecio = Catalog::paginate(1, 6, null, 9, 102, [], 50.0, 200.0);
+    $enRango = $porPrecio['total'] > 0;
+    foreach ($porPrecio['items'] as $item) {
+        $valor = $item['price_final'];
+        if ($valor === null || $valor < 50 || $valor > 200) {
+            $enRango = false;
+            break;
+        }
+    }
+    check($enRango, 'filtro por rango de precio (' . $porPrecio['total'] . ' productos)');
+
+    // Las tarjetas traen especificaciones clave y etiqueta de stock.
+    $conSpecs = 0;
+    foreach ($filtrado['items'] as $item) {
+        if (($item['specs'] ?? []) !== []) {
+            $conSpecs++;
+        }
+    }
+    check(
+        $conSpecs > 0 && isset($filtrado['items'][0]['stock_band']) && isset($filtrado['items'][0]['stock_label']),
+        'tarjetas con especificaciones (' . $conSpecs . '/' . count($filtrado['items']) . ') y etiqueta de stock'
+    );
+
+    // Accesos rapidos de la portada: resueltos contra el catalogo real.
+    $accesos = Catalog::quickCategories('');
+    check(
+        count($accesos) >= 3 && $accesos[0]['total'] > 0 && str_contains($accesos[0]['url'], '/catalogo?'),
+        'accesos rapidos de portada (' . count($accesos) . ')'
+    );
+}
+
+echo "\n== Especificaciones para tarjeta ==\n";
+$chips = Specs::quickHighlights('', 3, 'MSI GeForce RTX 5080 VENTUS 3X OC 16 GB GDDR7 PCI-E 5.0');
+$etiquetas = array_column($chips, 'k');
+check(
+    in_array('Grafica', $etiquetas, true) && in_array('Capacidad', $etiquetas, true),
+    'chips extraidos del nombre: ' . json_encode($chips, JSON_UNESCAPED_UNICODE)
+);
+$chipsPares = Specs::quickHighlights('Socket de procesador: Socket AM5, tipos de memoria compatibles: DDR5-SDRAM', 2, '');
+check(
+    ($chipsPares[0]['v'] ?? '') === 'AM5' && str_contains((string) ($chipsPares[1]['v'] ?? ''), 'DDR5'),
+    'chips desde caracteristicas y sin prefijos redundantes: ' . json_encode($chipsPares, JSON_UNESCAPED_UNICODE)
+);
 
 echo "\n==============================================================\n";
 if ($fail === 0) {

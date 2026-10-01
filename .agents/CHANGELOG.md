@@ -5,6 +5,82 @@ El detalle línea a línea está en `git log`.
 
 ---
 
+## 2026-10-01 · Interfaz moderna, white-label y rendimiento del catálogo
+
+**Motivo:** el dueño pide una plantilla de informática (multi-tienda) con estética
+tipo Scan/Caseking: sistema de diseño agnóstico de marca y de color, portada con
+slider a ancho completo, accesos rápidos a las categorías principales, tarjetas
+con especificaciones clave y etiquetas de stock dinámicas, filtros avanzados de
+entusiasta (socket, chipset, memoria, precio), microinteracciones, modo oscuro y
+todo responsive/optimizado.
+
+**Cambios — sistema de diseño**
+
+- `config/appearance.php` (nuevo): valores por defecto de la plataforma (paletas
+  clara y oscura, presets de identidad, escalas de radios, tipografías, anchos).
+  Se puede ajustar por `.env` (`THEME_*`).
+- `app/Core/Appearance.php` (nuevo): resuelve los tokens (config → `mt_stores` →
+  `theme_tokens` JSON), **deriva** hover/activo/suave y el color de texto legible
+  (contraste WCAG) y emite el CSS de variables `--c-*`.
+- `database/migrations/002_design_tokens.sql` (nueva, idempotente): columnas
+  `color_accent`, `color_bg`, `color_surface`, `color_text`, `color_border`,
+  `color_scheme`, `radius_scale`, `theme_tokens` y `custom_css` en `mt_stores`.
+- `Tenant`: accesores nuevos (`colorAccent`, `colorBackground`, `colorScheme`,
+  `radiusScale`, `themeTokens`, `customCss`…).
+- `public/assets/css/shop.css`: **reescrito** para consumir solo tokens. Ya no
+  queda ni un color literal (antes la ficha estaba fijada a la paleta de
+  idirecto). Modo oscuro nativo y microinteracciones en tarjetas, botones,
+  filtros y focos.
+- `layouts/shop.php`: inyecta los tokens en el `<head>`, `data-color-scheme`,
+  conmutador claro/oscuro, `skip-link`, `preconnect` al CDN de imágenes y
+  semántica HTML5 (`header`/`nav`/`main`/`footer`).
+
+**Cambios — portada, tarjetas y filtros**
+
+- `themes/idirecto/_hero.php` (nuevo): slider a ancho completo y accesible
+  (`hidden` en las diapositivas inactivas, pausa al interactuar, teclado, gesto
+  táctil, `prefers-reduced-motion`, primera imagen con `fetchpriority="high"`).
+- `themes/idirecto/home.php` + `Catalog::quickCategories()`: franja de garantías y
+  **accesos rápidos** a las 5 categorías, resueltos contra el árbol real con stock
+  (`config/catalog.php` → `quick_links`).
+- `themes/idirecto/_card.php` / `_card_own.php`: tarjeta minimalista con marca,
+  nombre, **chips de especificaciones** (`Specs::quickHighlights()`: de
+  `caracteristicas` y, si faltan, del nombre), **etiqueta de stock dinámica**
+  (`in|low|out`) y CTA al pasar el ratón o enfocar.
+- `themes/idirecto/catalog.php`: filtros avanzados como **enlaces** (funcionan sin
+  JS y cada combinación tiene URL propia), chips de filtros activos, orden y panel
+  lateral en móvil.
+- `config/catalog.php`: facetas declarativas (`socket`, `gpu`, `memoria`,
+  `factor`, `almacenamiento`), marca dinámica, rango de precio, órdenes y specs de
+  tarjeta. `Catalog`: `facets()`, `selectionFromQuery()`, `priceBounds()`,
+  `sorts()`, `sortKey()`.
+- Panel: `DesignController` reescrito (presets, tokens, validación de JSON y
+  limpieza del CSS propio), `panel/design.php` con vista previa en vivo,
+  `panel/design_preview.php` (nueva) y `/panel/diseno/tokens` + `diseno/previa`.
+
+**Cambios — rendimiento (lo más importante)**
+
+- `Catalog::stockExistsSql()` pasa de `EXISTS` correlacionado a **semijoin**
+  (`p.part_number IN (SELECT …)`). Misma regla y mismo resultado (41.289
+  productos), pero el listado del catálogo baja de **~3 s a ~20 ms**.
+- La marca se resuelve **por lote** (`attachBrands`) en lugar del
+  `LEFT JOIN marcas`, que solo él costaba ~1 s y degradaba el plan.
+- Las tarjetas completan stock y especificaciones con **3 consultas fijas** por
+  listado (`hydrate`), nunca una por producto.
+- El orden por precio se ofrece **solo si el listado está acotado** (sobre las
+  41.000 referencias cuesta ~4 s). Se cachean en fichero el contador total (10
+  min), los destacados de portada (10 min) y las facetas (15-30 min): el servidor
+  de base de datos de esta máquina tiene la caché InnoDB fría a menudo y estos
+  recorridos pesados se notaban en la portada.
+
+**Verificación:** `php tools/verify.php` → **TODO OK (60)** (eran 33). Además:
+HTTP real (portada ~30 ms, catálogo ~25 ms), navegación con Chrome headless a
+360/768/1440 px sin desbordamiento horizontal, panel con sesión real (login,
+guardado de preset, tokens JSON válidos e inválidos, vista previa) y comprobación
+de que las páginas no emiten avisos de PHP.
+
+---
+
 ## 2026-10-01 · Banners de hasta 8 MB, con buena calidad (límites por tipo)
 
 **Motivo:** el dueño quiere admitir banners de hasta 8 MB sin perder calidad al

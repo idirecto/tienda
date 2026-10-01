@@ -62,19 +62,20 @@ app/
   Models/                  Acceso a datos (una clase por concepto)
   Views/
     layouts/               shop.php (web), panel.php, panel_blank.php
-    panel/                 Pantallas del panel
-    themes/idirecto/       Tema público (home, catalog, product, page, _card)
-config/                    app, database, storage, tenant, catalog
+    panel/                 Pantallas del panel (design_preview.php = vista previa)
+    themes/idirecto/       Tema público (home, _hero, catalog, product, page, _card)
+config/                    app, appearance, database, storage, tenant, catalog
 database/
-  migrations/001_schema.sql  13 tablas mt_ (idempotente)
-  seeds/001_seed.sql         Planes, temas y tienda demo
-  migrate.php                Ejecutor de migraciones + semillas
+  migrations/001_schema.sql      13 tablas mt_ (idempotente)
+  migrations/002_design_tokens.sql  Columnas de identidad visual en mt_stores
+  seeds/001_seed.sql             Planes, temas y tienda demo
+  migrate.php                    Ejecutor de migraciones + semillas
 deploy/                    Vhosts de Apache, plantilla de nginx y scripts
 public/                    ÚNICO directorio servido como estático
   assets/css|js            shop.css, panel.css, shop.js, panel.js
   uploads/                 Archivos locales (si STORAGE_DRIVER=local)
 storage/                   cache/ y logs/ (escritura de la app)
-tools/verify.php           33 comprobaciones automáticas
+tools/verify.php           60 comprobaciones automáticas
 ```
 
 ---
@@ -85,15 +86,16 @@ tools/verify.php           33 comprobaciones automáticas
 |---|---|
 | `Env` | Lee `.env` a `$_ENV` (sin dependencias) |
 | `Config` | Carga `config/*.php` con acceso por punto: `Config::get('catalog.markup')` |
+| `Appearance` | **Sistema de diseño**: resuelve los tokens (config + tienda + `theme_tokens`), deriva hover/suave/contraste y emite el CSS de variables `--c-*` |
 | `Database` | PDO singleton; `select/first/scalar/execute/insert/update/delete/transaction/tableExists` |
 | `Router` | Compila `{param}`, detecta el subdirectorio base y despacha |
 | `TenantResolver` | **Decide qué tienda se sirve** según el hostname |
-| `Tenant` | Contexto inmutable de la tienda (nombre, tema, color, cuotas…) |
+| `Tenant` | Contexto inmutable de la tienda (nombre, tema, colores, radios, cuotas…) |
 | `Auth` / `Session` / `Csrf` | Sesión, login y tokens CSRF |
 | `Controller` / `View` / `Model` | Base MVC; `View` usa `extract()` |
 | `Storage/*` | `StorageInterface` + `LocalStorage` + `S3Storage` + `StorageManager` + `StorageKey` |
 | `Media/*` | `MediaUploader` (subida) e `ImageOptimizer` (WebP, tamaño, EXIF) |
-| `Specs` | Parsea características y especificaciones del catálogo central |
+| `Specs` | Parsea características y especificaciones; `quickHighlights()` alimenta los chips de la tarjeta |
 | `Str` | `slugify()` (mismo criterio que idirecto) y `excerpt()` |
 | `Dns` | Verificación de dominios por A/CNAME/TXT (con *lookup* inyectable) |
 | `Validation`/`Storage` `Exception` | Errores de dominio |
@@ -157,6 +159,12 @@ las rutas internas los pone el servidor: `.htaccess` en Apache y
 | `mt_migrations` | Control de migraciones aplicadas |
 
 Todas con `utf8mb4_unicode_ci` y FK a `mt_stores(id) ON DELETE CASCADE`.
+
+`mt_stores` guarda además la **identidad visual** (migración `002`):
+`color_primary`, `color_secondary`, `color_accent`, `color_bg`, `color_surface`,
+`color_text`, `color_border`, `color_scheme` (`light|dark|auto`),
+`radius_scale` (`compact|standard|rounded`), `font`, `theme_tokens` (JSON) y
+`custom_css`. Los colores opcionales en `NULL` significan «usa el valor del tema».
 
 ### Tablas del mayorista — **SOLO LECTURA**
 
@@ -226,34 +234,85 @@ las que dan 404, y reutiliza la imagen grande si solo falta la miniatura.
 
 | Ruta | Contenido |
 |---|---|
-| `/` | Portada: banner, avisos, destacados, productos propios |
-| `/catalogo` | Catálogo con buscador (`?q`), categoría (`?cat`), subcategoría (`?subcat`) y paginación |
+| `/` | Portada: slider de banners, franja de garantías, accesos rápidos a categorías, destacados, productos propios |
+| `/catalogo` | Catálogo con buscador (`?q`), categoría (`?cat`), subcategoría (`?subcat`), **facetas** (`?f[clave][]=valor`), **precio** (`?pmin`/`?pmax`), orden (`?orden`) y paginación |
 | `/producto/{slug}/{id}` | Ficha (**URL SEO**); `/producto/{id}` redirige 301 |
 | `/contacto`, `/pagina/{slug}` | Contacto y páginas de contenido |
 
+### Sistema de diseño (white-label)
+
+El storefront no escribe **ningún** color a mano: `public/assets/css/shop.css`
+consume variables `--c-*` que genera `Tienda\Core\Appearance` en línea en el
+`<head>`.
+
+- **Fuentes de los tokens**, de menor a mayor prioridad: `config/appearance.php`
+  (y sus `THEME_*` del `.env`) → columnas de diseño de `mt_stores`
+  (`color_primary|secondary|accent|bg|surface|text|border`, `color_scheme`,
+  `radius_scale`, `font`) → `mt_stores.theme_tokens` (JSON libre que pisa
+  cualquier token sin migrar la base de datos).
+- **Derivados**: hover, activo, tono suave y color de texto legible
+  (`Appearance::contrast()`, contraste WCAG) se calculan en PHP, así que el CSS
+  no necesita adivinar ni duplicar reglas.
+- **Modo oscuro**: `color_scheme` = `light|dark|auto`. El CSS emite
+  `:root[data-color-scheme="dark"]` y
+  `@media (prefers-color-scheme:dark){:root[data-color-scheme="auto"]}`. El
+  visitante puede conmutar desde la cabecera (se guarda en `localStorage` y un
+  script mínimo lo aplica antes de pintar, sin destello).
+- **Presets**: 5 identidades completas en `config/appearance.php` (`presets`);
+  el panel las aplica en el servidor (`apply_preset`).
+- **Vista previa fiel**: `/panel/diseno/previa` (página suelta con `shop.css`) se
+  carga en un `<iframe>` del panel y `/panel/diseno/tokens` le devuelve, con los
+  valores del formulario, el mismo CSS que emitiría el storefront. No hay lógica
+  de color duplicada en JavaScript.
+- **Tema claro/oscuro y el modo del visitante**: `data-color-scheme` en `<html>`.
+
+### Portada
+
+`themes/idirecto/home.php` compone: `_hero.php` (slider a ancho completo),
+franja de garantías, **accesos rápidos** (`Catalog::quickCategories()`, declarados
+en `config/catalog.php` → `quick_links`, resueltos contra el árbol real para no
+enlazar a listados vacíos a excepción de los `q`, que caen a la categoría si no
+hay resultados), destacados y productos propios.
+
+El slider (`_hero.php` + bloque `slider` de `shop.js`) usa `hidden` en las
+diapositivas inactivas, pausa la rotación con `mouseenter`/`focusin`/pestaña
+oculta, respeta `prefers-reduced-motion` y admite teclado y gesto táctil. La
+primera imagen es el LCP: `fetchpriority="high"` y `preconnect` al host del CDN.
+
+### Tarjetas de producto y filtros
+
+- `_card.php` pinta marca, nombre, **chips de especificaciones** (`Specs::quickHighlights()`:
+  primero `productos_ext.caracteristicas`, y si no hay, extraídos del propio
+  nombre), etiqueta de **stock dinámica** (`stock_band`: `in|low|out` según el
+  stock real) y CTA que aparece al pasar el ratón o al enfocar.
+- `Catalog::hydrate()` completa un listado con **3 consultas fijas** (marca,
+  stock y características), nunca una por tarjeta.
+- Los filtros se declaran en `config/catalog.php` → `facets` (`socket`, `gpu`,
+  `memoria`, `factor`, `almacenamiento`, `marca` dinámica y `precio`) y se pintan
+  como **enlaces**, de modo que funcionan sin JavaScript y cada combinación tiene
+  URL propia. `Catalog::selectionFromQuery()` sanea la selección contra la
+  configuración y `Catalog::facets()` limita cada filtro por contexto (`when`).
+- **Orden por precio**: `Catalog::sorts($acotado)`. Ordenar por precio obliga a
+  calcular la subconsulta de `precios` para cada candidato; sobre el catálogo
+  entero son ~4 s, así que solo se ofrece cuando hay categoría, búsqueda, faceta o
+  rango que acote el listado.
+
 ### Menú de categorías del catálogo
 
-La cabecera del storefront monta un **megamenú** (inspirado en PcComponentes /
-PuntoByZE) a partir de `Catalog::menuTree()`: categorías en una columna lateral
-y sus subcategorías repartidas en columnas. En móvil se convierte en pantalla
-completa con navegación por pasos y botón atrás.
-
-- Solo aparecen categorías y subcategorías **con stock** (mismo criterio que el
-  listado), así que ningún enlace lleva a una página vacía.
-- La consulta recorre `stock` y es costosa: el árbol se cachea 30 min en
-  `storage/cache/catalog_menu.json` (`Catalog::MENU_TTL`).
-- Los enlaces son `?cat={id}&subcat={id}`; el filtro por subcategoría también
-  funciona desde el buscador de la ficha de producto y desde el catálogo, que
-  lista las subcategorías de la categoría activa.
-- El megamenú se pinta en `layouts/shop.php`; el CSS y el JS viven en
-  `public/assets/css/shop.css` y `public/assets/js/shop.js` (bloque `catmenu`).
+La cabecera monta un **megamenú** (estilo PcComponentes / PuntoByZE) a partir de
+`Catalog::menuTree()`: categorías en columna lateral y subcategorías repartidas
+en columnas; en móvil es pantalla completa con navegación por pasos y botón
+atrás. Solo entran categorías **con stock** y el árbol se cachea 30 min en
+`storage/cache/catalog_menu.json` (`Catalog::MENU_TTL`). Se pinta en
+`layouts/shop.php` y su CSS/JS viven en los bloques `catmenu` de `shop.css` y
+`shop.js`.
 
 ### Rutas del panel (`/panel/*`)
 
-`login`, `logout`, `dashboard`, `diseno`, `banners`, `avisos`, `productos`
-(CRUD), `dominios` (alta, verificar, borrar), `ajustes`, `media/subir` y
-`media/{id}/borrar`. Todas exigen sesión + CSRF, y filtran por el `store_id` de
-la sesión.
+`login`, `logout`, `dashboard`, `diseno` (+ `diseno/tokens` y `diseno/previa`
+para la vista previa), `banners`, `avisos`, `productos` (CRUD), `dominios` (alta,
+verificar, borrar), `ajustes`, `media/subir` y `media/{id}/borrar`. Todas exigen
+sesión + CSRF, y filtran por el `store_id` de la sesión.
 
 ### Temas
 
@@ -337,7 +396,7 @@ servidores no los traen en `/etc/mime.types` y servirían la imagen sin
 
 ```bash
 sudo bash deploy/setup-local-domain.sh     # /etc/hosts + VirtualHost + permisos
-php tools/verify.php                       # 33 comprobaciones
+php tools/verify.php                       # 60 comprobaciones
 php -S 127.0.0.1:8099 index.php            # servidor embebido (alternativa)
 ```
 
@@ -364,12 +423,16 @@ con repetir el script con el nuevo nombre y tocar esas tres claves del `.env`.
 ## 10. Verificación antes de dar algo por hecho
 
 ```bash
-php tools/verify.php                 # debe decir: TODO OK (33 comprobaciones)
+php tools/verify.php                 # debe decir: TODO OK (60 comprobaciones)
 curl -s -o /dev/null -w '%{http_code}\n' http://local.tienda/
 curl -s -o /dev/null -w '%{http_code}\n' http://local.tienda/catalogo
+curl -s -o /dev/null -w '%{http_code}\n' "http://local.tienda/catalogo?cat=9&subcat=102&f%5Bsocket%5D%5B0%5D=am5"
 curl -s -o /dev/null -w '%{http_code}\n' http://local.tienda/panel/login
 bash .agents/scripts/check-privacidad.sh    # la documentación no debe ser web
 ```
+
+Los listados del catálogo no deben tardar segundos: si vuelven a ir lentos, mirar
+el plan de la consulta de stock (ver §11, «Semijoin de stock»).
 
 Para comprobar JavaScript renderizado, hay Chrome headless disponible:
 
@@ -392,6 +455,26 @@ google-chrome --headless=new --disable-gpu --no-sandbox \
 | Cambios de CSS/JS que "no se ven" | Caché del navegador | `asset()` añade `?v=<filemtime>` |
 | `500` al buscar en el catálogo | Parámetro `:q` repetido (ver primera fila) | Marcadores distintos |
 | Colación `utf8mb3` vs `utf8mb4` en FK | Tablas antiguas del mayorista | Declarar `CHARACTER SET` explícito |
+| **Catálogo y portada tardan ~3 s** | `EXISTS` **correlacionado** contra `stock` (845 k filas): el optimizador lo reevalúa fila a fila | Usar **semijoin**: `p.part_number IN (SELECT …)`. El listado pasa de ~3 s a ~20 ms (ver §11bis) |
+| El listado se vuelve lento al añadir la marca | El `LEFT JOIN marcas` cambia el plan de ejecución (más de 1 s él solo) | Quitar el JOIN del listado y resolver la marca **por lote** (`attachBrands()`) |
+| Ordenar por precio en el catálogo entero tarda ~4 s | `ORDER BY` con la subconsulta de `precios` se calcula para cada candidato | Ofrecer el orden por precio solo cuando el listado está acotado (`Catalog::sorts($acotado)`) |
+| Un `Warning` de PHP aparece **dentro** del `href` de un enlace | En una vista, el closure no capturaba una variable (`use (…)`) y con `html_errors` el aviso se imprime como HTML | Los closures de las vistas deben capturar todo lo que usan; comprobar el HTML con `curl \| grep -i warning` |
+| La previa del panel parece no aplicar el modo oscuro | `getComputedStyle` leído justo tras cambiar `data-color-scheme` devuelve el color **a mitad de transición** | Leer los tokens de `:root` con `getPropertyValue('--c-…')` o esperar un *tick* |
+
+### 11bis. Semijoin de stock (rendimiento)
+
+`Catalog::stockExistsSql()` expresa la visibilidad como
+`p.part_number IN (SELECT s.part_number FROM stock s INNER JOIN almacenes a …)`.
+Es **la misma regla** que el `EXISTS` original (verificado: 41.289 productos con
+ambas formas) pero la subconsulta no depende de la fila exterior, así que MySQL
+la resuelve una vez.
+
+El contador total y los destacados de portada sí son caros (~1-3 s con la caché
+InnoDB fría: recorren `productos` comprobando `stock`) y por eso se cachean en
+fichero 10 minutos (`storage/cache/catalog_count_*.json`, `catalog_featured_*.json`). Si algún día
+se quiere eliminar ese pico periódico, la vía limpia es materializar el stock
+válido en una tabla propia `mt_` refrescada por tarea — es una decisión de
+frescura de datos del dueño, no un cambio que deba hacer un agente por su cuenta.
 
 ---
 
@@ -403,5 +486,7 @@ Ver [`STATE.md`](STATE.md) para el estado detallado. Pendiente principal:
    aplicar el margen/tarifa que corresponda a cada tienda.
 2. **Checkout** — carrito, pasarelas de pago de la tienda y envío.
 3. **Panel maestro del mayorista** — supervisión, tarifas y auditoría de ventas.
-4. **Temas `moderno` y `minimal`**.
-5. **Tests (PHPUnit) e integración continua.**
+4. **Materializar el stock válido** (`mt_` refrescada por tarea) para eliminar el
+   pico del contador y permitir orden por precio en todo el catálogo.
+5. **Temas `moderno` y `minimal`**.
+6. **Tests (PHPUnit) e integración continua.**

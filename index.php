@@ -68,6 +68,9 @@ $router->get('/panel',                 [DashboardController::class, 'index']);
 
 $router->get('/panel/diseno',          [DesignController::class, 'index']);
 $router->post('/panel/diseno',         [DesignController::class, 'save']);
+// Vista previa de la identidad visual (CSS de tokens + pagina de muestra).
+$router->get('/panel/diseno/tokens',   [DesignController::class, 'tokens']);
+$router->get('/panel/diseno/previa',   [DesignController::class, 'preview']);
 
 $router->get('/panel/banners',         [BannerController::class, 'index']);
 $router->post('/panel/banners',        [BannerController::class, 'store']);

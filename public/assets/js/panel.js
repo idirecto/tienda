@@ -132,7 +132,133 @@
         });
     }
 
+    /* =====================================================================
+       IDENTIDAD VISUAL: vista previa en vivo
+       =====================================================================
+       Cada cambio en el formulario de diseno pide al servidor el CSS de tokens
+       que generaria esa configuracion (`/panel/diseno/tokens`, el mismo
+       generador que usa el storefront) y lo inyecta en el iframe de previa.
+
+       Se hace asi, y no calculando los colores en JavaScript, para que la
+       previa no pueda desviarse nunca de lo que se publica.
+       ===================================================================== */
+    function hexValido(valor) {
+        return /^#?([0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(String(valor || '').trim());
+    }
+
+    function initDesignPreview(form) {
+        var frame = document.querySelector('[data-design-preview]');
+        var state = document.querySelector('[data-preview-state]');
+        if (!frame) { return; }
+
+        var tokensUrl = (CFG.designTokensUrl || (CFG.base || '') + '/panel/diseno/tokens');
+        var timer = null;
+
+        function marcar(texto) {
+            if (state) { state.textContent = texto; }
+        }
+
+        function recoger() {
+            var datos = {};
+            ['color_primary', 'color_secondary', 'color_accent', 'color_bg', 'color_surface',
+             'color_text', 'color_border', 'color_scheme', 'radius_scale', 'font',
+             'header_style', 'theme_tokens'].forEach(function (nombre) {
+                var campo = form.querySelector('[name="' + nombre + '"]');
+                if (campo) { datos[nombre] = campo.value; }
+            });
+
+            // Los campos de color avanzados vacios significan "usa el tema".
+            ['color_bg', 'color_surface', 'color_text', 'color_border'].forEach(function (nombre) {
+                if (datos[nombre] && !hexValido(datos[nombre])) { datos[nombre] = ''; }
+            });
+
+            return datos;
+        }
+
+        function actualizar() {
+            pendiente = false;
+            var datos = recoger();
+            var query = Object.keys(datos).filter(function (k) { return datos[k] !== ''; })
+                .map(function (k) { return encodeURIComponent(k) + '=' + encodeURIComponent(datos[k]); })
+                .join('&');
+
+            marcar('Previsualizando...');
+
+            fetch(tokensUrl + (query ? '?' + query : ''), {
+                credentials: 'same-origin',
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            })
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    if (!data || typeof data.css !== 'string' || !frame.contentWindow) { return; }
+                    frame.contentWindow.postMessage({
+                        type: 'tienda-tokens',
+                        css: data.css,
+                        scheme: data.scheme || 'light'
+                    }, window.location.origin);
+                    marcar('Sin guardar');
+                })
+                .catch(function () { marcar('Vista previa no disponible'); });
+        }
+
+        function programar() {
+            if (timer) { window.clearTimeout(timer); }
+            timer = window.setTimeout(actualizar, 250);
+        }
+
+        form.addEventListener('input', programar);
+        form.addEventListener('change', programar);
+
+        // Sincroniza el selector de color con su campo de texto (y al reves).
+        form.querySelectorAll('input[type=color][data-color-for]').forEach(function (color) {
+            var texto = form.querySelector('[data-color-text="' + color.getAttribute('data-color-for') + '"]');
+            if (!texto) { return; }
+            color.addEventListener('input', function () { texto.value = color.value; });
+            texto.addEventListener('input', function () {
+                if (hexValido(texto.value)) { color.value = texto.value.trim(); }
+            });
+        });
+
+        // Los botones de preset rellenan el formulario (ademas de poder
+        // aplicarse en el servidor al enviarlo).
+        form.querySelectorAll('[data-preset]').forEach(function (boton) {
+            boton.addEventListener('click', function (evento) {
+                if (!window.confirm('Se guardara la tienda con el preset "' +
+                        boton.querySelector('strong').textContent.trim() + '". ¿Continuar?')) {
+                    evento.preventDefault();
+                    return;
+                }
+                var valores = {
+                    color_primary: boton.getAttribute('data-primary'),
+                    color_secondary: boton.getAttribute('data-secondary'),
+                    color_accent: boton.getAttribute('data-accent'),
+                    color_scheme: boton.getAttribute('data-scheme'),
+                    radius_scale: boton.getAttribute('data-radius'),
+                    font: boton.getAttribute('data-font')
+                };
+                Object.keys(valores).forEach(function (nombre) {
+                    var campo = form.querySelector('[name="' + nombre + '"]');
+                    if (!campo || !valores[nombre]) { return; }
+                    if (campo.type === 'color') {
+                        if (hexValido(valores[nombre])) { campo.value = valores[nombre]; }
+                    } else {
+                        campo.value = valores[nombre];
+                    }
+                    var texto = form.querySelector('[data-color-text="' + nombre + '"]');
+                    if (texto) { texto.value = valores[nombre]; }
+                });
+            });
+        });
+
+        frame.addEventListener('load', function () { actualizar(); });
+    }
+
     document.addEventListener('DOMContentLoaded', function () {
         document.querySelectorAll('.uploader').forEach(initUploader);
+
+        var designForm = document.querySelector('[data-design-form]');
+        if (designForm) {
+            initDesignPreview(designForm);
+        }
     });
 })();

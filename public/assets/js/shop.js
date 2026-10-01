@@ -1,33 +1,299 @@
 /**
- * Storefront: rotacion del hero y galeria de la ficha de producto.
+ * Storefront: slider de portada, modo claro/oscuro, filtros en movil y ficha.
  *
- * La galeria reproduce el comportamiento de idirecto (un carrusel que se
- * desliza lateralmente y se navega con las miniaturas, sin flechas), pero
- * anade dos mejoras:
- *   - si una foto no existe (error 404) se retira del carrusel y de la fila
- *     de miniaturas, de modo que nunca se ve un hueco ni un icono roto;
- *   - se puede ampliar la imagen y deslizar con el dedo.
+ * Sin dependencias y sin build. Todo esta escrito de forma defensiva: si un
+ * componente no esta en la pagina, su modulo no hace nada. Si el JS falla o
+ * esta desactivado, la web sigue siendo navegable (los filtros son enlaces,
+ * las diapositivas se ven una detras de otra y el modo lo decide la tienda).
  */
 (function () {
     'use strict';
 
+    var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
     /* =====================================================================
-       HERO: rotacion de banners
+       SLIDER DE PORTADA
        ===================================================================== */
-    var track = document.querySelector('.hero-track');
-    if (track) {
-        var heroSlides = track.querySelectorAll('.hero-slide');
-        if (heroSlides.length > 1) {
-            var heroIndex = 0;
-            heroSlides.forEach(function (slide, i) {
-                slide.style.display = i === 0 ? 'flex' : 'none';
-            });
-            setInterval(function () {
-                heroSlides[heroIndex].style.display = 'none';
-                heroIndex = (heroIndex + 1) % heroSlides.length;
-                heroSlides[heroIndex].style.display = 'flex';
-            }, 6000);
+    var slider = document.querySelector('[data-slider]');
+    if (slider) {
+        initSlider(slider);
+    }
+
+    function initSlider(root) {
+        var stage = root.querySelector('[data-slider-stage]');
+        var slides = Array.prototype.slice.call(root.querySelectorAll('[data-slider-slide]'));
+        var dots = Array.prototype.slice.call(root.querySelectorAll('[data-slider-dot]'));
+        var progress = root.querySelector('[data-slider-progress]');
+
+        if (!stage || slides.length === 0) {
+            return;
         }
+
+        var index = 0;
+        var timer = null;
+        var rafId = null;
+        var startedAt = 0;
+        var duration = 6500; // ms por diapositiva
+        var paused = false;
+
+        function render() {
+            slides.forEach(function (slide, i) {
+                var active = i === index;
+                slide.classList.toggle('is-active', active);
+                if (active) {
+                    slide.removeAttribute('hidden');
+                } else {
+                    slide.setAttribute('hidden', '');
+                }
+            });
+            dots.forEach(function (dot, i) {
+                var active = i === index;
+                dot.classList.toggle('is-active', active);
+                dot.setAttribute('aria-selected', active ? 'true' : 'false');
+            });
+        }
+
+        function goTo(next, userAction) {
+            var total = slides.length;
+            index = ((next % total) + total) % total;
+            render();
+            restart(userAction);
+        }
+
+        function next(step) {
+            goTo(index + step, true);
+        }
+
+        /* ---------- rotacion automatica ---------- */
+        function tick() {
+            if (paused) {
+                return;
+            }
+            var elapsed = Date.now() - startedAt;
+            var ratio = Math.min(1, elapsed / duration);
+            if (progress) {
+                progress.style.setProperty('--progress', (ratio * 100).toFixed(1) + '%');
+            }
+            if (ratio >= 1) {
+                startedAt = Date.now();
+                goTo(index + 1);
+                return;
+            }
+            rafId = window.requestAnimationFrame(tick);
+        }
+
+        function restart() {
+            if (rafId) {
+                window.cancelAnimationFrame(rafId);
+                rafId = null;
+            }
+            startedAt = Date.now();
+            if (progress) {
+                progress.style.setProperty('--progress', '0%');
+            }
+            if (!reduceMotion && slides.length > 1) {
+                rafId = window.requestAnimationFrame(tick);
+            }
+        }
+
+        function pause() {
+            paused = true;
+            if (rafId) {
+                window.cancelAnimationFrame(rafId);
+                rafId = null;
+            }
+        }
+
+        function resume() {
+            if (!paused) {
+                return;
+            }
+            paused = false;
+            restart();
+        }
+
+        /* ---------- controles ---------- */
+        dots.forEach(function (dot, i) {
+            dot.addEventListener('click', function () { goTo(i, true); });
+        });
+
+        var prevBtn = root.querySelector('[data-slider-prev]');
+        var nextBtn = root.querySelector('[data-slider-next]');
+        if (prevBtn) {
+            prevBtn.addEventListener('click', function () { next(-1); });
+        }
+        if (nextBtn) {
+            nextBtn.addEventListener('click', function () { next(1); });
+        }
+
+        // Flechas del teclado cuando el foco esta dentro del slider.
+        root.addEventListener('keydown', function (e) {
+            if (e.key === 'ArrowLeft') { e.preventDefault(); next(-1); }
+            if (e.key === 'ArrowRight') { e.preventDefault(); next(1); }
+        });
+
+        // Se pausa al interactuar (raton o teclado) y al cambiar de pestana.
+        root.addEventListener('mouseenter', pause);
+        root.addEventListener('mouseleave', resume);
+        root.addEventListener('focusin', pause);
+        root.addEventListener('focusout', resume);
+        document.addEventListener('visibilitychange', function () {
+            if (document.hidden) { pause(); } else { resume(); }
+        });
+
+        /* ---------- deslizar con el dedo ---------- */
+        var touchX = null;
+        var touchY = null;
+        stage.addEventListener('touchstart', function (e) {
+            if (e.touches.length !== 1) { return; }
+            touchX = e.touches[0].clientX;
+            touchY = e.touches[0].clientY;
+            pause();
+        }, { passive: true });
+
+        stage.addEventListener('touchend', function (e) {
+            if (touchX === null) { return; }
+            var t = e.changedTouches[0];
+            var dx = t.clientX - touchX;
+            var dy = t.clientY - touchY;
+            touchX = null;
+            touchY = null;
+            if (Math.abs(dx) > 45 && Math.abs(dx) > Math.abs(dy)) {
+                next(dx < 0 ? 1 : -1);
+            }
+            resume();
+        }, { passive: true });
+
+        render();
+        restart();
+    }
+
+    /* =====================================================================
+       MODO CLARO / OSCURO
+       ===================================================================== */
+    var schemeToggle = document.querySelector('[data-scheme-toggle]');
+    if (schemeToggle) {
+        initSchemeToggle(schemeToggle);
+    }
+
+    function initSchemeToggle(button) {
+        var root = document.documentElement;
+        var media = window.matchMedia('(prefers-color-scheme: dark)');
+
+        function current() {
+            var scheme = root.getAttribute('data-color-scheme') || 'light';
+            if (scheme === 'auto') {
+                return media.matches ? 'dark' : 'light';
+            }
+            return scheme === 'dark' ? 'dark' : 'light';
+        }
+
+        function paint() {
+            button.setAttribute('aria-pressed', current() === 'dark' ? 'true' : 'false');
+        }
+
+        button.addEventListener('click', function () {
+            var next = current() === 'dark' ? 'light' : 'dark';
+            root.setAttribute('data-color-scheme', next);
+            try {
+                window.localStorage.setItem('tienda.color-scheme', next);
+            } catch (e) { /* Modo privado: la eleccion solo dura la sesion. */ }
+            paint();
+        });
+
+        media.addEventListener('change', paint);
+        paint();
+    }
+
+    /* =====================================================================
+       FILTROS EN MOVIL (panel lateral)
+       ===================================================================== */
+    var filtersToggle = document.querySelector('[data-filters-toggle]');
+    var catalogSection = document.querySelector('.catalog-section');
+
+    if (filtersToggle && catalogSection) {
+        initFiltersDrawer(filtersToggle, catalogSection);
+    }
+
+    function initFiltersDrawer(toggle, section) {
+        var close = section.querySelector('[data-filters-close]');
+        var aside = section.querySelector('.catalog-aside');
+
+        // El boton solo tiene sentido con JS: se muestra y se pasa a modo panel.
+        toggle.removeAttribute('hidden');
+        section.classList.add('is-drawer');
+
+        function open() {
+            section.classList.add('is-filters-open');
+            document.body.classList.add('no-scroll');
+            toggle.setAttribute('aria-expanded', 'true');
+            if (close) { close.focus(); }
+        }
+
+        function shut() {
+            section.classList.remove('is-filters-open');
+            document.body.classList.remove('no-scroll');
+            toggle.setAttribute('aria-expanded', 'false');
+        }
+
+        toggle.setAttribute('aria-expanded', 'false');
+        toggle.addEventListener('click', function () {
+            if (section.classList.contains('is-filters-open')) { shut(); } else { open(); }
+        });
+
+        if (close) {
+            close.addEventListener('click', shut);
+        }
+
+        // Clic en el fondo oscuro (el ::before del aside): cierra el panel.
+        if (aside) {
+            aside.addEventListener('click', function (e) {
+                if (e.target === aside && section.classList.contains('is-filters-open')) {
+                    shut();
+                }
+            });
+        }
+
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && section.classList.contains('is-filters-open')) {
+                shut();
+                toggle.focus();
+            }
+        });
+
+        // Al pasar a escritorio el panel pierde sentido: se limpia el estado.
+        window.addEventListener('resize', function () {
+            if (window.innerWidth >= 1100) { shut(); }
+        });
+    }
+
+    /* =====================================================================
+       FORMULARIO DE FILTROS
+       ===================================================================== */
+    var filtersForm = document.querySelector('[data-filters-form]');
+    if (filtersForm) {
+        var catSelect = filtersForm.querySelector('select[name="cat"]');
+        var subcatInput = filtersForm.querySelector('input[name="subcat"]');
+
+        // Cambiar de categoria invalida la subcategoria elegida: si no, al
+        // enviar el formulario viajarian las dos y mandaria la antigua.
+        if (catSelect && subcatInput) {
+            catSelect.addEventListener('change', function () {
+                subcatInput.value = '';
+            });
+        }
+    }
+
+    /* =====================================================================
+       ORDEN DEL LISTADO
+       ===================================================================== */
+    var sortSelect = document.querySelector('[data-sort-select]');
+    if (sortSelect) {
+        sortSelect.addEventListener('change', function () {
+            if (sortSelect.value) {
+                window.location.href = sortSelect.value;
+            }
+        });
     }
 
     /* =====================================================================
@@ -279,7 +545,7 @@
         specToggle.addEventListener('click', function () {
             var expanded = specSummary.classList.toggle('is-expanded');
             var label = specToggle.querySelector('span') || specToggle;
-            label.textContent = expanded ? 'Ver menos' : 'Ver más';
+            label.textContent = expanded ? 'Ver menos' : 'Ver mas';
             specToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
         });
     }
@@ -292,7 +558,7 @@
             Array.prototype.slice.call(items, 4).forEach(function (li) {
                 li.style.display = expanded ? 'none' : 'list-item';
             });
-            shortToggle.textContent = expanded ? 'Ver más' : 'Ver menos';
+            shortToggle.textContent = expanded ? 'Ver mas' : 'Ver menos';
             shortToggle.setAttribute('aria-expanded', expanded ? 'false' : 'true');
         });
     }

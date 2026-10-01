@@ -327,6 +327,183 @@ final class Specs
     }
 
     // =====================================================================
+    // TARJETA DE PRODUCTO (chips de especificaciones)
+    // =====================================================================
+
+    /**
+     * Dos o tres datos tecnicos para la tarjeta del listado, elegidos por
+     * prioridad y con etiqueta corta ("Socket: AM5").
+     *
+     * Se alimenta de `caracteristicas` (cadena corta), asi que es barato: la
+     * tarjeta no necesita parsear el HTML completo de especificaciones. Si el
+     * producto no trae caracteristicas (pasa en buena parte del catalogo), los
+     * datos se extraen del propio nombre, que en informatica suele llevarlos.
+     *
+     * @return array<int, array{k:string,v:string}>
+     */
+    public static function quickHighlights(?string $raw, int $limit = 3, string $name = ''): array
+    {
+        $limit = max(1, $limit);
+        $out = [];
+
+        foreach (self::highlightsFromPairs(self::pairs($raw), $limit) as $item) {
+            $out[] = $item;
+        }
+
+        if (count($out) < $limit && $name !== '') {
+            foreach (self::highlightsFromName($name, $limit) as $item) {
+                if (count($out) >= $limit) {
+                    break;
+                }
+                // Sin repetir etiquetas ya resueltas.
+                foreach ($out as $existing) {
+                    if ($existing['k'] === $item['k']) {
+                        continue 2;
+                    }
+                }
+                $out[] = $item;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Elige los chips a partir de los pares clave/valor de `caracteristicas`.
+     *
+     * @param array<int, array{k:string,v:string}> $pairs
+     * @return array<int, array{k:string,v:string}>
+     */
+    private static function highlightsFromPairs(array $pairs, int $limit): array
+    {
+        if ($pairs === []) {
+            return [];
+        }
+
+        $slots = (array) Config::get('catalog.card_specs', []);
+        if ($slots === []) {
+            return [];
+        }
+
+        // Indice normalizado de los pares disponibles.
+        $index = [];
+        foreach ($pairs as $pair) {
+            $norm = self::normalize($pair['k']);
+            if ($norm === '' || $pair['v'] === '' || isset($index[$norm])) {
+                continue;
+            }
+            $index[$norm] = $pair['v'];
+        }
+
+        $out = [];
+        $used = [];
+        foreach ($slots as $slot) {
+            if (count($out) >= $limit) {
+                break;
+            }
+            $label = (string) ($slot['label'] ?? '');
+            $keys = (array) ($slot['keys'] ?? []);
+
+            // Primero coincidencia exacta; si no, coincidencia por contenido.
+            $matched = false;
+            foreach ([true, false] as $exact) {
+                if ($matched) {
+                    break;
+                }
+                foreach ($keys as $key) {
+                    if ($matched) {
+                        break;
+                    }
+                    $key = self::normalize((string) $key);
+                    foreach ($index as $norm => $value) {
+                        if (isset($used[$norm])) {
+                            continue;
+                        }
+                        if ($exact ? $norm !== $key : !str_contains($norm, $key)) {
+                            continue;
+                        }
+                        $out[] = ['k' => $label !== '' ? $label : $key, 'v' => self::shortenValue($value)];
+                        $used[$norm] = true;
+                        $matched = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Chips extraidos del nombre del producto (fallback para el catalogo sin
+     * caracteristicas): "…32 GB DDR5" -> Memoria DDR5, Capacidad 32 GB.
+     *
+     * @return array<int, array{k:string,v:string}>
+     */
+    private static function highlightsFromName(string $name, int $limit): array
+    {
+        $name = trim((string) preg_replace('/\s+/u', ' ', $name));
+        if ($name === '') {
+            return [];
+        }
+
+        $found = [];
+
+        // Cada regla: etiqueta + patron + que se muestra (0 = todo, 1 = grupo).
+        $rules = [
+            ['Socket', '/\b(LGA\s?-?\d{3,4}|AM[3-5]|FM[12]|SP[3-6]\b|sTR5|TR4)\b/iu', 1],
+            ['Grafica', '/\b(RTX\s?(?:PRO\s?)?\d{4}\s?(?:Ti|SUPER)?|RX\s?\d{4}\s?(?:XTX|XT)?|GTX\s?\d{3,4}\s?(?:Ti)?|Arc\s?[AB]\d{3})\b/iu', 1],
+            ['Memoria', '/\b(DDR[345])\b/iu', 1],
+            ['Capacidad', '/\b(\d{1,4}\s?(?:TB|GB))\b/iu', 1],
+            ['CPU', '/\b(Ryzen\s?\d|Core\s?(?:Ultra\s?)?[iI][3579]|Core\s?Ultra\s?\d|Xeon|Celeron|Pentium|Threadripper)\b/u', 1],
+            ['Almacenamiento', '/\b(NVMe|SSD|HDD)\b/iu', 1],
+            ['Formato', '/\b(E-ATX|Micro-?ATX|Micro\sATX|mATX|Mini-?ITX|Mini\sITX|ATX)\b/iu', 1],
+            ['Pantalla', '/\b(\d{2}(?:[.,]\d)?\s?"|\d{2}(?:[.,]\d)?\s?pulgadas)\b/iu', 1],
+            ['Velocidad', '/\b(\d{2,4}\s?(?:Hz|MT\/s|MHz))\b/iu', 1],
+            ['Garantia', '/\b(\d+\s?(?:anos|años|meses)\s?(?:de\s?)?garant[ií]a)\b/iu', 1],
+        ];
+
+        foreach ($rules as $rule) {
+            if (count($found) >= $limit) {
+                break;
+            }
+            [$label, $pattern, $group] = $rule;
+            if (!preg_match($pattern, $name, $m)) {
+                continue;
+            }
+            $value = trim((string) ($m[$group] ?? $m[0]));
+            if ($value === '') {
+                continue;
+            }
+            $found[] = ['k' => $label, 'v' => self::shortenValue($value)];
+        }
+
+        return $found;
+    }
+
+    /**
+     * Recorta un valor para que quepa en un chip: quita prefijos redundantes
+     * ("Socket AM5" -> "AM5") y limita la longitud.
+     */
+    private static function shortenValue(string $value): string
+    {
+        $value = trim((string) preg_replace('/\s+/u', ' ', $value));
+        $value = (string) preg_replace('/^(socket|z[oó]calo)\s+/iu', '', $value);
+
+        if (mb_strlen($value) <= 32) {
+            return $value;
+        }
+        // Se corta por la coma mas cercana al limite para no partir una palabra.
+        $corte = mb_substr($value, 0, 32);
+        $pos = mb_strrpos($corte, ',');
+        if ($pos !== false && $pos > 12) {
+            $corte = mb_substr($corte, 0, $pos);
+        }
+
+        return rtrim($corte, ' ,;.-') . '...';
+    }
+
+    // =====================================================================
     // INTERNOS
     // =====================================================================
 

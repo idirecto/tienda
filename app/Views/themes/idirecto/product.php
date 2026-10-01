@@ -14,6 +14,7 @@ $images      = $product['images'] ?? [];
 $price       = $product['price_final'] ?? null;
 $inStock     = (bool) ($product['in_stock'] ?? false);
 $stock       = (int) ($product['stock_total'] ?? 0);
+$stockBand   = (string) ($product['stock_band'] ?? ($inStock ? 'in' : 'out'));
 $bullets     = $product['bullets'] ?? [];
 $reviews     = $product['reviews'] ?? [];
 $specSummary = $product['spec_summary'] ?? [];
@@ -192,8 +193,14 @@ $initial = mb_strtoupper(mb_substr((string) $product['nombre'], 0, 2));
                         <p class="muted">Precio no disponible. Consulta con la tienda.</p>
                     <?php endif; ?>
 
-                    <p class="stock <?= $inStock ? 'stock-in' : 'stock-out' ?>">
-                        <?= $inStock ? 'Stock disponible: ' . $stock : 'Producto sin stock' ?>
+                    <p class="stock stock-<?= e($stockBand) ?>">
+                        <?php if ($stockBand === 'out'): ?>
+                            Producto sin stock
+                        <?php elseif ($stockBand === 'low'): ?>
+                            Ultimas unidades disponibles (<?= $stock ?>)
+                        <?php else: ?>
+                            Stock disponible: <?= $stock ?>
+                        <?php endif; ?>
                     </p>
 
                     <?php if ($inStock && $tenant->allowOrders()): ?>

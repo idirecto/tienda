@@ -85,7 +85,8 @@ $isActive = static function (string $path) use ($current, $base): bool {
     window.TIENDA = {
         base: <?= json_encode($base, JSON_UNESCAPED_SLASHES) ?>,
         csrf: <?= json_encode(\Tienda\Core\Csrf::token()) ?>,
-        uploadUrl: <?= json_encode($base . '/panel/media/subir', JSON_UNESCAPED_SLASHES) ?>
+        uploadUrl: <?= json_encode($base . '/panel/media/subir', JSON_UNESCAPED_SLASHES) ?>,
+        designTokensUrl: <?= json_encode($base . '/panel/diseno/tokens', JSON_UNESCAPED_SLASHES) ?>
     };
 </script>
 <script src="<?= e(asset('assets/js/panel.js')) ?>" defer></script>

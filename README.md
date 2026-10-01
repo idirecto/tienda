@@ -381,12 +381,16 @@ ambas páginas se vean igual:
 
 - **Galería**: carrusel que se desliza lateralmente y se navega **solo con las
   miniaturas** (idirecto no usa flechas: `carousel-control` no aparece en su
-  HTML). Las miniaturas son `flex: 1 1 60px; max-width: 90px` con el borde en la
-  imagen y la activa en `2px solid #428BCA` + `opacity: .7`.
-- **Especificaciones**: tarjetas blancas de radio 16px sin rayado, con filas
-  separadas por una línea fina y el **valor alineado a la derecha en negrita**.
-- **De un vistazo**: cuadros centrados sobre `#f3f5f7` con icono en caja blanca.
-- **Descripción**: puntos con viñeta circular cian sobre `#f8fafc`.
+  HTML). Las miniaturas usan el mismo reparto de anchos y la activa se marca con
+  el color principal del tema.
+- **Especificaciones**: tarjetas con filas separadas por una línea fina y el
+  **valor alineado a la derecha en negrita**.
+- **De un vistazo**: cuadros centrados con icono en caja destacada.
+- **Descripción**: puntos con viñeta circular usando el color de acento.
+
+La estructura visual sigue siendo la de idirecto, pero **los colores salen del
+sistema de diseño** (ver §3.bis): antes estaban fijados a la paleta de idirecto y
+ahora la ficha se adapta a la marca de cada tienda y al modo oscuro.
 
 Aun así el JS (`public/assets/js/shop.js`) añade dos mejoras sobre el original:
 
@@ -414,29 +418,124 @@ respetando las comas dentro de un valor (p. ej. `Red de datos: 3G, EDGE`).
 
 ---
 
+## 3.bis Sistema de diseño, portada y filtros
+
+### Design tokens (white-label de verdad)
+
+El storefront **no tiene ni un color escrito a mano**: `public/assets/css/shop.css`
+solo consume variables CSS (`--c-*`). Quien las genera y de dónde salen:
+
+| Pieza | Papel |
+|---|---|
+| `config/appearance.php` | Valores por defecto de la plataforma (paletas clara y oscura, presets, radios, tipografías, anchos). Se puede ajustar por `.env` (`THEME_*`). |
+| `mt_stores` | Lo que elige cada tienda en el panel: `color_primary`, `color_secondary`, `color_accent`, `color_bg`, `color_surface`, `color_text`, `color_border`, `color_scheme`, `radius_scale`, `font`, `theme_tokens`, `custom_css`. |
+| `Tienda\Core\Appearance` | Resuelve el mapa de tokens (marca, superficies, texto, bordes, estados, stock, sombras, radios, tipografías), **deriva** los tonos que faltan (hover, suave, contraste legible) y emite el CSS. |
+
+Prioridad: configuración → columnas de la tienda → `theme_tokens` (JSON que
+pisa cualquier token, sin migrar la base de datos). El `<head>` del storefront
+inyecta el resultado en línea, así que no hay fichero extra ni parpadeo.
+
+**Modo oscuro nativo.** `color_scheme` admite `light`, `dark` y `auto` (sigue al
+sistema). El CSS emite `:root[data-color-scheme="dark"]` y
+`@media (prefers-color-scheme: dark) { :root[data-color-scheme="auto"] }`, de modo
+que los mismos componentes cambian de piel sin duplicar reglas. El cliente puede
+conmutar claro/oscuro desde la cabecera (se guarda en `localStorage` y se aplica
+antes de pintar, sin destello).
+
+**Presets.** El panel trae cinco identidades completas (retail limpio,
+tecnológico oscuro tipo Caseking, gaming, profesional y minimal): un clic y la
+tienda cambia de colores, modo, forma y tipografía. Se aplican en el servidor
+(`apply_preset`), no solo en el navegador.
+
+**Vista previa fiel.** El panel abre su propia tienda en un `<iframe>` y le
+inyecta, por `postMessage`, el CSS que genera **el mismo** código que el
+storefront (`/panel/diseno/tokens`). Lo que se ve en la previa es exactamente lo
+que se publica, sin reimplementar el cálculo de colores en JavaScript.
+
+### Portada
+
+`app/Views/themes/idirecto/home.php` monta, de arriba abajo: slider a ancho
+completo (`_hero.php`), franja de garantías, **accesos rápidos** a las categorías
+principales, destacados del catálogo central y productos propios.
+
+- El slider es un carrusel accesible: las diapositivas inactivas llevan `hidden`
+  (no reciben foco), las flechas y los puntos son botones reales, la rotación se
+  pausa al pasar el ratón o al enfocar y **se desactiva** con
+  `prefers-reduced-motion`. Admite teclado y gesto de deslizar.
+- La primera imagen lleva `fetchpriority="high"` (es el LCP) y el `<head>` hace
+  `preconnect` al host de las imágenes del catálogo.
+- Los accesos rápidos se resuelven contra el árbol real de categorías
+  (`Catalog::quickCategories()`): si una categoría se queda sin stock, su tarjeta
+  desaparece sola. Se configuran en `config/catalog.php` (`quick_links`), con
+  `cat`, `subcat` y/u `q` (para nichos sin subcategoría propia, como
+  «ultraligeros»).
+
+### Tarjetas de producto
+
+Miniatura grande, marca, nombre, **chips con las especificaciones que se
+comparan** (socket, gráfica, memoria, capacidad…), etiqueta de stock dinámica
+(`En stock` / `Últimas N ud.` / `Sin stock`) y CTA que aparece al pasar el ratón o
+al enfocar con el teclado.
+
+Los chips salen de `productos_ext.caracteristicas` (barato) y, si el producto no
+trae datos, se **extraen del nombre** (`Specs::quickHighlights()`), que en
+informática suele llevarlos (`RTX 5080`, `DDR5`, `LGA 1851`, `16 GB`…). Todo se
+resuelve con tres consultas fijas por listado (marca, stock y especificaciones),
+no una por tarjeta.
+
+### Filtros avanzados (facets)
+
+Se declaran en `config/catalog.php` (`facets`) y se pintan como **enlaces**, no
+como formulario: cada combinación tiene URL propia (compartible e indexable) y
+funciona sin JavaScript. En móvil se convierten en un panel lateral que activa el
+JS (sin JS no hay botón muerto).
+
+| Facet | Ámbito | Ejemplo |
+|---|---|---|
+| Socket | nombre + características | AM5, LGA 1851, LGA 1700 |
+| Gráfica | nombre + características | RTX serie 50, RX 9000, Arc |
+| Memoria | nombre + características | DDR5, DDR4, DDR3 |
+| Factor de forma | nombre + características | E-ATX, ATX, Micro-ATX, Mini-ITX |
+| Almacenamiento | nombre + características | NVMe, SSD, HDD |
+| Marca | dinámico del catálogo | top 12 marcas con stock del contexto (cacheado) |
+| Precio | rango | mínimo y máximo reales (cacheados) |
+
+Los filtros se limitan por contexto (`when`: categoría o subcategoría), así que
+«Socket» solo aparece donde tiene sentido. Los chips de filtros activos conservan
+el resto al quitarse.
+
+**Rendimiento.** El orden por precio obliga a MySQL a calcular el precio de cada
+candidato: dentro de una categoría es instantáneo, pero sobre las ~41.000
+referencias del catálogo entero cuesta segundos. Por eso solo se ofrece cuando el
+listado está acotado (categoría, búsqueda, facet o rango); en el catálogo
+completo se mantiene relevancia y nombre.
+
+---
+
 ## 4. Estructura
 
 ```
 tienda/
 ├── index.php                Front controller (rutas)
-├── config/                  app.php, database.php, storage.php, tenant.php, catalog.php
+├── config/                  app.php, appearance.php, database.php, storage.php, tenant.php, catalog.php
 ├── app/
 │   ├── bootstrap.php        Autoload, entorno, sesion, helpers
-│   ├── Core/                Env, Config, Database, Router, View, Controller, Model,
-│   │   │                    Auth, Csrf, Session, Tenant, TenantResolver, Dns
+│   ├── Core/                Env, Config, Appearance, Database, Router, View, Controller, Model,
+│   │   │                    Auth, Csrf, Session, Tenant, TenantResolver, Dns, Specs, Str
 │   │   └── Storage/         StorageInterface, LocalStorage, S3Storage, StorageManager
 │   ├── Controllers/         StorefrontController + Admin/*
 │   ├── Models/              Store, StoreUser, Plan, Theme, Banner, Notice,
 │   │                        OwnProduct, Media, Domain, DnsLog, ContentBlock,
 │   │                        Setting, Catalog
-│   └── Views/               layouts/, panel/, themes/idirecto|moderno|minimal/, errors/
+│   └── Views/               layouts/, panel/ (incl. design_preview.php),
+│                            themes/idirecto|moderno|minimal/ (home, _hero, _card, …), errors/
 ├── public/assets/           css/ y js/ del storefront y del panel
 ├── public/uploads/          destino del driver local (no versionado)
 ├── database/
-│   ├── migrations/          001_schema.sql (tablas mt_)
+│   ├── migrations/          001_schema.sql (tablas mt_) · 002_design_tokens.sql
 │   ├── seeds/               001_seed.sql (planes, temas, tienda demo)
 │   └── migrate.php          Ejecutor de migraciones y semillas
-├── tools/verify.php         Comprobacion automatica
+├── tools/verify.php         Comprobacion automatica (60)
 └── deploy/                  Vhosts/plantillas de Apache y nginx + scripts
 ```
 
@@ -461,7 +560,9 @@ tienda/
 |---|---|
 | `/panel/login` · `/panel/logout` | Acceso |
 | `/panel` | Resumen (cuotas, actividad, primeros pasos) |
-| `/panel/diseno` | Plantilla, colores, tipografía, logo, textos y SEO |
+| `/panel/diseno` | Plantilla, identidad visual (tokens), logo, textos y SEO |
+| `/panel/diseno/tokens` | Vista previa: CSS de tokens que generan los valores del formulario |
+| `/panel/diseno/previa` | Página de muestra que se carga en el `<iframe>` de la vista previa |
 | `/panel/banners` | Banners con imagen (límite por plan) |
 | `/panel/avisos` | Avisos/anuncios |
 | `/panel/productos` | Productos propios (alta/edición/borrado, cuota por plan) |
@@ -543,9 +644,12 @@ php database/migrate.php --seed     # + semillas
 ## 10. Estado y siguientes pasos
 
 **Hecho y verificado:** núcleo MVC, configuración BD/S3, migraciones y semillas,
-multi-tenant por hostname, storefront con tema base, panel completo (diseño,
-banners, avisos, productos, dominios, ajustes), subida de imágenes con validación
-y cuota de plan aplicada en servidor.
+multi-tenant por hostname, storefront con **sistema de diseño tokenizado**
+(claro/oscuro/auto, presets y vista previa en vivo), portada con slider y accesos
+rápidos, tarjetas de producto con especificaciones clave y etiqueta de stock,
+filtros avanzados por socket/gráfica/memoria/formato/marca/precio, panel completo
+(diseño, banners, avisos, productos, dominios, ajustes), subida de imágenes con
+validación y cuota de plan aplicada en servidor.
 
 **Pendiente (siguientes iteraciones):**
 

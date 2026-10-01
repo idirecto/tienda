@@ -79,6 +79,60 @@ final class Tenant
         return (string) ($this->store['color_secondary'] ?? '#1f2937');
     }
 
+    /** Color de acento (detalles, focos, enlaces secundarios). */
+    public function colorAccent(): string
+    {
+        return (string) ($this->store['color_accent'] ?? '');
+    }
+
+    /** Fondo de la pagina. Cadena vacia = usar el valor por defecto del tema. */
+    public function colorBackground(): string
+    {
+        return (string) ($this->store['color_bg'] ?? '');
+    }
+
+    /** Fondo de las tarjetas y bloques. */
+    public function colorSurface(): string
+    {
+        return (string) ($this->store['color_surface'] ?? '');
+    }
+
+    /** Color del texto principal. */
+    public function colorText(): string
+    {
+        return (string) ($this->store['color_text'] ?? '');
+    }
+
+    /** Color de las lineas y bordes. */
+    public function colorBorder(): string
+    {
+        return (string) ($this->store['color_border'] ?? '');
+    }
+
+    /** Esquema de color: light | dark | auto. */
+    public function colorScheme(): string
+    {
+        return (string) ($this->store['color_scheme'] ?? 'light');
+    }
+
+    /** Escala de radios: compact | standard | rounded. */
+    public function radiusScale(): string
+    {
+        return (string) ($this->store['radius_scale'] ?? 'standard');
+    }
+
+    /** Tokens de diseno libres (JSON) que pisan al sistema. */
+    public function themeTokens(): string
+    {
+        return (string) ($this->store['theme_tokens'] ?? '');
+    }
+
+    /** CSS propio de la tienda (avanzado, se inyecta al final del <head>). */
+    public function customCss(): string
+    {
+        return (string) ($this->store['custom_css'] ?? '');
+    }
+
     public function font(): string
     {
         return (string) ($this->store['font'] ?? 'system');

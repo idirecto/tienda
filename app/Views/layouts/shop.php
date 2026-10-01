@@ -2,50 +2,82 @@
 /**
  * Layout del storefront.
  *
+ * Todo el color, la tipografia y las formas salen de variables CSS que genera
+ * `Appearance` a partir de la identidad de la tienda: aqui no hay ni un color
+ * escrito a mano.
+ *
  * @var string $content
  * @var \Tienda\Core\Tenant $tenant
  * @var string $pageTitle
+ * @var string $pageDescription
  * @var string $base
+ * @var string|null $canonical
+ * @var array $blocks
  */
-$brand = $tenant->colorPrimary();
-$brand2 = $tenant->colorSecondary();
-$fontMap = [
-    'system' => "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
-    'serif'  => "Georgia, 'Times New Roman', serif",
-    'mono'   => "'SFMono-Regular', Consolas, 'Liberation Mono', monospace",
-];
-$font = $fontMap[$tenant->font()] ?? $fontMap['system'];
+use Tienda\Core\Appearance;
+use Tienda\Models\Catalog;
+
+$scheme = Appearance::scheme($tenant);
+$themeCss = Appearance::css($tenant);
+$brandName = $tenant->logoUrl();
 
 // Menu de categorias del catalogo (categorias -> subcategorias con stock).
 // Va cacheado en fichero, asi que es barato en cada pagina del storefront.
-$catalogMenu = \Tienda\Models\Catalog::menuTree();
+$catalogMenu = isset($catalogMenu) ? $catalogMenu : Catalog::menuTree();
+
+// Precarga de la conexion con el CDN de imagenes del catalogo: ahorra el
+// saludo TLS en cuanto aparece la primera tarjeta.
+$imageHost = (string) parse_url((string) config('catalog.image_url', ''), PHP_URL_HOST);
+
+$headerStyle = preg_replace('/[^a-z0-9_\-]/i', '', $tenant->headerStyle()) ?: 'classic';
 ?>
 <!doctype html>
-<html lang="es">
+<html lang="es" data-color-scheme="<?= e($scheme) ?>">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title><?= e($pageTitle ?? $tenant->name()) ?></title>
     <meta name="description" content="<?= e($pageDescription ?? $tenant->metaDescription()) ?>">
+    <meta name="theme-color" content="<?= e(Appearance::themeColor($tenant)) ?>">
     <?php if (!empty($canonical)): ?>
         <link rel="canonical" href="<?= e($canonical) ?>">
     <?php endif; ?>
+    <?php if ($tenant->get('favicon_url')): ?>
+        <link rel="icon" href="<?= e((string) $tenant->get('favicon_url')) ?>">
+    <?php endif; ?>
+
+    <?php if ($imageHost): ?>
+        <link rel="preconnect" href="https://<?= e($imageHost) ?>" crossorigin>
+    <?php endif; ?>
+
+    <?php /* Preferencia de modo guardada por el usuario: se aplica antes de pintar para que no haya parpadeo. */ ?>
+    <script>
+        (function () {
+            try {
+                var saved = window.localStorage.getItem('tienda.color-scheme');
+                if (saved === 'dark' || saved === 'light') {
+                    document.documentElement.setAttribute('data-color-scheme', saved);
+                }
+            } catch (e) { /* Modo privado: se usa el esquema de la tienda. */ }
+        })();
+    </script>
+
+    <?php /* Identidad de la tienda (design tokens) */ ?>
+    <style><?= $themeCss ?></style>
     <link rel="stylesheet" href="<?= e(asset('assets/css/shop.css')) ?>">
-    <style>
-        :root {
-            --brand: <?= e($brand) ?>;
-            --brand-dark: <?= e($brand2) ?>;
-            --font: <?= $font ?>;
-        }
-    </style>
+    <?php if ($tenant->customCss() !== ''): ?>
+        <style><?= $tenant->customCss() ?></style>
+    <?php endif; ?>
 </head>
-<body class="shop theme-<?= e($tenant->theme()) ?> header-<?= e($tenant->headerStyle()) ?>">
+<body class="shop theme-<?= e($tenant->theme()) ?> header-<?= e($headerStyle) ?>">
+
+<a class="skip-link" href="#contenido">Saltar al contenido principal</a>
 
 <header class="shop-header">
     <div class="topbar">
         <div class="container topbar-inner">
             <span class="topbar-item">Envio rapido en 24/48 h</span>
-            <span class="topbar-item">Atencion personalizada</span>
+            <span class="topbar-item topbar-hide-sm">Atencion personalizada</span>
             <span class="topbar-item topbar-right">
                 <a href="<?= e($base) ?>/contacto">Contacto</a>
             </span>
@@ -53,29 +85,44 @@ $catalogMenu = \Tienda\Models\Catalog::menuTree();
     </div>
 
     <div class="container header-main">
-        <a class="brand" href="<?= e($base) ?>/">
-            <?php if ($tenant->logoUrl()): ?>
-                <img src="<?= e($tenant->logoUrl()) ?>" alt="<?= e($tenant->name()) ?>">
+        <a class="brand" href="<?= e($base) ?>/" aria-label="<?= e($tenant->name()) ?> - Inicio">
+            <?php if ($brandName): ?>
+                <img src="<?= e($brandName) ?>" alt="<?= e($tenant->name()) ?>" width="160" height="44" decoding="async">
             <?php else: ?>
-                <span class="brand-mark"><?= e(mb_substr($tenant->name(), 0, 1)) ?></span>
+                <span class="brand-mark" aria-hidden="true"><?= e(mb_substr($tenant->name(), 0, 1)) ?></span>
                 <span class="brand-text"><?= e($tenant->name()) ?></span>
             <?php endif; ?>
         </a>
 
-        <form class="search" action="<?= e($base) ?>/catalogo" method="get">
-            <input type="search" name="q" placeholder="Buscar productos..." value="<?= e($_GET['q'] ?? '') ?>">
-            <button type="submit" aria-label="Buscar">Buscar</button>
+        <form class="search" action="<?= e($base) ?>/catalogo" method="get" role="search">
+            <label class="sr-only" for="search-q">Buscar productos</label>
+            <input type="search" id="search-q" name="q" placeholder="Buscar productos, marcas, referencia..."
+                   value="<?= e($_GET['q'] ?? '') ?>" autocomplete="off">
+            <button type="submit" aria-label="Buscar">
+                <?= icon_svg('search') ?>
+                <span class="search-label">Buscar</span>
+            </button>
         </form>
 
         <div class="header-actions">
             <?php if ($tenant->phone()): ?>
-                <a class="phone" href="tel:<?= e($tenant->phone()) ?>"><?= e($tenant->phone()) ?></a>
+                <a class="phone" href="tel:<?= e($tenant->phone()) ?>">
+                    <?= icon_svg('phone') ?>
+                    <span><?= e($tenant->phone()) ?></span>
+                </a>
             <?php endif; ?>
+
+            <button type="button" class="icon-btn scheme-toggle" data-scheme-toggle
+                    aria-label="Cambiar entre modo claro y oscuro" aria-pressed="false">
+                <?= icon_svg('sun', 'icon-sun') ?>
+                <?= icon_svg('moon', 'icon-moon') ?>
+            </button>
+
             <a class="btn-panel" href="<?= e($base) ?>/panel">Mi panel</a>
         </div>
     </div>
 
-    <nav class="mainnav">
+    <nav class="mainnav" aria-label="Navegacion principal">
         <div class="container nav-inner">
             <a href="<?= e($base) ?>/">Inicio</a>
             <?php if ($catalogMenu !== []): ?>
@@ -162,13 +209,13 @@ $catalogMenu = \Tienda\Models\Catalog::menuTree();
     <div class="notices">
         <div class="container">
             <?php foreach ($notices as $n): ?>
-                <div class="notice notice-<?= e($n['type']) ?>"><?= e($n['message']) ?></div>
+                <div class="notice notice-<?= e($n['type']) ?>" role="status"><?= e($n['message']) ?></div>
             <?php endforeach; ?>
         </div>
     </div>
 <?php endif; ?>
 
-<main class="shop-main">
+<main class="shop-main" id="contenido" tabindex="-1">
     <?= $content ?>
 </main>
 
@@ -178,14 +225,14 @@ $catalogMenu = \Tienda\Models\Catalog::menuTree();
             <h4><?= e($tenant->name()) ?></h4>
             <p><?= e($tenant->tagline()) ?></p>
         </div>
-        <div>
+        <nav aria-label="Enlaces de la tienda">
             <h4>Tienda</h4>
             <a href="<?= e($base) ?>/catalogo">Catalogo</a>
             <a href="<?= e($base) ?>/contacto">Contacto</a>
             <?php foreach (array_slice($blocks ?? [], 0, 3) as $b): ?>
                 <a href="<?= e($base) ?>/pagina/<?= e($b['slug']) ?>"><?= e($b['title']) ?></a>
             <?php endforeach; ?>
-        </div>
+        </nav>
         <div>
             <h4>Contacto</h4>
             <?php if ($tenant->address()): ?><p><?= e($tenant->address()) ?></p><?php endif; ?>
@@ -204,6 +251,6 @@ $catalogMenu = \Tienda\Models\Catalog::menuTree();
     </div>
 </footer>
 
-<script src="<?= e(asset('assets/js/shop.js')) ?>"></script>
+<script src="<?= e(asset('assets/js/shop.js')) ?>" defer></script>
 </body>
 </html>

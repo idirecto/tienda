@@ -1,25 +1,80 @@
 <?php
-/** Tarjeta de producto del catalogo central. @var array $p @var string $base */
-$img = $p['image_url'] ?? null;
-$price = $p['price_final'] ?? null;
+/**
+ * Tarjeta de producto del catalogo central.
+ *
+ * Estilo minimalista tipo Scan/Caseking: la foto manda, debajo la marca, el
+ * nombre y los datos tecnicos que de verdad se comparan (socket, memoria,
+ * capacidad...), y al final precio y CTA. La etiqueta de disponibilidad es
+ * dinamica: "En stock", "Ultimas N ud." o "Sin stock".
+ *
+ * @var array $p Fila decorada por Catalog::decorate()
+ * @var \Tienda\Core\Tenant $tenant
+ * @var string $base
+ */
 $url = product_url($p);
+$price = $p['price_final'] ?? null;
+$band = (string) ($p['stock_band'] ?? ($p['in_stock'] ?? false ? 'in' : 'out'));
+$label = (string) ($p['stock_label'] ?? '');
+$specs = (array) ($p['specs'] ?? []);
+$initial = mb_strtoupper(mb_substr((string) ($p['nombre'] ?? ''), 0, 2));
 ?>
-<article class="product-card">
-    <a class="product-media" href="<?= e($url) ?>">
-        <span class="product-ph" aria-hidden="true"><?= e(mb_substr((string) $p['nombre'], 0, 2)) ?></span>
-        <?php if ($img): ?>
-            <img src="<?= e($img) ?>" alt="<?= e($p['nombre']) ?>" loading="lazy" onerror="this.remove()">
+<article class="product-card" data-stock="<?= e($band) ?>">
+    <div class="product-media">
+        <span class="product-ph" aria-hidden="true"><?= e($initial) ?></span>
+        <?php if (!empty($p['image_url'])): ?>
+            <img src="<?= e($p['image_url']) ?>" alt="<?= e($p['nombre']) ?>"
+                 loading="lazy" decoding="async" width="400" height="400"
+                 onerror="this.remove()">
         <?php endif; ?>
-    </a>
+
+        <div class="product-flags">
+            <?php if ($label !== ''): ?>
+                <span class="badge badge-stock badge-<?= e($band) ?>">
+                    <i class="dot" aria-hidden="true"></i><?= e($label) ?>
+                </span>
+            <?php endif; ?>
+            <?php if (!empty($p['is_new']) && $band !== 'out'): ?>
+                <span class="badge badge-new">Novedad</span>
+            <?php endif; ?>
+        </div>
+    </div>
+
     <div class="product-body">
-        <?php if (!empty($p['marca_nombre'])): ?>
-            <span class="product-brand"><?= e($p['marca_nombre']) ?></span>
+        <div class="product-head">
+            <?php if (!empty($p['marca_nombre'])): ?>
+                <span class="product-brand"><?= e($p['marca_nombre']) ?></span>
+            <?php endif; ?>
+            <h3 class="product-name">
+                <a href="<?= e($url) ?>"><?= e($p['nombre']) ?></a>
+            </h3>
+        </div>
+
+        <?php if ($specs !== []): ?>
+            <ul class="product-specs">
+                <?php foreach (array_slice($specs, 0, 3) as $spec): ?>
+                    <li>
+                        <span class="spec-k"><?= e($spec['k']) ?></span>
+                        <span class="spec-v"><?= e($spec['v']) ?></span>
+                    </li>
+                <?php endforeach; ?>
+            </ul>
         <?php endif; ?>
-        <a class="product-name" href="<?= e($url) ?>"><?= e($p['nombre']) ?></a>
-        <?php if ($tenant->showPrices() && $price !== null): ?>
-            <span class="product-price"><?= e(euros($price)) ?></span>
-        <?php elseif ($tenant->showPrices()): ?>
-            <span class="product-price product-price-na">Consultar</span>
-        <?php endif; ?>
+
+        <div class="product-foot">
+            <div class="product-price-box">
+                <?php if ($tenant->showPrices() && $price !== null): ?>
+                    <span class="product-price"><?= e(euros($price)) ?></span>
+                    <span class="product-vat">IVA incl.</span>
+                <?php elseif ($tenant->showPrices()): ?>
+                    <span class="product-price product-price-na">Consultar</span>
+                <?php endif; ?>
+            </div>
+        </div>
+
+        <div class="product-actions">
+            <a class="btn btn-primary btn-block product-cta" href="<?= e($url) ?>">
+                Ver ficha <?= icon_svg('arrow-r') ?>
+            </a>
+        </div>
     </div>
 </article>

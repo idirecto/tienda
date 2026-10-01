@@ -21,9 +21,11 @@ final class StorefrontController extends Controller
     public function home(array $params = []): string
     {
         $storeId = $this->tenant->id();
+        $base = \Tienda\Core\View::basePath();
+        $perPage = (int) Config::get('catalog.per_page', 12);
 
         $own = OwnProduct::publishedForStore($storeId);
-        $central = Catalog::featured((int) Config::get('catalog.per_page', 12));
+        $central = Catalog::featured($perPage);
 
         return $this->view($this->themeView('home'), [
             'banners'      => Banner::visibleForStore($storeId, 'hero'),
@@ -31,6 +33,8 @@ final class StorefrontController extends Controller
             'blocks'       => ContentBlock::forStore($storeId),
             'ownProducts'  => $own,
             'central'      => $central,
+            // Accesos rapidos resueltos contra el catalogo real (con stock).
+            'quickLinks'   => Catalog::quickCategories($base),
             'catalogReady' => Catalog::isAvailable(),
             'pageTitle'    => $this->tenant->metaTitle(),
         ], 'shop');
@@ -42,6 +46,20 @@ final class StorefrontController extends Controller
         $q = isset($_GET['q']) ? trim((string) $_GET['q']) : null;
         $category = isset($_GET['cat']) ? (int) $_GET['cat'] : null;
         $subcategory = isset($_GET['subcat']) ? (int) $_GET['subcat'] : null;
+
+        // Filtros avanzados (se sanean contra config/catalog.php) y orden.
+        $selection = Catalog::selectionFromQuery($_GET);
+
+        // El listado esta "acotado" cuando hay algo que reduce el numero de
+        // candidatos. Solo entonces se ofrece ordenar por precio (ver
+        // Catalog::sorts): sobre el catalogo entero esa orden es cara.
+        $narrowed = $category !== null
+            || ($q !== null && $q !== '')
+            || $selection['terms'] !== []
+            || $selection['price_min'] !== null
+            || $selection['price_max'] !== null;
+
+        $sort = Catalog::sortKey(isset($_GET['orden']) ? (string) $_GET['orden'] : null, $narrowed);
 
         $menu = Catalog::menuTree();
 
@@ -55,7 +73,17 @@ final class StorefrontController extends Controller
             $category = (int) $subInfo['categoria_id'];
         }
 
-        $result = Catalog::paginate($page, null, $q, $category, $subcategory);
+        $result = Catalog::paginate(
+            $page,
+            null,
+            $q,
+            $category,
+            $subcategory,
+            $selection['terms'],
+            $selection['price_min'],
+            $selection['price_max'],
+            $sort
+        );
 
         // Categoria activa: nombre y subcategorias (menu lateral del catalogo).
         $categoryName = null;
@@ -81,6 +109,11 @@ final class StorefrontController extends Controller
             'subcategory'   => $subInfo,
             'subcategories' => $subcategories,
             'title'         => $title,
+            'facets'        => Catalog::facets($category, $subcategory, $selection),
+            'selection'     => $selection,
+            'activeFilters' => $selection['flat'],
+            'sorts'         => Catalog::sorts($narrowed),
+            'sort'          => $sort,
             'ownProducts'   => OwnProduct::publishedForStore($this->tenant->id()),
             'catalogReady'  => Catalog::isAvailable(),
             'pageTitle'     => $title . ' - ' . $this->tenant->name(),
