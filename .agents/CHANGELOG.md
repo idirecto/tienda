@@ -5,6 +5,37 @@ El detalle línea a línea está en `git log`.
 
 ---
 
+## 2026-10-01 · «Error interno»: permisos de `.env` y diagnóstico en el log
+
+**Motivo:** `http://local.tienda/` devolvía `500 «Error interno»`. No era el
+código: el proceso de Apache (`www-data`) **no podía leer `.env`** (estaba en
+`pablo:pablo 640`, con un grupo distinto y sin ACL). Sin `.env` la app se queda
+sin credenciales de BD y sin `APP_DEBUG` (de ahí el mensaje genérico en vez del
+detalle), y como tampoco podía escribir en `storage/logs`, el error real no
+quedaba registrado en ninguna parte. La base de datos, mientras tanto, ya se
+había completado por su lado (239 tablas, catálogo y `mt_`).
+
+**Cambios**
+
+- Permisos corregidos **sin `sudo`** con ACL (`setfacl`): lectura de `.env` para
+  `www-data` sin abrirlo a todo el mundo, y escritura (con ACL por defecto) en
+  `storage/logs`, `storage/cache` y `public/uploads`. El arreglo «canónico»
+  sigue siendo `sudo bash deploy/setup-local-domain.sh`.
+- `app/bootstrap.php`: el log propio solo se activa si `storage/logs` es
+  escribible; si no, el error va al log del servidor en lugar de perderse.
+- `index.php`: si el error salta con `APP_DEBUG` desactivado, la línea del log
+  añade una pista cuando `.env` no es legible por el usuario del servidor web.
+- Documentación: README («Permisos: si ves “Error interno”») y
+  `operacion.md` (tabla de problemas frecuentes).
+
+**Verificación:** reproducido y arreglado con HTTP real. Sin el ACL: `500
+«Error interno»` y la pista en `storage/logs/php-error.log`. Con el ACL: `200`
+en `/`, `/catalogo`, `/catalogo?cat=`, `/catalogo?subcat=`, `/panel/login` y
+`/contacto`; `.env` y `app/` siguen dando `403`. `php tools/verify.php` →
+**TODO OK (29 comprobaciones)** y `check-privacidad.sh` OK.
+
+---
+
 ## 2026-09-30 · nginx + detección de servidor (dominio valduran.com)
 
 **Motivo:** el dueño va a publicar la web en un servidor Ubuntu con **nginx** en

@@ -21,6 +21,18 @@ _(vacío — sin petición pendiente)_
 
 Cada petición terminada se anota aquí con la fecha, qué se pidió y qué se hizo.
 
+### 2026-10-01 · «Error interno» en la portada (petición por chat)
+
+**Pedido:** revisar por qué `http://local.tienda/` solo mostraba «Error interno».
+
+**Hecho:** no era el código sino los permisos: el proceso de Apache
+(`www-data`) no podía leer `.env` (estaba en `pablo:pablo 640`), así que la app
+se quedaba sin credenciales y sin `APP_DEBUG`, y tampoco podía escribir el log.
+Arreglado con ACL (`setfacl`) sin `sudo`; además el log propio solo se activa si
+`storage/logs` es escribible y ahora la línea del log avisa cuando `.env` no es
+legible. La base de datos ya estaba completa: la web responde 200 y
+`php tools/verify.php` → **TODO OK (29)**.
+
 ### 2026-09-30 · Funcionar en nginx (valduran.com) además de en Apache (petición por chat)
 
 **Pedido:** que la web corra tanto en Apache como en nginx «según detecte el

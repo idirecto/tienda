@@ -126,6 +126,33 @@ sudo certbot --nginx -d valduran.com -d www.valduran.com
 > `X-Forwarded-Proto`) y el host de las URLs canónicas. El mismo código vale en
 > Apache y en nginx sin cambios.
 
+### Permisos: si ves «Error interno» en el navegador
+
+El síntoma clásico de permisos mal puestos es un **`500` con el texto «Error
+interno»** (sin más detalle). Suele significar que el usuario del servidor web
+(`www-data`) **no puede leer `.env`**: entonces la app se queda sin credenciales
+y sin `APP_DEBUG`, y el error real solo aparece en el log.
+
+El arreglo recomendado (idempotente, con `sudo`):
+
+```bash
+sudo bash deploy/setup-local-domain.sh      # Apache
+```
+
+Si no tienes `sudo` a mano, basta con dar acceso al usuario web por ACL, sin
+abrir `.env` a todo el mundo (sustituye `www-data` por el usuario de tu
+servidor: `www-data` en Debian/Ubuntu, `nginx` en otras distribuciones):
+
+```bash
+setfacl -m  u:www-data:r-- .env
+setfacl -R -m u:www-data:rwX storage/logs storage/cache public/uploads
+find storage/logs storage/cache public/uploads -type d -exec setfacl -m d:u:www-data:rwX {} +
+```
+
+Desde el 2026-10-01, si `.env` no es legible la línea del log
+(`storage/logs/php-error.log`) incluye una pista explícita, y si `storage/logs`
+no es escribible el error va al log del servidor en lugar de perderse.
+
 ---
 
 ## 3. Configuración (`.env`)

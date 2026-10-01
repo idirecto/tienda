@@ -109,6 +109,14 @@ try {
         echo '<h1>Error</h1><pre>' . htmlspecialchars((string) $e, ENT_QUOTES, 'UTF-8') . '</pre>';
     } else {
         echo '<h1>Error interno</h1>';
-        error_log('[tienda] ' . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
+        // Pista util en el log: el sintoma tipico de "Error interno" sin mas
+        // datos es que el usuario del servidor web no pueda leer .env (entonces
+        // ni hay credenciales ni se aplica APP_DEBUG).
+        $envFile = TIENDA_BASE . '/.env';
+        $pista = (is_file($envFile) && !is_readable($envFile))
+            ? ' [.env NO es legible por el usuario del servidor web: revisa permisos, '
+              . 'grupo www-data o ACL; ver deploy/setup-local-domain.sh]'
+            : '';
+        error_log('[tienda] ' . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine() . $pista);
     }
 }

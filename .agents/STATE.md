@@ -1,7 +1,7 @@
 # STATE — Estado del proyecto
 
 > **El agente actualiza este fichero al terminar cada sesión.**
-> Última actualización: **2026-09-29**
+> Última actualización: **2026-10-01**
 
 ---
 
@@ -11,14 +11,17 @@ La plataforma está **funcionando** en http://local.tienda: storefront con
 catálogo real, ficha de producto y panel completo. Falta el ciclo de compra
 (carrito y pago) para poder vender.
 
-> ⚠️ **Aviso de entorno (2026-09-30).** En esta máquina, la base de datos del
-> `.env` (`idirecto_db`) ya **no** contiene el catálogo (`productos`, `stock`,
-> `precios`…) ni las tablas `mt_` de la plataforma, así que la web responde
-> **500** en local. El catálogo está ahora en las bases `idirecto` (235.165
-> productos, 36 categorías) y `dev_idirecto_db`. El dueño pidió **no tocar la
-> base de datos**: para volver a un entorno funcional hay que restaurarla o
-> apuntar `DB_NAME` a la correcta y ejecutar
-> `php database/migrate.php --seed` (crea/repuebla las `mt_`).
+> ✅ **Entorno (2026-10-01).** `idirecto_db` está **completa** (239 tablas:
+> catálogo con 41.289 productos con stock, 33 categorías con stock, y las `mt_`),
+> la web responde 200 y `php tools/verify.php` da **TODO OK (29)**.
+>
+> ⚠️ **Si vuelve a salir un 500 con «Error interno»**: casi siempre es que el
+> usuario del servidor web (`www-data`) **no puede leer `.env`**, no un fallo de
+> código. El log `storage/logs/php-error.log` ya lo dice con una pista. Arreglo:
+> `sudo bash deploy/setup-local-domain.sh` o, sin sudo,
+> `setfacl -m u:www-data:r-- .env` (más `rwX` para `storage/{logs,cache}` y
+> `public/uploads`). En esta máquina está aplicado por **ACL** (el grupo del
+> fichero es `pablo`, así que `getfacl .env` muestra `user:www-data:r--`).
 
 | Área | Estado |
 |---|---|

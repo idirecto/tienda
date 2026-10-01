@@ -123,6 +123,8 @@ git push origin main
 | Síntoma | Comprobación |
 |---|---|
 | Página en blanco o 500 | `sudo tail /var/log/apache2/local.tienda-error.log` (o `/var/log/nginx/<dominio>.error.log`) |
+| «**Error interno**» sin más datos | Casi siempre: `www-data` **no puede leer `.env`** (sin credenciales ni `APP_DEBUG`). Mira `storage/logs/php-error.log` (lleva pista) y arregla con `sudo bash deploy/setup-local-domain.sh` o `setfacl -m u:www-data:r-- .env` |
+| `storage/` o `public/uploads` sin escritura | `setfacl -R -m u:www-data:rwX storage/logs storage/cache public/uploads` |
 | 502 Bad Gateway en nginx | PHP-FPM caído o socket equivocado: `systemctl status php8.4-fpm` y `fastcgi_pass unix:...` |
 | `.env` accesible en nginx | Falta el `server` block: nginx **no** lee `.htaccess`; instala `deploy/nginx-site.conf.tpl` |
 | Canónicas con `http://` detrás de proxy | Debe llegar `X-Forwarded-Proto`; lo resuelve `Server::isSecure()` |

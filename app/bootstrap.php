@@ -53,7 +53,15 @@ $debug = config('app.debug', false);
 error_reporting($debug ? E_ALL : E_ALL & ~E_DEPRECATED & ~E_STRICT);
 ini_set('display_errors', $debug ? '1' : '0');
 ini_set('log_errors', '1');
-ini_set('error_log', TIENDA_BASE . '/storage/logs/php-error.log');
+
+// Log propio solo si el usuario del servidor puede escribir en storage/logs.
+// Si no (permisos mal puestos, .env ilegible...), se deja el log por defecto de
+// PHP para que el error acabe en el log del servidor en vez de perderse.
+$logDir = TIENDA_BASE . '/storage/logs';
+$logFile = $logDir . '/php-error.log';
+if (is_dir($logDir) && (is_writable($logFile) || is_writable($logDir))) {
+    ini_set('error_log', $logFile);
+}
 
 // -----------------------------------------------------------------------------
 // Sesion (cookies endurecidas). No se inicia en CLI (migraciones, scripts).
