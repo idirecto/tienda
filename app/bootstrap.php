@@ -182,6 +182,9 @@ function icon_svg(string $name, string $class = '', int $size = 0): string
         'cpu'       => '<rect x="7" y="7" width="10" height="10" rx="2"/><path d="M4 10h3M4 14h3M17 10h3M17 14h3M10 4v3M14 4v3M10 17v3M14 17v3"/>',
         'wrench'    => '<path d="M15 3a5 5 0 0 0-4.5 7.1L4 16.6 7.4 20l6.5-6.5A5 5 0 1 0 15 3Z"/>',
         'cart'      => '<circle cx="9" cy="20" r="1.6"/><circle cx="18" cy="20" r="1.6"/><path d="M2 3h3l2.6 11.6A2 2 0 0 0 9.6 16h8.8a2 2 0 0 0 2-1.6L22 7H6"/>',
+        'user'      => '<circle cx="12" cy="8" r="4"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/>',
+        'package'   => '<path d="M12 3l8 4.4v9.2L12 21l-8-4.4V7.4L12 3Z"/><path d="M4 7.4l8 4.4 8-4.4M12 11.8V21"/>',
+        'pin'       => '<path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11Z"/><circle cx="12" cy="10" r="2.6"/>',
     ];
 
     $path = $icons[$name] ?? $icons['grid'];

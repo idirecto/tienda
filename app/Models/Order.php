@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Tienda\Models;
 
 use Tienda\Core\Database;
+use Tienda\Core\Idirecto\Account;
+use Tienda\Core\Idirecto\Pricing;
 use Tienda\Core\Model;
 
 /**
@@ -264,24 +266,49 @@ final class Order extends Model
      */
     public static function createWithItems(int $storeId, array $data, array $lines): int
     {
-        return (int) Database::transaction(function () use ($storeId, $data, $lines): int {
+        $crear = function () use ($storeId, $data, $lines): int {
             $orderId = Database::insert('mt_orders', [
                 'store_id'       => $storeId,
+                'customer_id'    => self::intOrNull($data['customer_id'] ?? null),
                 'code'           => null,
                 'status'         => self::normalizeStatus($data['status'] ?? self::STATUS_ACTIVE),
                 'customer_name'  => $data['customer_name'],
                 'customer_email' => $data['customer_email'] ?? null,
                 'customer_phone' => $data['customer_phone'] ?? null,
                 'customer_tax_id' => $data['customer_tax_id'] ?? null,
+
+                // Direccion de facturacion (si esta vacia se usa la de envio)
+                'bill_name'        => $data['bill_name'] ?? null,
+                'bill_tax_id'      => $data['bill_tax_id'] ?? null,
+                'bill_address'     => $data['bill_address'] ?? null,
+                'bill_detail'      => $data['bill_detail'] ?? null,
+                'bill_city'        => $data['bill_city'] ?? null,
+                'bill_province'    => $data['bill_province'] ?? null,
+                'bill_postal_code' => $data['bill_postal_code'] ?? null,
+                'bill_country'     => $data['bill_country'] ?? null,
+                'bill_phone'       => $data['bill_phone'] ?? null,
+
                 'ship_name'      => $data['ship_name'] ?? null,
                 'ship_tax_id'    => $data['ship_tax_id'] ?? null,
                 'ship_address'   => $data['ship_address'] ?? null,
+                'ship_detail'    => $data['ship_detail'] ?? null,
                 'ship_city'      => $data['ship_city'] ?? null,
                 'ship_province'  => $data['ship_province'] ?? null,
                 'ship_postal_code' => $data['ship_postal_code'] ?? null,
                 'ship_country'   => $data['ship_country'] ?? 'Espana',
+                'ship_phone'     => $data['ship_phone'] ?? null,
+                'ship_mobile'    => $data['ship_mobile'] ?? null,
+                'ship_country_id' => self::intOrNull($data['ship_country_id'] ?? null),
+                'ship_province_id' => self::intOrNull($data['ship_province_id'] ?? null),
+                'ship_poblacion_id' => self::intOrNull($data['ship_poblacion_id'] ?? null),
+
                 'notes'          => $data['notes'] ?? null,
+                'customer_note'  => $data['customer_note'] ?? null,
                 'shipping'       => (float) ($data['shipping'] ?? 0),
+
+                'payment_method' => $data['payment_method'] ?? null,
+                'payment_status' => (int) ($data['payment_status'] ?? 0) === 1 ? 1 : 0,
+                'paid_at'        => $data['paid_at'] ?? null,
             ]);
 
             // Numero visible: se deriva del id, que ya es unico en la tabla.
@@ -296,7 +323,22 @@ final class Order extends Model
             self::recalculateTotals($orderId);
 
             return $orderId;
-        });
+        };
+
+        // Transaccion propia; si ya hay una abierta (compras dentro de otra,
+        // pruebas con rollback) se une a ella.
+        if (Database::pdo()->inTransaction()) {
+            return $crear();
+        }
+
+        return (int) Database::transaction($crear);
+    }
+
+    private static function intOrNull(mixed $value): ?int
+    {
+        $int = (int) $value;
+
+        return $int > 0 ? $int : null;
     }
 
     /** Recalcula subtotal, IVA y total a partir de las lineas. */
@@ -325,6 +367,127 @@ final class Order extends Model
     public static function setStatus(int $id, int $status): void
     {
         self::updateById($id, ['status' => self::normalizeStatus($status)]);
+    }
+
+    /**
+     * Pedido por su numero visible dentro de una tienda.
+     *
+     * Lo usa la pagina de "gracias": si el cliente ha perdido la sesion puede
+     * consultar su pedido con el numero y su email.
+     */
+    public static function findForCode(int $storeId, string $code, bool $withItems = false): ?array
+    {
+        $order = Database::first(
+            'SELECT * FROM mt_orders WHERE store_id = :store AND code = :code LIMIT 1',
+            ['store' => $storeId, 'code' => trim($code)]
+        );
+
+        if ($order === null) {
+            return null;
+        }
+        if ($withItems) {
+            $order['items'] = OrderItem::forOrder((int) $order['id']);
+        }
+
+        return $order;
+    }
+
+    /**
+     * Pedido por su numero visible (el que ve el cliente), de ESE cliente.
+     */
+    public static function findForCustomer(int $storeId, int $customerId, string $code, bool $withItems = false): ?array
+    {
+        $order = Database::first(
+            'SELECT * FROM mt_orders
+             WHERE store_id = :store AND customer_id = :customer AND code = :code
+             LIMIT 1',
+            ['store' => $storeId, 'customer' => $customerId, 'code' => trim($code)]
+        );
+
+        if ($order === null) {
+            return null;
+        }
+        if ($withItems) {
+            $order['items'] = OrderItem::forOrder((int) $order['id']);
+        }
+
+        return $order;
+    }
+
+    // =====================================================================
+    // COBRO DEL PEDIDO (lo que elige el cliente en la web)
+    // =====================================================================
+
+    public const PAY_TRANSFER = 'transferencia';
+    public const PAY_COD      = 'cod';
+    public const PAY_PICKUP   = 'pickup';
+
+    /** Como paga el cliente: clave => etiqueta. */
+    public static function paymentMethods(): array
+    {
+        return [
+            self::PAY_TRANSFER => 'Transferencia bancaria',
+            self::PAY_COD      => 'Contra reembolso',
+            self::PAY_PICKUP   => 'Recogida en tienda',
+        ];
+    }
+
+    public static function paymentLabel(?string $method): string
+    {
+        if ($method === null || $method === '') {
+            return 'Sin especificar';
+        }
+
+        return self::paymentMethods()[$method] ?? $method;
+    }
+
+    public static function paymentStatusLabel(int $status): string
+    {
+        return $status === 1 ? 'Pagado' : 'Pendiente de pago';
+    }
+
+    /** Cambia el estado del cobro (el panel confirma asi el ingreso). */
+    public static function setPaymentStatus(int $id, int $status): void
+    {
+        $pagado = $status === 1;
+        self::updateById($id, [
+            'payment_status' => $pagado ? 1 : 0,
+            'paid_at'        => $pagado ? date('Y-m-d H:i:s') : null,
+        ]);
+    }
+
+    /**
+     * Guarda la tarifa del mayorista de cada linea del catalogo.
+     *
+     * Sirve para poder enseñar en el panel (y en la vista previa del envio) lo
+     * que costara el pedido en idirecto sin consultarlo en cada visita. Lo usan
+     * tanto el alta manual del panel como el pedido que llega de la web.
+     */
+    public static function syncIdirectoPrices(int $orderId, array $store): void
+    {
+        if (!Pricing::isAvailable()) {
+            return;
+        }
+
+        $cuenta = Account::forStore($store);
+        foreach (OrderItem::forOrder($orderId) as $item) {
+            if ((string) $item['source'] !== OrderItem::SOURCE_CATALOG || (int) $item['product_id'] <= 0) {
+                continue;
+            }
+            $tarifa = Pricing::forProduct(
+                (int) $item['product_id'],
+                (int) $cuenta['id_margen'],
+                (int) $cuenta['sucursal_id'],
+                (float) ($store['tax_rate'] ?? 21)
+            );
+            if ($tarifa === null) {
+                continue;
+            }
+            Database::update('mt_order_items', (int) $item['id'], [
+                'price_idirecto' => $tarifa['precio'],
+                'cost_idirecto'  => $tarifa['coste'],
+            ]);
+        }
     }
 
     /** Marca el pedido como enviado a idirecto (referencia y fecha). */

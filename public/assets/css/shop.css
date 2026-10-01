@@ -1063,3 +1063,144 @@ body.no-scroll { overflow: hidden; }
 .theme-minimal .topbar { display: none; }
 .theme-minimal .product-card { box-shadow: none; }
 .theme-moderno .brand-mark, .theme-moderno .search button { border-radius: var(--c-radius-pill); }
+
+/* =============================================================================
+   COMPRA DEL CLIENTE (carrito, cuenta y cierre del pedido)
+
+   Todo sale de los mismos tokens que el resto del storefront: ninguna tienda
+   necesita tocar este bloque para que su area de cliente tenga su identidad.
+   ============================================================================= */
+.section-narrow { max-width: 760px; margin-inline: auto; }
+.shop-flash { padding-top: 1.25rem; }
+.shop-flash .alert + .alert { margin-top: .6rem; }
+
+.alert {
+    border-radius: var(--c-radius-md); padding: .85rem 1.1rem; font-size: .9rem;
+    border: 1px solid var(--c-border); background: var(--c-surface-2); color: var(--c-text);
+}
+.alert-success { background: var(--c-success-soft); border-color: var(--c-success); color: var(--c-success); }
+.alert-error { background: var(--c-danger-soft); border-color: var(--c-danger); color: var(--c-danger); }
+
+.pill {
+    display: inline-block; font-size: .7rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .04em; padding: 2px 8px; border-radius: var(--c-radius-pill);
+    background: var(--c-surface-2); color: var(--c-muted);
+}
+.pill-info { background: var(--c-info-soft); color: var(--c-info); }
+
+.ta-r { text-align: right; }
+.ta-c { text-align: center; }
+.link-danger { color: var(--c-danger); }
+.btn-block { display: block; width: 100%; text-align: center; }
+.product-actions { display: flex; align-items: center; gap: .45rem; }
+.product-actions .product-cta { flex: 1 1 auto; justify-content: center; }
+.product-add { display: flex; }
+.product-add .btn { padding: .6rem .75rem; }
+.product-add .btn svg { width: 18px; height: 18px; }
+
+/* Cabecera: cuenta y carrito */
+.shop-account { width: auto; gap: .35rem; padding: 0 .6rem; }
+.shop-account-label { font-size: .78rem; font-weight: 600; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shop-cart { position: relative; }
+.shop-cart-count {
+    position: absolute; top: -6px; right: -6px; min-width: 18px; height: 18px;
+    display: grid; place-items: center; padding: 0 4px; border-radius: var(--c-radius-pill);
+    background: var(--c-primary); color: var(--c-primary-contrast); font-size: .68rem; font-weight: 700;
+}
+
+/* Cajas y rejillas del area de cliente */
+.panel-box {
+    background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--c-radius-lg);
+    padding: 1.25rem; box-shadow: var(--c-shadow-sm);
+}
+.panel-box h2 { font-size: 1.02rem; margin-bottom: .6rem; }
+.panel-box + .panel-box { margin-top: 1rem; }
+
+.field-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: .7rem; }
+.field-grid label { display: flex; flex-direction: column; gap: .28rem; font-size: .84rem; font-weight: 600; }
+.field-grid .field-wide { grid-column: 1 / -1; }
+.field-grid input, .field-grid textarea, .check input[type="text"] {
+    border: 1px solid var(--c-border); border-radius: var(--c-radius-md);
+    padding: .55rem .65rem; font-family: inherit; font-size: .92rem;
+    background: var(--c-surface); color: var(--c-text);
+}
+.field-grid input:focus, .form-card input:focus, .form-card textarea:focus { outline: none; border-color: var(--c-primary); }
+
+.check { display: flex; align-items: flex-start; gap: .55rem; font-size: .88rem; font-weight: 500; margin: .35rem 0; }
+.check input { margin-top: .25rem; }
+
+.shop-table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+.shop-table th, .shop-table td { padding: .6rem .5rem; border-bottom: 1px solid var(--c-border); text-align: left; vertical-align: middle; }
+.shop-table thead th { font-size: .74rem; text-transform: uppercase; letter-spacing: .05em; color: var(--c-muted); }
+.shop-table tbody tr:last-child td { border-bottom: 0; }
+
+.totals { margin: .8rem 0; font-size: .92rem; }
+.totals > div { display: flex; justify-content: space-between; padding: .3rem 0; border-bottom: 1px dashed var(--c-border); }
+.totals dt, .totals dd { margin: 0; }
+.totals dd { font-weight: 600; }
+.totals-grand { border-bottom: 0 !important; font-size: 1.06rem; padding-top: .55rem !important; }
+.totals-grand dd { color: var(--c-primary); font-weight: 700; }
+
+/* Carrito */
+.cart-grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 1.5rem; align-items: start; }
+.cart-media img { border-radius: var(--c-radius-md); border: 1px solid var(--c-border); width: 64px; height: 64px; object-fit: contain; background: var(--c-surface-2); }
+.cart-name a:hover { text-decoration: underline; }
+.cart-qty {
+    width: 74px; text-align: center; padding: .4rem .3rem;
+    border: 1px solid var(--c-border); border-radius: var(--c-radius-md);
+    background: var(--c-surface); color: var(--c-text); font: inherit;
+}
+.cart-actions { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: .9rem; flex-wrap: wrap; }
+.cart-remove { margin: .35rem 0 0; }
+.cart-summary {
+    background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--c-radius-lg);
+    padding: 1.15rem; box-shadow: var(--c-shadow-sm); position: sticky; top: 1rem;
+}
+.cart-summary h2 { font-size: 1.02rem; }
+.cart-summary form { margin-top: .6rem; text-align: center; }
+.cart-hint { font-size: .84rem; color: var(--c-muted); margin: .3rem 0 .9rem; }
+.cart-hint-ok { color: var(--c-success); }
+.cart-empty {
+    background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--c-radius-lg);
+    padding: 2.5rem; text-align: center;
+}
+
+/* Cierre del pedido */
+.checkout-grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 1.5rem; align-items: start; }
+.checkout-side { position: sticky; top: 1rem; }
+.checkout-lines { list-style: none; margin: 0 0 .6rem; padding: 0; font-size: .88rem; }
+.checkout-lines li { display: flex; justify-content: space-between; gap: .6rem; padding: .35rem 0; border-bottom: 1px dashed var(--c-border); }
+.checkout-line-name { color: var(--c-muted); }
+.address-picker { display: grid; gap: .5rem; margin-bottom: .8rem; }
+.address-option { display: flex; gap: .6rem; align-items: flex-start; padding: .7rem .8rem; border: 1px solid var(--c-border); border-radius: var(--c-radius-md); cursor: pointer; }
+.address-option:has(input:checked) { border-color: var(--c-primary); background: var(--c-primary-soft); }
+.address-option small { color: var(--c-muted); }
+.ficha-buy { display: flex; flex-direction: column; gap: .7rem; }
+
+/* Cuenta del cliente */
+.account-form { max-width: 420px; margin-inline: auto; }
+.account-alt { text-align: center; font-size: .86rem; margin-top: .9rem; }
+.account-alt a { color: var(--c-primary); font-weight: 600; }
+.account-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 1.25rem; align-items: start; }
+.account-links { display: flex; align-items: center; gap: 1.25rem; flex-wrap: wrap; margin-top: 1.25rem; }
+.address-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .7rem; }
+.address-list li { padding-bottom: .6rem; border-bottom: 1px dashed var(--c-border); }
+.address-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1rem; }
+.address-card {
+    background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--c-radius-lg);
+    padding: 1rem; box-shadow: var(--c-shadow-sm); display: flex; flex-direction: column; gap: .4rem;
+}
+.address-card header { display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; }
+.address-card p { font-size: .88rem; margin: 0; }
+.address-card footer { display: flex; align-items: center; gap: 1rem; margin-top: auto; padding-top: .5rem; }
+.thanks-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1.25rem; align-items: start; }
+.thanks-actions { display: flex; gap: .6rem; flex-wrap: wrap; margin-top: 1rem; }
+.bank-box {
+    background: var(--c-surface-2); border: 1px dashed var(--c-border-strong); border-radius: var(--c-radius-md);
+    padding: .8rem .9rem; font-size: .88rem;
+}
+
+@media (max-width: 900px) {
+    .cart-grid, .checkout-grid, .account-grid, .thanks-grid { grid-template-columns: minmax(0, 1fr); }
+    .cart-summary, .checkout-side { position: static; }
+}

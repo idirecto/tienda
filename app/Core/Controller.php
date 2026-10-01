@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Tienda\Core;
 
+use Tienda\Models\Catalog;
+
 /**
  * Controlador base: acceso a tenant, vistas, redirecciones, entrada y auth.
  */
@@ -16,6 +18,24 @@ abstract class Controller
     {
         $this->tenant = $tenant;
         $this->router = $router;
+        $this->bootPricing();
+    }
+
+    /**
+     * Fija el precio de venta de LA TIENDA en el catalogo.
+     *
+     * El catalogo central guarda tarifas sin IVA; cada tienda vende con su
+     * tarifa mas su beneficio. Las paginas publicas muestran el precio con IVA
+     * incluido; las del panel usan la base sin IVA (el IVA se suma en el pedido).
+     */
+    protected function bootPricing(bool $withTax = true): void
+    {
+        Catalog::forStore(
+            (int) $this->tenant->get('id_margen', 0) ?: null,
+            $this->tenant->get('markup', Config::get('catalog.default_markup', 15)),
+            (float) ($this->tenant->get('tax_rate') ?: 21),
+            $withTax
+        );
     }
 
     protected function view(string $template, array $data = [], ?string $layout = null): string
@@ -23,6 +43,17 @@ abstract class Controller
         $data['tenant'] = $this->tenant;
         $data['auth_user'] = Auth::user();
         return View::render($template, $data, $layout);
+    }
+
+    /** Vista de la plantilla activa, con vuelta al tema base si no la implementa. */
+    protected function themeView(string $name): string
+    {
+        $theme = preg_replace('/[^a-z0-9_\-]/i', '', $this->tenant->theme()) ?: 'idirecto';
+        if (!is_file(TIENDA_BASE . "/app/Views/themes/{$theme}/{$name}.php")) {
+            $theme = 'idirecto';
+        }
+
+        return "themes/{$theme}/{$name}";
     }
 
     /** Devuelve un parametro de la peticion (POST o GET). */

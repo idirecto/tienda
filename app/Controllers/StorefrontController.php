@@ -201,13 +201,4 @@ final class StorefrontController extends Controller
         ], 'shop');
     }
 
-    /** Plantilla activa con fallback al tema base. */
-    private function themeView(string $name): string
-    {
-        $theme = preg_replace('/[^a-z0-9_\-]/i', '', $this->tenant->theme()) ?: 'idirecto';
-        if (!is_file(TIENDA_BASE . "/app/Views/themes/{$theme}/{$name}.php")) {
-            $theme = 'idirecto';
-        }
-        return "themes/{$theme}/{$name}";
-    }
 }

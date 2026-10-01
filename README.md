@@ -522,21 +522,26 @@ tienda/
 ├── app/
 │   ├── bootstrap.php        Autoload, entorno, sesion, helpers
 │   ├── Core/                Env, Config, Appearance, Database, Router, View, Controller, Model,
-│   │   │                    Auth, Csrf, Session, Tenant, TenantResolver, Dns, Specs, Str, Registration
+│   │   │                    Auth, Csrf, Session, Tenant, TenantResolver, Dns, Specs, Str,
+│   │   │                    Registration, Cart, Checkout, Shipping, CustomerAuth
 │   │   ├── Idirecto/        Account, Pricing, OrderGateway (envio de pedidos al mayorista)
 │   │   └── Storage/         StorageInterface, LocalStorage, S3Storage, StorageManager
-│   ├── Controllers/         StorefrontController, RegistrationController + Admin/* (incl. OrderController)
+│   ├── Controllers/         Storefront, Cart, Checkout, Customer, Registration
+│   │                        + Admin/* (pedidos, clientes, ajustes...)
 │   ├── Models/              Store, StoreUser, Plan, Theme, Banner, Notice, Order, OrderItem,
-│   │                        OwnProduct, Media, Domain, DnsLog, ContentBlock, Setting, Catalog
-│   └── Views/               register.php, layouts/, panel/ (pedidos, diseno... y design_preview.php),
-│                            themes/idirecto|moderno|minimal/ (home, _hero, _card, …), errors/
+│   │                        Customer, CustomerAddress, OwnProduct, Media, Domain, DnsLog,
+│   │                        ContentBlock, Setting, Catalog
+│   └── Views/               register.php, layouts/, panel/ (pedidos, clientes, diseno...),
+│                            themes/idirecto/ (home, _hero, _card, cart, checkout, thanks,
+│                            account/*), errors/
 ├── public/assets/           css/ y js/ del storefront y del panel
 ├── public/uploads/          destino del driver local (no versionado)
 ├── database/
-│   ├── migrations/          001_schema.sql · 002_design_tokens.sql · 003_orders.sql (mt_)
+│   ├── migrations/          001_schema.sql · 002_design_tokens.sql · 003_orders.sql ·
+│   │                        004_checkout.sql (mt_)
 │   ├── seeds/               001_seed.sql (planes, temas, tienda demo)
 │   └── migrate.php          Ejecutor de migraciones y semillas
-├── tools/verify.php         Comprobacion automatica (90)
+├── tools/verify.php         Comprobacion automatica (118)
 └── deploy/                  Vhosts/plantillas de Apache y nginx + scripts
 ```
 
@@ -556,6 +561,18 @@ tienda/
 | `/pagina/{slug}` | Bloques de contenido (sobre nosotros, envíos...) |
 | `/registro` | **Alta de tienda**: solo con una cuenta activa del mayorista (ver §8.ter) |
 
+**Compra del cliente final** (su propia cuenta, separada del panel)
+
+| Ruta | Descripción |
+|---|---|
+| `/carrito` | Carrito: añadir, cambiar cantidades, quitar y vaciar |
+| `/checkout` | Cerrar el pedido: dirección de envío, facturación, forma de pago y comentario |
+| `/checkout/gracias/{code}` | Pedido registrado, con el resumen y cómo pagar |
+| `/cuenta` | Mi cuenta (últimos pedidos y direcciones) |
+| `/cuenta/login` · `/cuenta/registro` · `/cuenta/perfil` | Entrar, crear cuenta y mis datos |
+| `/cuenta/pedidos` · `/cuenta/pedidos/{code}` | Mis pedidos y su detalle |
+| `/cuenta/direcciones[/nueva/{id}]` | Libreta de direcciones: alta, edición y borrado |
+
 **Panel de la tienda**
 
 | Ruta | Módulo |
@@ -569,10 +586,11 @@ tienda/
 | `/panel/avisos` | Avisos/anuncios |
 | `/panel/productos` | Productos propios (alta/edición/borrado, cuota por plan) |
 | `/panel/pedidos` | Pedidos de tus clientes: estados (activos, facturados, borrados…), ficha y envío por líneas a idirecto |
-| `/panel/pedidos/nuevo` | Alta manual de un pedido (el checkout aún no existe) |
-| `/panel/pedidos/{id}` | Ficha del pedido: líneas, estado, papelera y envío al mayorista |
+| `/panel/pedidos/nuevo` | Alta manual de un pedido (para pedidos de teléfono o mostrador) |
+| `/panel/pedidos/{id}` | Ficha del pedido: líneas, estado, cobro, comentario del cliente, papelera y envío al mayorista |
+| `/panel/clientes` · `/panel/clientes/{id}` | Quién compra en tu web, con sus direcciones y sus pedidos |
 | `/panel/dominios` | Dominio propio, instrucciones DNS y verificación |
-| `/panel/ajustes` | Datos fiscales y usuarios del panel |
+| `/panel/ajustes` | Datos fiscales, venta y cobro (beneficio, envío, formas de pago) y usuarios del panel |
 | `/panel/media/subir` | Endpoint AJAX de subida de imágenes |
 
 ---
@@ -692,6 +710,41 @@ Una cuenta = una tienda. Al terminar, la tienda queda accesible en
 
 ---
 
+## 8.quater Compra del cliente final
+
+El comprador **no es el tendero**: tiene su propia cuenta y su propia sesión
+(`CustomerAuth` + `mt_customers` / `mt_customer_addresses`), aparte del panel.
+
+```bash
+# Lo que configura la tienda en Panel > Ajustes (mt_stores):
+markup               # beneficio sobre su tarifa del mayorista (15 % por defecto)
+shipping_flat        # gastos de envío fijos
+free_shipping_from   # envío gratis desde este importe (vacío = nunca)
+pay_transfer / pay_cod / pay_pickup   # formas de pago que acepta
+bank_details         # datos que ve el cliente al pagar por transferencia
+```
+
+- **Precio de venta**: `tarifa de la tienda (mt_stores.id_margen) + beneficio`, y en
+  la web **con el IVA incluido** (`Catalog::forStore()`). El pedido guarda la **base
+  sin IVA** en `mt_order_items.price_customer` y el IVA se suma al totalizar, así que
+  el total coincide con lo que vio el cliente. Sin tarifa asignada se usa la más
+  barata publicada; si el producto no tiene ninguna, se calcula desde el coste.
+- **Carrito** (`Core/Cart`): en la sesión y por tienda. Solo guarda producto y
+  cantidad; precio, nombre y stock se leen del catálogo en cada visita.
+- **Se compra con cuenta o como invitado**. El invitado deja su email y su dirección
+  al finalizar; si luego se registra con el mismo email, **hereda sus pedidos**.
+- **Cierre del pedido** (`Core/Checkout`): dirección de envío (de la libreta o nueva),
+  facturación distinta si se quiere, forma de pago y **comentario**. El pedido nace
+  **pendiente de pago** y el tendero lo confirma en el panel («marcar como pagado»).
+- **Envío al mayorista**: se le pasa la **dirección del cliente** en `pedidos_addr`
+  (con sus ids de país/provincia/población y su email en `localidad`) y su comentario
+  en `pedidos.detalles`, en lugar de reutilizar la dirección de la tienda.
+
+**Pendiente:** pasarela de pago real, gastos de envío por peso/provincia, emails de
+confirmación (y, con ellos, recuperar la contraseña del cliente).
+
+---
+
 ## 9. Base de datos
 
 Tablas propias (prefijo `mt_`, aditivas sobre la BD central):
@@ -704,6 +757,7 @@ Tablas propias (prefijo `mt_`, aditivas sobre la BD central):
 | `mt_banners` / `mt_notices` / `mt_content_blocks` | Contenido |
 | `mt_own_products` | Productos propios (cuota por plan) |
 | `mt_orders` / `mt_order_items` | Pedidos de los clientes de la tienda y sus líneas (con el envío a idirecto por línea) |
+| `mt_customers` / `mt_customer_addresses` | Clientes finales de cada tienda (registrados o invitados) y su libreta de direcciones |
 | `mt_media` | Ficheros en S3/local (solo key + URL) |
 | `mt_domains` / `mt_dns_log` | Dominios y verificaciones |
 | `mt_settings` / `mt_migrations` | Config clave/valor y control de migraciones |
@@ -720,20 +774,21 @@ php database/migrate.php --seed     # + semillas
 
 **Hecho y verificado:** núcleo MVC, configuración BD/S3, migraciones y semillas,
 multi-tenant por hostname, **registro de tiendas solo con cuenta activa del
-mayorista**, storefront con **sistema de diseño tokenizado**
-(claro/oscuro/auto, presets y vista previa en vivo), portada con slider y accesos
-rápidos, tarjetas de producto con especificaciones clave y etiqueta de stock,
-filtros avanzados por socket/gráfica/memoria/formato/marca/precio, panel completo
-(diseño, banners, avisos, productos, dominios, ajustes), **pedidos con estados y
-envío por líneas al mayorista**, subida de imágenes con validación y cuota de plan
-aplicada en servidor.
+mayorista**, **compra del cliente final** (carrito, cuenta, direcciones, comentario
+y pedido, con el precio a tarifa + beneficio e IVA incluido), storefront con
+**sistema de diseño tokenizado** (claro/oscuro/auto, presets y vista previa en vivo),
+portada con slider y accesos rápidos, tarjetas de producto con especificaciones clave
+y etiqueta de stock, filtros avanzados por socket/gráfica/memoria/formato/marca/precio,
+panel completo (diseño, banners, avisos, productos, dominios, clientes, ajustes),
+**pedidos con estados, cobro y envío por líneas al mayorista**, subida de imágenes con
+validación y cuota de plan aplicada en servidor.
 
 **Pendiente (siguientes iteraciones):**
 
-- Checkout de la tienda (carrito, pasarelas propias, envíos) creando los pedidos
-  con `Order::createWithItems()`.
-- Aplicar la tarifa de la tienda (`mt_stores.id_margen`) a los precios del
-  catálogo público (los pedidos ya la usan).
+- **Cobro real**: pasarela (Redsys, con firma y notificación) y **emails** de
+  confirmación al cliente y aviso a la tienda; de ahí cuelga también recuperar la
+  contraseña del cliente.
+- Gastos de envío por peso y provincia (ahora tarifa plana + gratis desde X €).
 - Temas `moderno` y `minimal` (ahora hay base + variables de tema).
 - Panel maestro del mayorista (supervisión, tarifas, auditoría de ventas); el alta
   ya la resuelve el registro público.

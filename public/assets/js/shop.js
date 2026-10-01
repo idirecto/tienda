@@ -688,3 +688,46 @@
         });
     }
 })();
+
+/* =====================================================================
+   AREA DE CLIENTE (carrito, cuenta y cierre del pedido)
+
+   Mejoras sin dependencias: sin JavaScript todo sigue funcionando (los
+   formularios se envian igual), aqui solo se evitan sustos.
+   ===================================================================== */
+(function () {
+    'use strict';
+
+    /* Confirmacion en los formularios marcados con data-confirm. */
+    document.querySelectorAll('form[data-confirm]').forEach(function (form) {
+        form.addEventListener('submit', function (e) {
+            if (!window.confirm(form.getAttribute('data-confirm'))) {
+                e.preventDefault();
+            }
+        });
+    });
+
+    /* "Facturar a otros datos": muestra u oculta los campos de facturacion. */
+    var toggle = document.querySelector('[data-bill-toggle]');
+    var fields = document.querySelector('[data-bill-fields]');
+    if (toggle && fields) {
+        var sync = function () {
+            fields.hidden = toggle.checked;
+            fields.querySelectorAll('input').forEach(function (input) {
+                input.required = !toggle.checked && input.name === 'bill_name';
+            });
+        };
+        toggle.addEventListener('change', sync);
+        sync();
+    }
+
+    /* Cantidad del carrito: al cambiarla se envia el formulario solo. */
+    var cartForm = document.querySelector('.cart-table') ? document.querySelector('.cart-table').closest('form') : null;
+    if (cartForm) {
+        cartForm.querySelectorAll('input.cart-qty').forEach(function (input) {
+            input.addEventListener('change', function () {
+                cartForm.submit();
+            });
+        });
+    }
+})();

@@ -13,16 +13,26 @@ declare(strict_types=1);
 
 require dirname(__DIR__) . '/app/bootstrap.php';
 
+
+
+
+
+
+
+
+use Tienda\Core\Appearance;
 use Tienda\Core\Auth;
+use Tienda\Core\Cart;
+use Tienda\Core\Checkout;
 use Tienda\Core\Database;
 use Tienda\Core\Dns;
-use Tienda\Core\Appearance;
 use Tienda\Core\Idirecto\Account;
 use Tienda\Core\Idirecto\OrderGateway;
 use Tienda\Core\Idirecto\Pricing;
 use Tienda\Core\Media\ImageOptimizer;
 use Tienda\Core\Media\MediaRules;
 use Tienda\Core\Registration;
+use Tienda\Core\Shipping;
 use Tienda\Core\Server;
 use Tienda\Core\Specs;
 use Tienda\Core\Storage\LocalStorage;
@@ -32,6 +42,8 @@ use Tienda\Core\Storage\StorageManager;
 use Tienda\Core\Tenant;
 use Tienda\Core\TenantResolver;
 use Tienda\Models\Catalog;
+use Tienda\Models\Customer;
+use Tienda\Models\CustomerAddress;
 use Tienda\Models\Order;
 use Tienda\Models\OrderItem;
 use Tienda\Models\Plan;
@@ -492,6 +504,241 @@ try {
     $pdoRegistro->rollBack();
 }
 check(StoreUser::findBy('email', $emailPrueba) === null, 'la prueba de registro no deja rastro (rollback)');
+
+echo "\n== Compra del cliente final (carrito, cuenta y pedido) ==\n";
+
+// -----------------------------------------------------------------------------
+// Precio de venta de la tienda: tarifa + beneficio, con IVA en la web
+// -----------------------------------------------------------------------------
+Catalog::forStore(12, 15, 21, true);
+$precioWeb = Catalog::find(254967);
+check(
+    abs(Catalog::saleFromNet(100) - 121.0) < 0.01 && abs(Catalog::netFromSale(121) - 100.0) < 0.01,
+    'el precio de la web lleva el IVA incluido y se puede volver a la base'
+);
+check(
+    abs(Catalog::salePriceFromCost(100, 21) - 139.15) < 0.01,
+    'sin tarifa publicada el precio sale del coste con el beneficio de la tienda'
+);
+
+Catalog::forStore(12, 15, 21, false);
+$precioPanel = Catalog::find(254967);
+Catalog::forStore(null, 0, 21, false);
+$precioSinContexto = Catalog::find(254967);
+
+check(
+    Catalog::markupFactor() === 1.0 && $precioSinContexto['price_final'] == 311.17,
+    'sin contexto se mantiene el precio de siempre (' . $precioSinContexto['price_final'] . ')'
+);
+
+Catalog::forStore(12, 15, 21, true);
+$web = Catalog::find(254967);
+Catalog::forStore(12, 15, 21, false);
+$panel = Catalog::find(254967);
+
+check(
+    $web['price_final'] > $panel['price_final']
+        && abs($panel['price_final'] - round($web['price_net'], 2)) < 0.02
+        && abs($panel['price_final'] - 363.02) < 0.02,
+    'precio de tienda: web ' . $web['price_final'] . ' con IVA / panel ' . $panel['price_final'] . ' sin IVA'
+);
+check(
+    abs($web['price_net'] - 363.02) < 0.02 && abs($web['tax_rate'] - 21.0) < 0.01,
+    'la base del pedido no lleva IVA y guarda el tipo aplicado'
+);
+
+// -----------------------------------------------------------------------------
+// Envio y formas de pago
+// -----------------------------------------------------------------------------
+$tiendaEnvio = ['shipping_flat' => 4.95, 'free_shipping_from' => 60.0];
+check(
+    abs(Shipping::cost($tiendaEnvio, 59.99) - 4.95) < 0.01
+        && Shipping::cost($tiendaEnvio, 60.0) === 0.0
+        && Shipping::cost(['shipping_flat' => 0], 10.0) === 0.0,
+    'gastos de envio: tarifa plana y gratis desde el minimo'
+);
+check(
+    abs(Shipping::missingForFree($tiendaEnvio, 50.0) - 10.0) < 0.01,
+    'aviso de cuanto falta para el envio gratis'
+);
+
+$formas = Checkout::paymentMethods(['pay_transfer' => 1, 'pay_cod' => 0, 'pay_pickup' => 1]);
+check(
+    array_keys($formas) === [Order::PAY_TRANSFER, Order::PAY_PICKUP]
+        && $formas[Order::PAY_TRANSFER]['label'] === 'Transferencia bancaria',
+    'formas de pago: solo las que la tienda tiene activadas'
+);
+check(
+    Order::paymentLabel(Order::PAY_COD) === 'Contra reembolso'
+        && Order::paymentStatusLabel(0) === 'Pendiente de pago'
+        && Order::paymentStatusLabel(1) === 'Pagado',
+    'etiquetas de cobro del pedido'
+);
+
+// -----------------------------------------------------------------------------
+// Carrito (en la sesion, con precios y stock en vivo)
+// -----------------------------------------------------------------------------
+$carritoAntes = $_SESSION['cart'] ?? null;
+Catalog::forStore(null, 15, 21, true);
+
+$anadido = Cart::add(1, 'catalog', 254967, 2);
+$items = Cart::items(1, $descartados);
+$totales = Cart::totals($items, ['shipping_flat' => 4.95, 'free_shipping_from' => 60.0]);
+check(
+    $anadido['ok'] && Cart::count(1) === 2 && count($items) === 1 && (int) $items[0]['qty'] === 2,
+    'el carrito guarda producto y cantidad (' . Cart::count(1) . ' uds)'
+);
+check(
+    $items[0]['name'] !== '' && $items[0]['price'] > 0 && $items[0]['price_net'] < $items[0]['price'],
+    'el carrito trae nombre, precio con IVA y base sin IVA'
+);
+check(
+    abs($totales['subtotal'] - round((float) $items[0]['price'] * 2, 2)) < 0.02
+        && abs($totales['total'] - ($totales['subtotal'] + $totales['shipping'])) < 0.02
+        && abs($totales['tax_total'] - ($totales['subtotal'] - $totales['subtotal_net'])) < 0.02,
+    'totales del carrito: productos + envio = total'
+);
+Cart::updateQuantities(1, [Cart::key('catalog', 254967) => 3]);
+check(Cart::count(1) === 3, 'se puede cambiar la cantidad desde el carrito');
+Cart::remove(1, Cart::key('catalog', 254967));
+check(Cart::count(1) === 0, 'se puede quitar una linea del carrito');
+check(
+    Cart::add(1, 'catalog', 0, 1)['ok'] === false && Cart::add(1, 'own', 0, 1)['ok'] === false,
+    'no se puede anadir un producto que no existe'
+);
+
+// -----------------------------------------------------------------------------
+// Cliente, direcciones y pedido (en una transaccion que se deshace)
+// -----------------------------------------------------------------------------
+$pdoCompra = Database::pdo();
+$pdoCompra->beginTransaction();
+try {
+    $emailCompra = 'compra-' . bin2hex(random_bytes(4)) . '@ejemplo.test';
+    $cliente = Customer::findOrCreateGuest(1, [
+        'email' => $emailCompra, 'name' => 'Cliente de Prueba', 'phone' => '600111222',
+    ]);
+    check(
+        $cliente !== null && (int) $cliente['is_guest'] === 1 && empty($cliente['password_hash']),
+        'la compra como invitado crea el cliente sin contrasena'
+    );
+
+    $dirId = CustomerAddress::save((int) $cliente['id'], 1, [
+        'name' => 'Cliente de Prueba', 'address' => 'Calle de la Prueba 22', 'detail' => 'Portal 2',
+        'postal_code' => '50002', 'city' => 'Zaragoza', 'province' => 'Zaragoza',
+        'phone' => '600111222', 'is_default_ship' => true,
+    ]);
+    check(
+        CustomerAddress::countForCustomer((int) $cliente['id'], 1) === 1
+            && (int) CustomerAddress::findForCustomer($dirId, (int) $cliente['id'], 1)['is_default_ship'] === 1,
+        'la direccion se guarda en la libreta del cliente'
+    );
+
+    $pedido = Checkout::place(
+        ['id' => 1, 'allow_orders' => 1, 'pay_transfer' => 1, 'shipping_flat' => 4.95],
+        $cliente,
+        ['email' => $emailCompra, 'name' => 'Cliente de Prueba', 'address' => 'Calle de la Prueba 22',
+         'detail' => 'Portal 2', 'postal_code' => '50002', 'city' => 'Zaragoza', 'province' => 'Zaragoza',
+         'country' => 'Espana', 'phone' => '600111222'],
+        [],
+        ['payment_method' => Order::PAY_TRANSFER, 'comment' => 'Dejar en porteria, gracias.'],
+        $itemsPrueba = [[
+            'source' => 'catalog', 'product_id' => 254967, 'sku' => 'PRUEBA', 'name' => 'Producto de prueba',
+            'qty' => 2, 'price_net' => 100.0, 'tax_rate' => 21.0, 'price' => 121.0,
+        ]],
+        ['shipping' => 4.95]
+    );
+
+    $row = Order::findForStore($pedido['order_id'], 1, true);
+    check(
+        $row !== null && (int) $row['customer_id'] === (int) $cliente['id']
+            && $row['payment_method'] === Order::PAY_TRANSFER && (int) $row['payment_status'] === 0,
+        'el pedido de la web nace ligado al cliente y pendiente de pago'
+    );
+    check(
+        abs((float) $row['subtotal'] - 200.0) < 0.01 && abs((float) $row['tax_total'] - 42.0) < 0.01
+            && abs((float) $row['total'] - 246.95) < 0.01,
+        'totales del pedido: base 200 + IVA 42 + envio 4,95 = ' . $row['total']
+    );
+    check(
+        $row['ship_address'] === 'Calle de la Prueba 22' && $row['ship_detail'] === 'Portal 2'
+            && $row['bill_address'] === 'Calle de la Prueba 22' && $row['customer_note'] === 'Dejar en porteria, gracias.',
+        'el pedido guarda direccion de envio, de facturacion y el comentario'
+    );
+    check(
+        count($row['items']) === 1 && (float) $row['items'][0]['price_customer'] === 100.0
+            && (float) $row['items'][0]['price_idirecto'] > 0,
+        'la linea guarda la base para el cliente y la tarifa del mayorista'
+    );
+    check(
+        Order::findForCode(1, $pedido['code']) !== null
+            && Order::findForCustomer(1, (int) $cliente['id'], $pedido['code']) !== null,
+        'el pedido se puede consultar por su numero'
+    );
+    check(
+        count(Customer::orders((int) $cliente['id'], 1)) === 1 && count(Customer::forStore(1, $emailCompra)) === 1,
+        'el pedido aparece en la cuenta del cliente y en el panel'
+    );
+
+    Order::setPaymentStatus((int) $row['id'], 1);
+    check(
+        (int) Order::find((int) $row['id'])['payment_status'] === 1,
+        'el tendero puede marcar el pedido como pagado'
+    );
+
+    // El pedido se puede enviar al mayorista con la direccion DEL CLIENTE:
+    // se comprueba el mapeo de las direcciones (pedidos_addr) sin escribir nada.
+    $shipping = new ReflectionMethod(OrderGateway::class, 'shippingAddress');
+    $shipping->setAccessible(true);
+    $billing = new ReflectionMethod(OrderGateway::class, 'billingAddress');
+    $billing->setAccessible(true);
+
+    $cuentaPrueba = [
+        'id_tienda' => 7881, 'nombre' => 'Tienda', 'razon_social' => 'Tienda S.L.', 'nif' => 'B12345678',
+        'direccion' => 'Calle de la Tienda 1', 'cp' => '50001', 'poblacion' => 'Zaragoza',
+        'id_pais' => 66, 'id_provincia' => 52, 'telefono' => '976000000',
+    ];
+    $envio = $shipping->invoke(null, $cuentaPrueba, $row);
+    check(
+        $envio !== null && $envio['nombre'] === 'Cliente de Prueba'
+            && $envio['direccion'] === 'Calle de la Prueba 22, Portal 2'
+            && $envio['cp'] === '50002' && $envio['poblacion'] === 'Zaragoza'
+            && $envio['localidad'] === $emailCompra && $envio['telefono'] === '600111222',
+        'al mayorista se le pasa la direccion de envio del cliente, no la de la tienda'
+    );
+    $factura = $billing->invoke(null, $cuentaPrueba, $row);
+    check(
+        $factura['nombre'] === 'Cliente de Prueba' && $factura['direccion'] === 'Calle de la Prueba 22, Portal 2'
+            && $factura['nombre_sociedad'] === 'Tienda S.L.',
+        'la direccion de facturacion del pedido tambien viaja a pedidos_addr'
+    );
+
+    // Reclamar la cuenta de invitado: se le pone contrasena y conserva pedidos.
+    Customer::updateById((int) $cliente['id'], [
+        'password_hash' => password_hash('clave-de-prueba-1234', PASSWORD_DEFAULT), 'is_guest' => 0,
+    ]);
+    $reclamado = Customer::find((int) $cliente['id']);
+    check(
+        (int) $reclamado['is_guest'] === 0 && password_verify('clave-de-prueba-1234', (string) $reclamado['password_hash'])
+            && count(Customer::orders((int) $reclamado['id'], 1)) === 1,
+        'el invitado que se registra conserva sus pedidos'
+    );
+} catch (\Throwable $e) {
+    check(false, 'compra completa: ' . $e->getMessage());
+} finally {
+    $pdoCompra->rollBack();
+}
+check(
+    Customer::findByEmail(1, $emailCompra ?? '') === null && Cart::count(1) <= 0,
+    'la prueba de compra no deja rastro (rollback)'
+);
+
+// El carrito de las pruebas no debe quedarse en la sesion.
+if ($carritoAntes === null) {
+    unset($_SESSION['cart']);
+} else {
+    $_SESSION['cart'] = $carritoAntes;
+}
+Catalog::forStore(null, 0, 21, false);
 
 echo "\n== Pedidos de la tienda ==\n";
 // Enlace con el mayorista (migracion 003): cuenta y tarifa de cada tienda.

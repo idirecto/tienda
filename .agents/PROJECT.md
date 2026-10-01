@@ -60,19 +60,26 @@ app/
   Core/                    Infraestructura (ver §4)
   Core/Idirecto/           Puente con el mayorista: Account, Pricing y OrderGateway
   Core/Registration.php    Alta de una tienda a partir de una cuenta de `tiendas`
-  Controllers/             StorefrontController, RegistrationController + Admin/* (panel)
+  Core/Cart.php            Carrito del cliente final (en sesión, por tienda)
+  Core/Checkout.php        Cierre del pedido: direcciones, pago y comentario
+  Core/Shipping.php        Gastos de envío (tarifa plana + gratis desde X €)
+  Core/CustomerAuth.php    Sesión del CLIENTE de la tienda (va aparte del panel)
+  Controllers/             Storefront, Cart, Checkout, Customer, Registration + Admin/* (panel)
   Models/                  Acceso a datos (una clase por concepto)
   Views/
     layouts/               shop.php (web), panel.php, panel_blank.php
     register.php           Registro público de tienda (/registro)
     panel/                 Pantallas del panel (orders.php, order.php, order_form.php,
-                           _order_lines.php = editor de líneas, design_preview.php)
-    themes/idirecto/       Tema público (home, _hero, catalog, product, page, _card)
+                           _order_lines.php = editor de líneas, customers.php, customer.php,
+                           design_preview.php)
+    themes/idirecto/       Tema público (home, _hero, catalog, product, page, _card, cart,
+                           checkout, thanks, account/*)
 config/                    app, appearance, database, storage, tenant, catalog, idirecto
 database/
   migrations/001_schema.sql      13 tablas mt_ (idempotente)
   migrations/002_design_tokens.sql  Columnas de identidad visual en mt_stores
   migrations/003_orders.sql      Cuenta del mayorista en mt_stores + mt_orders/mt_order_items
+  migrations/004_checkout.sql    mt_customers/mt_customer_addresses + venta y cobro
   seeds/001_seed.sql             Planes, temas y tienda demo
   migrate.php                    Ejecutor de migraciones + semillas
 deploy/                    Vhosts de Apache, plantilla de nginx y scripts
@@ -80,7 +87,7 @@ public/                    ÚNICO directorio servido como estático
   assets/css|js            shop.css, panel.css, shop.js, panel.js
   uploads/                 Archivos locales (si STORAGE_DRIVER=local)
 storage/                   cache/ y logs/ (escritura de la app)
-tools/verify.php           90 comprobaciones automáticas
+tools/verify.php           118 comprobaciones automáticas
 ```
 
 ---
@@ -107,11 +114,17 @@ tools/verify.php           90 comprobaciones automáticas
 | `Core/Idirecto/Pricing` | Tarifa, coste, almacén, IVA, sujeto y canon de un producto del catálogo |
 | `Core/Idirecto/OrderGateway` | Vista previa y envío de líneas a `pedidos_addr`/`pedidos`/`pedidos_det` |
 | `Registration` | Alta de una tienda desde una cuenta del mayorista (alta pública `/registro`) |
+| `Cart` | Carrito del cliente final: en sesión por tienda, con precios y stock en vivo |
+| `Shipping` | Gastos de envío de la tienda (tarifa plana + gratis desde X €) |
+| `Checkout` | Cierra el pedido: valida direcciones/pago y crea `mt_orders` + líneas |
+| `CustomerAuth` | Sesión del cliente de la tienda (registro, entrada, invitado) |
 | `Validation`/`Storage` `Exception` | Errores de dominio |
 
 > `Models/Order` es el pedido que recibe la tienda de **su** cliente (estados,
 > pestañas, papelera) y `Models/OrderItem` sus líneas; `OrderGateway` es lo único
-> que escribe en las tablas del mayorista.
+> que escribe en las tablas del mayorista. `Models/Customer` y
+> `Models/CustomerAddress` son los clientes finales de cada tienda y su libreta de
+> direcciones (nunca se confunden con `Models/StoreUser`, que es del panel).
 
 ### Ciclo de una petición
 
@@ -271,6 +284,36 @@ las que dan 404, y reutiliza la imagen grande si solo falta la miniatura.
 | `/producto/{slug}/{id}` | Ficha (**URL SEO**); `/producto/{id}` redirige 301 |
 | `/contacto`, `/pagina/{slug}` | Contacto y páginas de contenido |
 | `/registro` | **Alta de una tienda nueva** con la cuenta de idirecto (ver más abajo) |
+| `/carrito` | Carrito del cliente (añadir, cambiar cantidades, quitar, vaciar) |
+| `/checkout` | Cierre del pedido: dirección, forma de pago y comentario |
+| `/checkout/gracias/{code}` | Pedido registrado (resumen e instrucciones de pago) |
+| `/cuenta` | Cuenta del cliente: pedidos, direcciones y datos (`/cuenta/login`, `/cuenta/registro`, `/cuenta/pedidos/{code}`, `/cuenta/direcciones`, `/cuenta/perfil`) |
+
+### Compra del cliente final
+
+El comprador **no es el tendero**: tiene su propia cuenta y su propia sesión
+(`CustomerAuth`, con `mt_customers` y `mt_customer_addresses`), separadas del panel.
+
+- **Carrito** (`Cart`): en la sesión y por tienda. Solo guarda producto y cantidad;
+  el precio, el nombre y el stock se leen del catálogo en cada visita, así que nunca
+  se compra a un precio viejo. Los productos que dejan de estar disponibles se
+  quitan solos con un aviso.
+- **Precio de venta**: `tarifa de la tienda (mt_stores.id_margen) + beneficio
+  (mt_stores.markup)`, y en la web **con IVA incluido** (`Catalog::forStore()` fija
+  ese contexto en cada petición; el panel usa la base sin IVA). El pedido guarda la
+  base en `mt_order_items.price_customer` y el IVA se calcula al totalizar.
+- **Envío**: tarifa plana y gratis desde X € (`Shipping`, configurable en Ajustes).
+- **Cierre** (`Checkout`): dirección de envío (de la libreta o nueva), facturación
+  opcional distinta, forma de pago (transferencia, contra reembolso o recogida) y
+  **comentario**. Crea el pedido con `Order::createWithItems()` —el mismo camino que
+  el alta manual del panel— y lo deja **pendiente de pago** (el tendero lo confirma
+  en el panel). La dirección solo se guarda en la libreta si el pedido se registra.
+- **Invitado o registrado**: se puede comprar sin cuenta; en ese caso se crea el
+  cliente con su email y su dirección, y si después se registra con el mismo email
+  **reclama la cuenta** y conserva sus pedidos.
+- **Al mayorista** se le pasa la **dirección del cliente** (con sus ids de
+  país/provincia/población, celular y el email en `localidad`) y su comentario en
+  `pedidos.detalles`, en lugar de reutilizar la dirección de la tienda.
 
 ### Registro de tiendas (solo clientes del mayorista)
 
@@ -511,7 +554,7 @@ servidores no los traen en `/etc/mime.types` y servirían la imagen sin
 
 ```bash
 sudo bash deploy/setup-local-domain.sh     # /etc/hosts + VirtualHost + permisos
-php tools/verify.php                       # 90 comprobaciones
+php tools/verify.php                       # 118 comprobaciones
 php -S 127.0.0.1:8099 index.php            # servidor embebido (alternativa)
 ```
 
@@ -538,7 +581,7 @@ con repetir el script con el nuevo nombre y tocar esas tres claves del `.env`.
 ## 10. Verificación antes de dar algo por hecho
 
 ```bash
-php tools/verify.php                 # debe decir: TODO OK (90 comprobaciones)
+php tools/verify.php                 # debe decir: TODO OK (118 comprobaciones)
 curl -s -o /dev/null -w '%{http_code}\n' http://local.tienda/
 curl -s -o /dev/null -w '%{http_code}\n' http://local.tienda/catalogo
 curl -s -o /dev/null -w '%{http_code}\n' "http://local.tienda/catalogo?cat=9&subcat=102&f%5Bsocket%5D%5B0%5D=am5"
@@ -588,6 +631,11 @@ google-chrome --headless=new --disable-gpu --no-sandbox \
 | `/panel/pedidos/nuevo` mostraba la ficha de un pedido | El router resuelve **en orden de declaración**: `{id}` capturaba `nuevo` | Declarar `nuevo` y `buscar` **antes** de `/panel/pedidos/{id}` |
 | `password_verify()` no valida ninguna cuenta de `tiendas` | La contraseña del mayorista **no** es `password_hash`: es `hash('sha256', md5(sha1($clave)))` | Usar `Account::signature()` / `Account::login()`; si cambian su login, ajustar ahí |
 | Un cliente del mayorista no puede registrarse y su contraseña es correcta | `tiendas.activo` **no** vale `1`: idirecto marca las cuentas activas con `activo = 2` (y hay que descartar `cerrada` y `deleted`) | Mismo filtro que el login de idirecto: `activo = 2 AND COALESCE(cerrada,0)=0 AND COALESCE(deleted,0)=0` |
+| `SQLSTATE[HY093]: Invalid parameter number` al buscar clientes | En `Customer::forStore()` el mismo `:q` se usaba en tres `LIKE` de la misma consulta (prohibido con `EMULATE_PREPARES = false`) | Un parámetro por repetición: `:q1`, `:q2`, `:q3` |
+| La web muestra un precio y el pedido cobra otro | El storefront trabaja **con IVA incluido** (`Catalog::forStore(..., true)`) y el panel **sin IVA** (`false`); `price_final` es el precio de venta de cada contexto y `price_net` la base | Convertir con `Catalog::netFromSale()` / `saleFromNet()`; en el pedido se guarda **siempre** la base sin IVA |
+| Los precios del catálogo salen «demasiado baratos» (por debajo del coste) | Nadie fijó el contexto de la tienda y `precioSql()` cae en `MIN(precios.precio)` de **todas** las tarifas | Llamar a `Catalog::forStore($id_margen, $markup, $tax, $withTax)` al empezar la petición: lo hace `Controller::bootPricing()` en el storefront y `OrderController::bootStorePricing()` en el panel |
+| `Fatal error: Access level to ...::requireAuth() must be protected` | Ese método ya existe en `Core\Controller`: un controlador hijo no puede bajarlo a `private` | No redefinirlo (o hacerlo `protected`); en los `Admin/*` solo se redefine `storeId()` |
+| Una compra fallida dejaba una dirección vacía en la libreta | Se guardaba la dirección **antes** de validar el pedido | Guardarla solo cuando el pedido ya está registrado (`CheckoutController::place()`) |
 
 ### 11bis. Semijoin de stock (rendimiento)
 
@@ -610,15 +658,16 @@ frescura de datos del dueño, no un cambio que deba hacer un agente por su cuent
 
 Ver [`STATE.md`](STATE.md) para el estado detallado. Pendiente principal:
 
-1. **Precio por tarifa de tienda en el storefront** — el catálogo sigue usando
-   `MIN(precios.precio)`; debería aplicar la tarifa de la tienda
-   (`mt_stores.id_margen`), que los pedidos ya usan.
-2. **Checkout** — carrito, pasarelas de pago de la tienda y envío. Debe crear el
-   pedido con `Order::createWithItems()` para que entre por el mismo circuito que
-   el alta manual y se pueda enviar al mayorista por líneas.
+1. **Cobro real y emails** — el checkout registra el pedido y su forma de pago, pero
+   no cobra: falta la pasarela (Redsys, con firma y notificación), el estado de la
+   transacción y los emails de confirmación al cliente y aviso a la tienda. De ahí
+   cuelga también **recuperar la contraseña** del cliente.
+2. **Gastos de envío por peso y provincia** — ahora es tarifa plana + gratis desde X €;
+   puntobyze los calcula por peso del pedido y provincia de destino.
 3. **Panel maestro del mayorista** — supervisión, tarifas y auditoría de ventas.
-   El alta ya existe (`/registro`, con la cuenta del mayorista); falta el punto de
-   vista del mayorista para gestionar todas las tiendas.
+   El alta ya existe (`/registro`, con la cuenta del mayorista) y los clientes finales
+   están en `mt_customers`; falta el punto de vista del mayorista para gestionar todas
+   las tiendas.
 4. **Materializar el stock válido** (`mt_` refrescada por tarea) para eliminar el
    pico del contador y permitir orden por precio en todo el catálogo.
 5. **Temas `moderno` y `minimal`**.

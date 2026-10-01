@@ -86,9 +86,46 @@ $sendFormId = 'send-order-' . (int) $order['id'];
                         <?php if (!empty($order['customer_phone'])): ?> · <?= e($order['customer_phone']) ?><?php endif; ?>
                         <?php if (!empty($order['customer_tax_id'])): ?> · <?= e($order['customer_tax_id']) ?><?php endif; ?>
                     </small>
+                    <?php if (!empty($order['customer_id'])): ?>
+                        <small>
+                            <a href="<?= e($base) ?>/panel/clientes/<?= (int) $order['customer_id'] ?>">Ver ficha del cliente</a>
+                            · pedido hecho en la web
+                        </small>
+                    <?php endif; ?>
                 </div>
             </li>
         </ul>
+
+        <div class="hint-box">
+            <strong>Cobro</strong>
+            <p>
+                <?= e(Order::paymentLabel($order['payment_method'] ?? null)) ?>
+                <span class="pill pill-<?= (int) ($order['payment_status'] ?? 0) === 1 ? 'ok' : 'warning' ?>">
+                    <?= e(Order::paymentStatusLabel((int) ($order['payment_status'] ?? 0))) ?>
+                </span>
+                <?php if (!empty($order['paid_at'])): ?>
+                    <br><span class="muted small">Cobrado el <?= e(date('d/m/Y H:i', strtotime((string) $order['paid_at']))) ?></span>
+                <?php endif; ?>
+            </p>
+            <form method="post" action="<?= e($base) ?>/panel/pedidos/<?= (int) $order['id'] ?>/cobro" class="inline">
+                <?= Csrf::field() ?>
+                <input type="hidden" name="payment_status" value="<?= (int) ($order['payment_status'] ?? 0) === 1 ? '0' : '1' ?>">
+                <button class="btn btn-ghost btn-sm" type="submit">
+                    <?= (int) ($order['payment_status'] ?? 0) === 1 ? 'Volver a pendiente' : 'Marcar como pagado' ?>
+                </button>
+            </form>
+            <?php if (($order['payment_method'] ?? '') === Order::PAY_TRANSFER && !empty($store['bank_details'])): ?>
+                <p class="muted small">Datos que ve el cliente: <?= nl2br(e((string) $store['bank_details'])) ?></p>
+            <?php endif; ?>
+        </div>
+
+        <?php if (!empty($order['customer_note'])): ?>
+            <div class="hint-box">
+                <strong>Comentario del cliente</strong>
+                <p><?= nl2br(e((string) $order['customer_note'])) ?></p>
+            </div>
+        <?php endif; ?>
+
         <?php if (!empty($order['notes'])): ?>
             <div class="hint-box">
                 <strong>Notas del pedido</strong>
@@ -102,11 +139,25 @@ $sendFormId = 'send-order-' . (int) $order['id'];
         <?php if (!empty($order['ship_address'])): ?>
             <p>
                 <strong><?= e($order['ship_name'] ?: $order['customer_name']) ?></strong><br>
-                <?= e($order['ship_address']) ?><br>
+                <?= e($order['ship_address']) ?><?= !empty($order['ship_detail']) ? ', ' . e($order['ship_detail']) : '' ?><br>
                 <?= e(trim(($order['ship_postal_code'] ?? '') . ' ' . ($order['ship_city'] ?? ''))) ?><br>
                 <?= e($order['ship_province'] ?? '') ?> · <?= e($order['ship_country'] ?? '') ?>
+                <?php if (!empty($order['ship_phone']) || !empty($order['ship_mobile'])): ?>
+                    <br><span class="muted small"><?= e($order['ship_phone'] ?: $order['ship_mobile']) ?></span>
+                <?php endif; ?>
             </p>
             <p class="muted small">Es la direccion que se enviara al mayorista como direccion de envio.</p>
+
+            <?php if (!empty($order['bill_address']) && $order['bill_address'] !== $order['ship_address']): ?>
+                <h3 class="subsection">Facturacion</h3>
+                <p>
+                    <strong><?= e($order['bill_name'] ?: $order['customer_name']) ?></strong><br>
+                    <?= e($order['bill_address']) ?><br>
+                    <?= e(trim(($order['bill_postal_code'] ?? '') . ' ' . ($order['bill_city'] ?? ''))) ?><br>
+                    <?= e($order['bill_province'] ?? '') ?> · <?= e($order['bill_country'] ?? '') ?>
+                    <?php if (!empty($order['bill_tax_id'])): ?><br><span class="muted small"><?= e($order['bill_tax_id']) ?></span><?php endif; ?>
+                </p>
+            <?php endif; ?>
         <?php else: ?>
             <p class="muted">
                 Sin direccion de entrega propia: el pedido se enviara al mayorista con la direccion

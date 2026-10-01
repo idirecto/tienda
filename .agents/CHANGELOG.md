@@ -5,6 +5,93 @@ El detalle línea a línea está en `git log`.
 
 ---
 
+## 2026-10-01 · Compra como cliente final: carrito, cuenta, direcciones y pedido
+
+**Motivo:** el dueño pide el proceso para que un cliente compre en la web —
+**registrarse como usuario de la tienda, dar de alta direcciones y cambiarlas,
+dejar comentarios**— «similar a lo que cuenta la web de puntobyze para registrar
+un pedido», y recuerda que después los productos se pueden pasar a las tablas que
+comparten idirecto y puntobyze. Antes solo existía el pedido manual del panel:
+`mt_orders` se llenaba a mano y en el storefront no había ni carrito ni cuentas.
+
+**Cómo funciona puntobyze (lo que se ha copiado):** cliente (`e_clientes`) →
+direcciones (`e_direccion`: nombre, NIF, país/provincia/población, CP, dirección,
+detalle, teléfono/móvil) → carrito → confirmar dirección → confirmar pedido →
+dos filas en `pedidos_addr` (facturación y envío) → `pedidos` (`id_tienda`,
+`forma`, `comentario`, `web = 1`) → `pedidos_det` por línea. Se comprobó además
+que **idirecto y puntobyze comparten base de datos** (`idirecto_db`: `e_clientes`
+3.094, `e_direccion` 5.815, `pedidos` 852.570, `poblaciones` 85.375...).
+
+**Decisiones del dueño:** se puede comprar **registrándose o como invitado**;
+formas de pago **transferencia, contra reembolso y recogida en tienda** (sin
+pasarela todavía: el pedido nace pendiente de pago); **gastos de envío = tarifa
+plana + gratis desde X €**; los clientes viven **solo en nuestras tablas** (no se
+copian a `e_clientes`); y el precio de venta es **la tarifa de la tienda + un
+beneficio configurable, con el IVA incluido** en la web.
+
+**Cambios**
+
+- **Migración 004**: `mt_customers` (clientes finales por tienda, con `is_guest`),
+  `mt_customer_addresses` (libreta con los mismos datos que espera `pedidos_addr`
+  + los ids de país/provincia/población), y en `mt_orders` el cliente, la
+  dirección de facturación completa, el detalle/teléfonos/ids del envío, el
+  comentario del cliente y el cobro (`payment_method`, `payment_status`,
+  `paid_at`). En `mt_stores`: `markup`, `shipping_flat`, `free_shipping_from`,
+  `pay_transfer`, `pay_cod`, `pay_pickup` y `bank_details`.
+- **Precio de venta de la tienda** (`Catalog::forStore`): la tienda ya no muestra
+  el precio más barato de todas las tarifas (que podía ser **menor que su
+  coste**), sino `tarifa de la tienda (id_margen) + beneficio (mt_stores.markup)`,
+  y el storefront lo muestra **con IVA incluido** mientras el pedido guarda la
+  base sin IVA. Las cachés de destacados y rango de precios pasan a ser por
+  tienda y se olvidan al guardar los ajustes de venta.
+- **Carrito** (`Core/Cart`, en sesión y por tienda) sobre la ficha y las tarjetas
+  del catálogo, sin depender de JavaScript. Precio, stock y nombre se leen en vivo
+  del catálogo: lo único que se guarda es producto y cantidad.
+- **Cuenta del cliente** (`CustomerAuth`, separada de la del panel): registro,
+  entrada, salida, «mis datos», «mis pedidos», ficha de pedido y **libreta de
+  direcciones** (alta, edición y borrado). Un invitado que se registra con el
+  mismo email **reclama** su cuenta y conserva sus pedidos.
+- **Checkout** (`Core/Checkout`): dirección de envío (de la libreta o nueva),
+  facturación opcional distinta, forma de pago, comentario y confirmación. Crea
+  `mt_orders` + `mt_order_items` con los importes recalculados en el servidor y
+  guarda la dirección en la libreta **solo si el pedido se registra bien**.
+- **Envío al mayorista** (`OrderGateway`): pasa a `pedidos_addr` la **dirección
+  real del cliente** (con sus ids de país/provincia/población, celular y el email
+  en `localidad`, como puntobyze) en lugar de reutilizar la de la tienda, usa la
+  facturación del pedido si la trae, y manda el comentario del cliente en
+  `pedidos.detalles`.
+- **Panel**: nueva sección **Clientes** (listado con buscador y ficha con
+  direcciones y pedidos), la ficha de pedido enseña cobro, comentario del cliente
+  y facturación, con botón para **marcar como pagado**; y Ajustes estrena el
+  bloque **Venta y cobro** (beneficio, envío, formas de pago y datos bancarios).
+- `Controller`: `themeView()` y `bootPricing()` suben al controlador base (los
+  usan storefront, carrito, cuenta y checkout).
+- `tools/verify.php`: 90 → **118** comprobaciones.
+
+**Verificación:** `php tools/verify.php` → TODO OK (118). Las pruebas de carrito,
+cliente, direcciones y pedido van dentro de una transacción que se deshace, así
+que no queda basura: solo se comprueban los números, no se guarda nada. Incluye
+el mapeo de `shippingAddress()`/`billingAddress()` (invocadas por reflexión) para
+comprobar que al mayorista le llega la dirección del cliente.
+
+Con **HTTP real** se probó el circuito completo: añadir al carrito (con y sin
+stock), totales con envío gratis desde 60 €, alta de un pedido **como invitado**
+y otro **con cuenta y dirección guardada + facturación distinta** (ambos guardados
+correctamente en `mt_orders`/`mt_order_items`, con base, IVA y envío que cuadran
+al céntimo), la libreta de direcciones (crear, editar y borrar), el registro y la
+entrada del cliente (con límite de intentos), la ficha del pedido en el panel, el
+buscador de productos del panel (devuelve la base sin IVA), el botón de cobro y
+los ajustes de venta (comprobando que el precio de la web cambia y la caché se
+limpia). Los pedidos y clientes de prueba se borraron al terminar.
+
+**Nota para el dueño:** en la tienda demo se han activado precios y compras
+(`allow_orders`, `show_prices`, beneficio 15 %, envío 4,95 € y gratis desde 60 €)
+para poder probarlo; se cambia en Panel > Ajustes. **Pendiente:** pasarela de pago
+real, gastos por peso/provincia, emails de confirmación al cliente y a la tienda,
+y recuperación de contraseña del cliente (no hay envío de correo todavía).
+
+---
+
 ## 2026-10-01 · Registro de tiendas: solo clientes del mayorista
 
 **Motivo:** el dueño pregunta si la tabla `tiendas` (la de clientes del

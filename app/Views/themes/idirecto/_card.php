@@ -72,9 +72,20 @@ $initial = mb_strtoupper(mb_substr((string) ($p['nombre'] ?? ''), 0, 2));
         </div>
 
         <div class="product-actions">
-            <a class="btn btn-primary btn-block product-cta" href="<?= e($url) ?>">
+            <a class="btn btn-ghost product-cta" href="<?= e($url) ?>">
                 Ver ficha <?= icon_svg('arrow-r') ?>
             </a>
+            <?php if ($tenant->allowOrders() && $band !== 'out' && $price !== null): ?>
+                <form class="product-add" method="post" action="<?= e($base) ?>/carrito/anadir">
+                    <?= \Tienda\Core\Csrf::field() ?>
+                    <input type="hidden" name="source" value="catalog">
+                    <input type="hidden" name="product_id" value="<?= (int) ($p['id'] ?? 0) ?>">
+                    <input type="hidden" name="qty" value="1">
+                    <button class="btn btn-primary" type="submit" aria-label="Anadir al carrito" title="Anadir al carrito">
+                        <?= icon_svg('cart') ?>
+                    </button>
+                </form>
+            <?php endif; ?>
         </div>
     </div>
 </article>

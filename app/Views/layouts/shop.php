@@ -15,11 +15,22 @@
  * @var array $blocks
  */
 use Tienda\Core\Appearance;
+use Tienda\Core\Cart;
+use Tienda\Core\CustomerAuth;
+use Tienda\Core\Session;
 use Tienda\Models\Catalog;
 
 $scheme = Appearance::scheme($tenant);
 $themeCss = Appearance::css($tenant);
 $brandName = $tenant->logoUrl();
+
+// Avisos de la ultima accion (carrito, cuenta, pedido).
+$flashSuccess = Session::pullFlash('success');
+$flashError = Session::pullFlash('error');
+
+// Carrito y sesion del cliente, para la cabecera.
+$cartUnits = Cart::count($tenant->id());
+$shopCustomer = CustomerAuth::customer($tenant->id());
 
 // Menu de categorias del catalogo (categorias -> subcategorias con stock).
 // Va cacheado en fichero, asi que es barato en cada pagina del storefront.
@@ -117,6 +128,19 @@ $headerStyle = preg_replace('/[^a-z0-9_\-]/i', '', $tenant->headerStyle()) ?: 'c
                 <?= icon_svg('sun', 'icon-sun') ?>
                 <?= icon_svg('moon', 'icon-moon') ?>
             </button>
+
+            <a class="icon-btn shop-account" href="<?= e($base) ?>/cuenta"
+               aria-label="<?= $shopCustomer ? 'Mi cuenta' : 'Entrar en mi cuenta' ?>">
+                <?= icon_svg('user') ?>
+                <span class="shop-account-label"><?= $shopCustomer ? e(mb_substr((string) $shopCustomer['name'], 0, 12)) : 'Entrar' ?></span>
+            </a>
+
+            <a class="icon-btn shop-cart" href="<?= e($base) ?>/carrito" aria-label="Carrito de la compra">
+                <?= icon_svg('cart') ?>
+                <?php if ($cartUnits > 0): ?>
+                    <span class="shop-cart-count"><?= (int) $cartUnits ?></span>
+                <?php endif; ?>
+            </a>
 
             <a class="btn-panel" href="<?= e($base) ?>/panel">Mi panel</a>
         </div>
@@ -216,6 +240,12 @@ $headerStyle = preg_replace('/[^a-z0-9_\-]/i', '', $tenant->headerStyle()) ?: 'c
 <?php endif; ?>
 
 <main class="shop-main" id="contenido" tabindex="-1">
+    <?php if ($flashSuccess || $flashError): ?>
+        <div class="container shop-flash">
+            <?php if ($flashSuccess): ?><div class="alert alert-success" role="status"><?= e($flashSuccess) ?></div><?php endif; ?>
+            <?php if ($flashError): ?><div class="alert alert-error" role="alert"><?= e($flashError) ?></div><?php endif; ?>
+        </div>
+    <?php endif; ?>
     <?= $content ?>
 </main>
 

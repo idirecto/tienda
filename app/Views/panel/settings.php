@@ -34,6 +34,51 @@ $v = static fn (string $k, string $d = '') => e($store[$k] ?? $d);
     </div>
 
     <div class="card">
+        <h2>Venta y cobro</h2>
+        <form method="post" action="<?= e($base) ?>/panel/ajustes" class="stack">
+            <?= Csrf::field() ?>
+            <input type="hidden" name="form" value="shop">
+            <p class="muted small">
+                El precio que ve el cliente es tu <strong>tarifa en el mayorista mas este beneficio</strong>,
+                con el IVA incluido. Con beneficio 0 vendes al precio de coste.
+            </p>
+            <div class="field-grid">
+                <label>Beneficio (%)
+                    <input type="text" name="markup" value="<?= $v('markup', '15') ?>">
+                </label>
+                <label>Gastos de envio (EUR)
+                    <input type="text" name="shipping_flat" value="<?= $v('shipping_flat', '0') ?>">
+                </label>
+                <label>Envio gratis desde (EUR)
+                    <input type="text" name="free_shipping_from" value="<?= $v('free_shipping_from') ?>" placeholder="vacio = nunca">
+                </label>
+            </div>
+
+            <h3 class="subsection">Formas de pago que aceptas</h3>
+            <label class="check-line">
+                <input type="checkbox" name="pay_transfer" value="1" <?= !empty($store['pay_transfer']) ? 'checked' : '' ?>>
+                Transferencia bancaria
+            </label>
+            <label class="check-line">
+                <input type="checkbox" name="pay_cod" value="1" <?= !empty($store['pay_cod']) ? 'checked' : '' ?>>
+                Contra reembolso
+            </label>
+            <label class="check-line">
+                <input type="checkbox" name="pay_pickup" value="1" <?= !empty($store['pay_pickup']) ? 'checked' : '' ?>>
+                Recogida en tienda
+            </label>
+
+            <label>Datos para la transferencia
+                <textarea name="bank_details" rows="3" placeholder="Titular, IBAN y lo que quieras indicar al cliente"><?= $v('bank_details') ?></textarea>
+            </label>
+
+            <div class="actions">
+                <button class="btn btn-primary" type="submit">Guardar venta y cobro</button>
+            </div>
+        </form>
+    </div>
+
+    <div class="card">
         <h2>Usuarios del panel</h2>
         <ul class="list">
             <?php foreach ($users as $u): ?>

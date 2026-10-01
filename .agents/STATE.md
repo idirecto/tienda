@@ -15,7 +15,7 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
 
 > ✅ **Entorno (2026-10-01).** `idirecto_db` está **completa** (239 tablas:
 > catálogo con 41.289 productos con stock, 33 categorías con stock, y las `mt_`),
-> la web responde 200 y `php tools/verify.php` da **TODO OK (90)**.
+> la web responde 200 y `php tools/verify.php` da **TODO OK (118)**.
 >
 > ⚠️ **Si vuelve a salir un 500 con «Error interno»**: casi siempre es que el
 > usuario del servidor web (`www-data`) **no puede leer `.env`**, no un fallo de
@@ -29,6 +29,7 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
 |---|---|
 | Multi-tienda (resolución por hostname) | ✅ Completo |
 | **Registro de tiendas (solo con cuenta activa del mayorista)** | ✅ Completo |
+| **Compra del cliente final (carrito, cuenta, direcciones y pedido)** | ✅ Completo (**sin pasarela de pago**) |
 | Catálogo central (stock, búsqueda, paginación) | ✅ Completo (**listados en ~20 ms**, ver notas) |
 | Ficha de producto (galería + especificaciones) | ✅ Completo (colores ya tokenizados) |
 | **Sistema de diseño white-label (tokens, claro/oscuro, presets, previa en vivo)** | ✅ Completo |
@@ -41,8 +42,10 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
 | Subida de imágenes (carpetas `tienda_<tipo>`, id en el nombre, WebP) | ✅ Completo |
 | Entorno local (`http://local.tienda`) | ✅ Completo |
 | **Despliegue Apache y nginx** | ✅ Completo (nginx verificado con binario real) |
-| **Checkout: carrito, pago y envío** | ❌ **No existe** (modelo de pedidos y envío al mayorista, sí) |
-| **Precio según tarifa de la tienda** | ⚠️ Provisional en el storefront (`MIN(precios.precio)`); los **pedidos** ya usan la tarifa de la tienda (`mt_stores.id_margen`) |
+| **Checkout: carrito, pago y envío** | ✅ Completo (cobro **sin pasarela**: transferencia, contra reembolso y recogida) |
+| **Precio de venta de la tienda** | ✅ Completo: tarifa (`id_margen`) + beneficio (`mt_stores.markup`), con IVA incluido en la web y base sin IVA en el pedido |
+| **Gastos de envío** | ⚠️ Tarifa plana + gratis desde X €; falta el cálculo por **peso y provincia** de puntobyze |
+| **Emails al cliente y a la tienda** | ❌ No existe (no hay envío de correo: ni confirmación ni recuperar contraseña) |
 | Temas `moderno` y `minimal` | ⚠️ Sembrados, sin maquetar (los tokens valen para cualquiera) |
 | Panel maestro del mayorista | ❌ No existe (el alta pública ya enlaza cada tienda con su cuenta) |
 | Tests automatizados / CI | ❌ No existe |
@@ -74,6 +77,32 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
 - Una cuenta = una tienda: si esa cuenta ya tiene tienda, se le manda al panel.
 - Límite de intentos por sesión (5 / 15 min) y registro de los rechazos en el log,
   para que el formulario no sirva para probar contraseñas del mayorista.
+
+### Compra del cliente final
+- **Carrito** en la sesión y por tienda (`Core/Cart`): solo guarda producto y
+  cantidad; el precio, el nombre y el stock se leen **en vivo** del catálogo, así
+  que nunca se compra a un precio viejo. Se añade desde la ficha y desde las
+  tarjetas, y funciona sin JavaScript.
+- **Cuenta del cliente** (`Core/CustomerAuth` + `mt_customers`), independiente de
+  la del tendero: registro, entrada (con límite de intentos), salida, mis datos,
+  **mis pedidos** y **libreta de direcciones** (alta, edición y borrado, con
+  dirección de envío/facturación por defecto). Se puede comprar **como invitado**:
+  en ese caso se crea el cliente con el email y su dirección, y si luego se
+  registra con el mismo email **reclama la cuenta** y conserva sus pedidos.
+- **Checkout** (`Core/Checkout`): dirección de envío de la libreta o nueva,
+  facturación distinta si se quiere, forma de pago (transferencia, contra
+  reembolso o recogida) y **comentario**. Crea `mt_orders` + `mt_order_items` con
+  los importes recalculados en el servidor; el pedido nace **pendiente de pago** y
+  el tendero lo confirma en el panel («marcar como pagado»).
+- **Precio de venta**: `tarifa de la tienda (mt_stores.id_margen) + beneficio
+  (mt_stores.markup)`, con el **IVA incluido** en la web y la **base sin IVA** en
+  el pedido (que es lo que se manda al mayorista). Los gastos de envío son tarifa
+  plana + gratis desde X € (en Ajustes). Todo se ve en el carrito antes de pagar.
+- **Al mayorista le llega la dirección del cliente** (no la de la tienda), con sus
+  ids de país/provincia/población, celular, el email en `localidad` y su comentario
+  en `pedidos.detalles`, igual que hace puntobyze.
+- **Panel**: sección **Clientes** (listado con buscador y ficha con direcciones y
+  pedidos) y bloque **Venta y cobro** en Ajustes.
 
 ### Storefront
 - Catálogo filtrado a **productos con stock**, con las mismas condiciones que
@@ -175,7 +204,7 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
   en **nginx + PHP-FPM** (`sudo bash deploy/setup-nginx-domain.sh valduran.com`).
 - La app detecta el servidor (`app/Core/Server.php`): ruta pública de `/public`,
   esquema real (incluido proxy) y host de las URLs canónicas.
-- `tools/verify.php`: 90 comprobaciones automáticas (diseño, facetas, catálogo,
+- `tools/verify.php`: 118 comprobaciones automáticas (diseño, facetas, catálogo,
   almacenamiento, DNS, servidor, registro de tiendas, pedidos y envío al mayorista).
 - Documentación interna en `.agents/`, blindada frente a la web.
 - Repositorio publicado en GitHub (`main`).
@@ -184,26 +213,30 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
 
 ## Pendiente (por orden sugerido)
 
-### 1. Precio según la tarifa de la tienda ⚠️
-En el **storefront** `Catalog::decorate()` sigue usando `MIN(precios.precio)` sobre
-todas las tarifas, así que la web puede mostrar un precio que no corresponde a esa
-tienda. Los **pedidos** ya usan la tarifa de la tienda (`mt_stores.id_margen`, con
-respaldo en `tiendas.id_margen`) porque el envío al mayorista la necesita. Lo que
-falta es aplicar esa misma tarifa a los precios del catálogo público.
+### 1. Cobro real (pasarela) 💳
+El checkout registra el pedido y su forma de pago (transferencia, contra reembolso o
+recogida), pero **no cobra**: el pedido nace pendiente y el tendero lo marca como
+pagado en el panel. Falta integrar una pasarela (Redsys tiene su API en
+`/var/www/html/puntobyze/app/inc/redsysapi.class.php` como referencia) con su firma,
+la notificación de pago y el estado de la transacción.
 
-**Decisión pendiente del dueño:** ¿la tarifa la asigna el mayorista a cada tienda, la
-elige la tienda, o se deriva del plan contratado? Ahora mismo se puede fijar a mano
-en Ajustes.
+### 2. Emails al cliente y a la tienda
+No hay envío de correo en el proyecto: al confirmar el pedido el cliente solo ve la
+página de gracias y la tienda se entera por el panel. Faltan el email de confirmación
+(y, con él, **recuperar la contraseña** del cliente, hoy imposible si se le olvida).
 
-### 2. Checkout
-Carrito (sesión), pasarelas de pago **de la tienda** (no del mayorista), cálculo
-de envío y registro del pedido. El modelo de pedidos **ya existe**
-(`mt_orders`/`mt_order_items`) y el envío al mayorista también: el checkout solo
-tiene que crear el pedido con `Order::createWithItems()` (mismo camino que el alta
-manual del panel), de modo que las líneas del catálogo se puedan enviar luego a
-idirecto como ya hace la ficha del pedido.
+### 3. Gastos de envío por peso y provincia
+Ahora es tarifa plana + gratis desde X €, suficiente para empezar. Puntobyze calcula
+los portes por **peso del pedido y provincia** (`getPortes()` con tabla de tramos):
+para igualarlo hacen falta pesos fiables por producto y mantener esa tabla.
 
-### 3. Panel maestro del mayorista
+### 4. Cuenta y direcciones en el panel maestro
+Los clientes y sus direcciones viven en nuestras tablas (`mt_customers`,
+`mt_customer_addresses`) y **no** se copian a `e_clientes` (tabla de puntobyze), que
+es la decisión tomada. Si algún día el mayorista quiere ver el cliente final, habría
+que decidirlo otra vez (implicaría crearle cuenta en puntobyze).
+
+### 5. Panel maestro del mayorista
 Supervisión de tiendas, asignación de tarifas y auditoría de ventas.
 
 El **alta** ya está resuelta por el registro público (`/registro`, cada tienda nace
@@ -261,6 +294,23 @@ No hay ninguno. Prioridad: `Specs` (parseo de especificaciones),
   (`/registro`) pero exige una cuenta activa en `tiendas`; la tienda nace enlazada
   a esa cuenta y con su tarifa. Se entra al panel con un **usuario propio** (no
   con las credenciales del mayorista, que no se guardan).
+- **La tienda vende a tarifa + beneficio, con IVA incluido**: el precio de la web es
+  `tarifa de la tienda (id_margen) + beneficio (mt_stores.markup)`, **con el IVA
+  incluido** (es lo que paga el cliente). El pedido guarda la **base sin IVA** en
+  `mt_order_items.price_customer` y el IVA se suma en los totales, de modo que la
+  cuenta cuadra con el precio que vio el cliente y con lo que factura el mayorista.
+  Decisión del dueño: nada de mostrar el precio más barato publicado, que en muchos
+  productos era **menor que el coste** de la tienda (ej. 311,17 € frente a 315,67 €).
+- **Se puede comprar como invitado o con cuenta**: en los dos casos el pedido queda
+  ligado a un cliente de `mt_customers`, con su dirección guardada en la libreta. Un
+  invitado que se registra con el mismo email **conserva sus pedidos**.
+- **El cobro no se automatiza todavía**: el pedido nace pendiente de pago y el
+  tendero lo marca como pagado en el panel. Cada tienda elige en Ajustes qué formas
+  acepta (transferencia, contra reembolso, recogida) con sus datos bancarios.
+- **Los clientes finales viven solo en nuestras tablas** (`mt_customers`,
+  `mt_customer_addresses`): no se crean cuentas en `e_clientes` (la tabla de
+  puntobyze), decisión expresa del dueño. Al mayorista le llega la dirección del
+  cliente en `pedidos_addr`, pero `pedidos.id_e_cliente` va vacío.
 
 ---
 
@@ -278,6 +328,14 @@ No hay ninguno. Prioridad: `Specs` (parseo de especificaciones),
   aislado en `Core/Idirecto/OrderGateway`, con vista previa obligatoria y
   transacción única, pero una tienda mal configurada podría crear pedidos reales:
   conviene dejar `IDIRECTO_ENABLED=false` hasta tener la cuenta asignada.
+- **El precio depende del beneficio de la tienda**: al cambiarlo (Ajustes) se
+  limpian las cachés de precios, pero un pedido ya registrado conserva los importes
+  con los que nació (es lo correcto: es lo que aceptó el cliente). Si se cambia la
+  tarifa en idirecto, los pedidos nuevos usan la nueva y los viejos no.
+- **Sin emails**: el cliente no recibe confirmación ni puede recuperar su
+  contraseña; si la pierde, el tendero tendría que tocarla a mano en la base de
+  datos. La entrada del cliente tiene límite de intentos por sesión (5 / 15 min),
+  pero es por sesión, no por IP.
 - `CATALOG_IMAGE_URL` apunta a `https://idirecto.es/img_products`. Si el
   mayorista bloquea el *hotlinking* o cambia las rutas, las imágenes dejan de
   verse (el *fallback* de marcador funciona, no rompe la página).

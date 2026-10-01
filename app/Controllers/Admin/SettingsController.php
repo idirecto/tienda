@@ -8,6 +8,7 @@ use Tienda\Core\Auth;
 use Tienda\Core\Controller;
 use Tienda\Core\Idirecto\Account;
 use Tienda\Core\Session;
+use Tienda\Models\Catalog;
 use Tienda\Models\Store;
 use Tienda\Models\StoreUser;
 
@@ -44,6 +45,11 @@ final class SettingsController extends Controller
             return $this->createUser($storeId);
         }
 
+        // Venta y cobro: beneficio, envio y formas de pago.
+        if ((string) $this->input('form', '') === 'shop') {
+            return $this->saveShop($storeId);
+        }
+
         // Cuenta del mayorista: si se informa, tiene que existir de verdad.
         $idTienda = (int) $this->input('id_tienda_idirecto', 0);
         if ($idTienda > 0 && Account::findTienda($idTienda) === null) {
@@ -65,6 +71,37 @@ final class SettingsController extends Controller
         ]);
 
         Session::flash('success', 'Datos de la tienda actualizados.');
+        $this->redirect('panel/ajustes');
+    }
+
+    /**
+     * Guarda el beneficio, los gastos de envio y las formas de pago.
+     *
+     * De aqui sale lo que paga el cliente en la web: precio = tarifa de la tienda
+     * + este beneficio (+ IVA), y el envio segun la tarifa y el minimo gratis.
+     */
+    private function saveShop(int $storeId): string
+    {
+        $markup = (float) str_replace(',', '.', (string) $this->input('markup', '15'));
+        $flat = (float) str_replace(',', '.', (string) $this->input('shipping_flat', '0'));
+        $freeRaw = trim((string) $this->input('free_shipping_from', ''));
+        $free = $freeRaw === '' ? null : (float) str_replace(',', '.', $freeRaw);
+
+        Store::updateById($storeId, [
+            'markup'             => max(0, min(200, $markup)),
+            'shipping_flat'      => max(0, $flat),
+            'free_shipping_from' => $free !== null && $free > 0 ? $free : null,
+            'pay_transfer'       => (string) $this->input('pay_transfer', '') === '1' ? 1 : 0,
+            'pay_cod'            => (string) $this->input('pay_cod', '') === '1' ? 1 : 0,
+            'pay_pickup'         => (string) $this->input('pay_pickup', '') === '1' ? 1 : 0,
+            'bank_details'       => trim((string) $this->input('bank_details', '')) ?: null,
+        ]);
+
+        // Los precios del catalogo van cacheados por tienda (tarifa + beneficio):
+        // al cambiar el beneficio hay que olvidar la cache de precios.
+        Catalog::forgetPriceCache();
+
+        Session::flash('success', 'Ajustes de venta y cobro guardados.');
         $this->redirect('panel/ajustes');
     }
 

@@ -91,7 +91,7 @@ final class OrderGateway
         $pedidoId = self::transactional(function () use (
             $computed, $cuenta, $store, $order, $reference, $ahora, $porItem, $idTienda, $orderId, $statusActual
         ): int {
-            $addrFacturacion = self::insertAddress(self::billingAddress($cuenta));
+            $addrFacturacion = self::insertAddress(self::billingAddress($cuenta, $order));
             $envio = self::shippingAddress($cuenta, $order);
             $addrEnvio = $envio === null ? $addrFacturacion : self::insertAddress($envio);
 
@@ -115,7 +115,9 @@ final class OrderGateway
                 'forma'          => $cuenta['forma'],
                 'web'            => 1,
                 'referencia'     => $reference,
-                'detalles'       => '',
+                // El comentario del cliente (si lo dejo en la web) viaja con el
+                // pedido, que es donde el mayorista lo lee al prepararlo.
+                'detalles'       => mb_substr(trim((string) ($order['customer_note'] ?? '')), 0, 1000),
                 'comentario'     => 'Pedido de la tienda ' . $store['name'] . ' (' . $store['slug'] . ') #' . ($order['code'] ?? $orderId),
                 'pagada'         => 0,
                 'pagada_p'       => 0,
@@ -274,25 +276,60 @@ final class OrderGateway
     // =====================================================================
 
     /** Direccion de facturacion: los datos de la tienda (los de esta web). */
-    private static function billingAddress(array $cuenta): array
+    /**
+     * Direccion de facturacion que va a `pedidos_addr`.
+     *
+     * Si el pedido trae datos de facturacion propios (el cliente de la web puede
+     * facturar a otra direccion) se usan esos; lo que falte se completa con los
+     * datos de la cuenta del mayorista, que es quien factura.
+     */
+    private static function billingAddress(array $cuenta, array $order = []): array
     {
+        $nombre = trim((string) ($order['bill_name'] ?? ''));
+        $direccion = trim((string) ($order['bill_address'] ?? ''));
+
+        if ($nombre === '' && $direccion === '') {
+            return [
+                'nombre'          => mb_substr($cuenta['nombre'] !== '' ? $cuenta['nombre'] : $cuenta['razon_social'], 0, 150),
+                'nombre_sociedad' => mb_substr($cuenta['razon_social'], 0, 150),
+                'nif_cif'         => mb_substr($cuenta['nif'], 0, 50),
+                'direccion'       => mb_substr($cuenta['direccion'], 0, 250),
+                'cp'              => mb_substr($cuenta['cp'], 0, 40),
+                'poblacion'       => mb_substr($cuenta['poblacion'], 0, 150),
+                'localidad'       => null,
+                'pais'            => $cuenta['id_pais'],
+                'provincia'       => $cuenta['id_provincia'],
+                'telefono'        => mb_substr($cuenta['telefono'], 0, 50),
+                'celular'         => null,
+                'id_poblacion'    => null,
+            ];
+        }
+
         return [
-            'nombre'          => mb_substr($cuenta['nombre'] !== '' ? $cuenta['nombre'] : $cuenta['razon_social'], 0, 150),
+            'nombre'          => mb_substr($nombre !== '' ? $nombre : $cuenta['nombre'], 0, 150),
             'nombre_sociedad' => mb_substr($cuenta['razon_social'], 0, 150),
-            'nif_cif'         => mb_substr($cuenta['nif'], 0, 50),
-            'direccion'       => mb_substr($cuenta['direccion'], 0, 250),
-            'cp'              => mb_substr($cuenta['cp'], 0, 40),
-            'poblacion'       => mb_substr($cuenta['poblacion'], 0, 150),
+            'nif_cif'         => mb_substr((string) ($order['bill_tax_id'] ?? '') ?: $cuenta['nif'], 0, 50),
+            'direccion'       => mb_substr(self::withDetail($direccion, (string) ($order['bill_detail'] ?? '')), 0, 250),
+            'cp'              => mb_substr((string) ($order['bill_postal_code'] ?? ''), 0, 40),
+            'poblacion'       => mb_substr((string) ($order['bill_city'] ?? ''), 0, 150),
             'localidad'       => null,
-            'pais'            => $cuenta['id_pais'],
-            'provincia'       => $cuenta['id_provincia'],
-            'telefono'        => mb_substr($cuenta['telefono'], 0, 50),
+            'pais'            => (int) ($order['ship_country_id'] ?? 0) > 0 ? (int) $order['ship_country_id'] : $cuenta['id_pais'],
+            'provincia'       => (int) ($order['ship_province_id'] ?? 0) > 0 ? (int) $order['ship_province_id'] : $cuenta['id_provincia'],
+            'telefono'        => mb_substr((string) ($order['bill_phone'] ?? '') ?: $cuenta['telefono'], 0, 50),
+            'celular'         => null,
+            'id_poblacion'    => null,
         ];
     }
 
     /**
-     * Direccion de envio: la del pedido si tiene datos propios; si no, null y
-     * se reutiliza la de facturacion.
+     * Direccion de envio: la del cliente que ha comprado en la web; si el pedido
+     * no trae direccion propia (alta manual del panel) devuelve null y se
+     * reutiliza la de facturacion, como antes.
+     *
+     * Se respetan los ids del mayorista (pais/provincia/poblacion) cuando el
+     * cliente los tiene: asi el pedido lleva su direccion real y no la de la
+     * tienda. `localidad` va con su email, igual que hace puntobyze, para que el
+     * comercial sepa a quien avisar.
      */
     private static function shippingAddress(array $cuenta, array $order): ?array
     {
@@ -303,21 +340,33 @@ final class OrderGateway
             return null;
         }
 
-        $pais = $cuenta['id_pais'];
-        $provincia = Account::provinceId((string) ($order['ship_province'] ?? ''), $pais);
+        $pais = (int) ($order['ship_country_id'] ?? 0) > 0 ? (int) $order['ship_country_id'] : $cuenta['id_pais'];
+        $provincia = (int) ($order['ship_province_id'] ?? 0) > 0
+            ? (int) $order['ship_province_id']
+            : (Account::provinceId((string) ($order['ship_province'] ?? ''), $pais) ?? $cuenta['id_provincia']);
 
         return [
             'nombre'          => mb_substr($nombre !== '' ? $nombre : $cuenta['nombre'], 0, 150),
             'nombre_sociedad' => mb_substr($cuenta['razon_social'], 0, 150),
             'nif_cif'         => mb_substr((string) ($order['ship_tax_id'] ?? ''), 0, 50),
-            'direccion'       => mb_substr($direccion, 0, 250),
+            'direccion'       => mb_substr(self::withDetail($direccion, (string) ($order['ship_detail'] ?? '')), 0, 250),
             'cp'              => mb_substr((string) ($order['ship_postal_code'] ?? ''), 0, 40),
             'poblacion'       => mb_substr((string) ($order['ship_city'] ?? ''), 0, 150),
-            'localidad'       => null,
+            'localidad'       => mb_substr(trim((string) ($order['customer_email'] ?? '')), 0, 100) ?: null,
             'pais'            => $pais,
-            'provincia'       => $provincia ?? $cuenta['id_provincia'],
-            'telefono'        => mb_substr((string) ($order['customer_phone'] ?? '' ?: $cuenta['telefono']), 0, 50),
+            'provincia'       => $provincia,
+            'telefono'        => mb_substr((string) ($order['ship_phone'] ?? '') ?: (string) ($order['customer_phone'] ?? '') ?: $cuenta['telefono'], 0, 50),
+            'celular'         => mb_substr((string) ($order['ship_mobile'] ?? ''), 0, 50) ?: null,
+            'id_poblacion'    => (int) ($order['ship_poblacion_id'] ?? 0) ?: null,
         ];
+    }
+
+    /** Une la direccion con el portal/escalera/piso, que `pedidos_addr` no tiene. */
+    private static function withDetail(string $address, string $detail): string
+    {
+        $detail = trim($detail);
+
+        return $detail === '' ? $address : $address . ', ' . $detail;
     }
 
     /** Inserta la direccion en `pedidos_addr` y devuelve su id. */
@@ -334,6 +383,8 @@ final class OrderGateway
             'pais'            => $address['pais'],
             'provincia'       => $address['provincia'],
             'telefono'        => $address['telefono'] !== '' ? $address['telefono'] : null,
+            'celular'         => ($address['celular'] ?? null) !== null && $address['celular'] !== '' ? $address['celular'] : null,
+            'id_poblacion'    => $address['id_poblacion'] ?? null,
         ]);
     }
 

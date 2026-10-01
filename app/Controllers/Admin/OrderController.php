@@ -6,10 +6,8 @@ namespace Tienda\Controllers\Admin;
 
 use Tienda\Core\Auth;
 use Tienda\Core\Controller;
-use Tienda\Core\Database;
 use Tienda\Core\Idirecto\Account;
 use Tienda\Core\Idirecto\OrderGateway;
-use Tienda\Core\Idirecto\Pricing;
 use Tienda\Core\Session;
 use Tienda\Core\ValidationException;
 use Tienda\Models\Catalog;
@@ -100,7 +98,7 @@ final class OrderController extends Controller
         }
 
         $orderId = Order::createWithItems($storeId, $data, $normalized['lines']);
-        $this->syncIdirectoPrices($orderId, $this->storeRow($storeId));
+        Order::syncIdirectoPrices($orderId, $this->storeRow($storeId));
 
         Session::flash('success', 'Pedido creado. Ya puedes enviarlo al mayorista.');
         $this->redirect('panel/pedidos/' . $orderId);
@@ -158,7 +156,7 @@ final class OrderController extends Controller
             OrderItem::add((int) $order['id'], $storeId, $lineNo++, $line);
         }
         Order::recalculateTotals((int) $order['id']);
-        $this->syncIdirectoPrices((int) $order['id'], $this->storeRow($storeId));
+        Order::syncIdirectoPrices((int) $order['id'], $this->storeRow($storeId));
 
         $aviso = $normalized['errors'] === [] ? '' : ' (' . implode(' ', $normalized['errors']) . ')';
         Session::flash('success', count($normalized['lines']) . ' linea(s) anadida(s).' . $aviso);
@@ -203,6 +201,26 @@ final class OrderController extends Controller
 
         Order::setStatus((int) $order['id'], $status);
         Session::flash('success', 'Pedido marcado como "' . Order::statusLabel(Order::normalizeStatus($status)) . '".');
+        $this->redirect('panel/pedidos/' . $order['id']);
+    }
+
+    /**
+     * Marca el cobro del pedido (pagado / pendiente).
+     *
+     * El pedido de la web nace pendiente de pago: el tendero lo confirma aqui
+     * cuando recibe la transferencia, el contra reembolso o el pago en tienda.
+     */
+    public function payment(array $params = []): string
+    {
+        $this->requireAuth();
+        $this->requireCsrf();
+        $storeId = $this->storeId();
+
+        $order = $this->loadOrder((int) ($params['id'] ?? 0), $storeId);
+        $pagado = (string) $this->input('payment_status', '1') === '1';
+
+        Order::setPaymentStatus((int) $order['id'], $pagado ? 1 : 0);
+        Session::flash('success', $pagado ? 'Pedido marcado como pagado.' : 'Pedido pendiente de pago.');
         $this->redirect('panel/pedidos/' . $order['id']);
     }
 
@@ -275,6 +293,10 @@ final class OrderController extends Controller
     {
         $this->requireAuth();
         $storeId = $this->storeId();
+
+        // Precios de la tienda SIN IVA: es la base que se guarda en la linea del
+        // pedido (el IVA se suma al calcular los totales).
+        $this->bootStorePricing($storeId);
 
         $q = trim((string) $this->input('q', ''));
         $results = [];
@@ -362,34 +384,22 @@ final class OrderController extends Controller
     }
 
     /**
-     * Guarda la tarifa del mayorista en cada linea (para poder ensenar el
-     * importe real que tendra el pedido sin consultarlo en cada visita).
+     * Fija el precio de venta de la tienda (sin IVA) para el catalogo del panel.
+     *
+     * Asi el buscador de productos ofrece el mismo precio base que usara el
+     * pedido de la web: tarifa de la tienda + su beneficio. Sin esto, el panel
+     * mostraria el precio mas barato publicado, que puede ser menor que el coste.
      */
-    private function syncIdirectoPrices(int $orderId, array $store): void
+    private function bootStorePricing(int $storeId): void
     {
-        if (!Pricing::isAvailable()) {
-            return;
-        }
+        $store = $this->storeRow($storeId);
 
-        $cuenta = Account::forStore($store);
-        foreach (OrderItem::forOrder($orderId) as $item) {
-            if ((string) $item['source'] !== OrderItem::SOURCE_CATALOG || (int) $item['product_id'] <= 0) {
-                continue;
-            }
-            $tarifa = Pricing::forProduct(
-                (int) $item['product_id'],
-                (int) $cuenta['id_margen'],
-                (int) $cuenta['sucursal_id'],
-                (float) ($store['tax_rate'] ?? 21)
-            );
-            if ($tarifa === null) {
-                continue;
-            }
-            Database::update('mt_order_items', (int) $item['id'], [
-                'price_idirecto' => $tarifa['precio'],
-                'cost_idirecto'  => $tarifa['coste'],
-            ]);
-        }
+        Catalog::forStore(
+            (int) ($store['id_margen'] ?? 0) ?: null,
+            $store['markup'] ?? 0,
+            (float) ($store['tax_rate'] ?? 21),
+            false
+        );
     }
 
     /** Pedido con sus lineas o redireccion si no existe / no es de la tienda. */

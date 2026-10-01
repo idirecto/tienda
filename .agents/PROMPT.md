@@ -21,6 +21,37 @@ _(vacío — sin petición pendiente)_
 
 Cada petición terminada se anota aquí con la fecha, qué se pidió y qué se hizo.
 
+### 2026-10-01 · Compra del cliente final, como en puntobyze (petición por chat)
+
+**Pedido:** «haz el proceso para poder comprar como cliente: que pueda registrarse
+como usuario de la tienda, ingresar direcciones, cambiar direcciones de envío,
+agregar comentarios, similar a como cuenta la web de puntobyze para registrar un
+pedido; puedes modificar las tablas de este sistema y recuerda que los pedidos luego
+se pueden pasar algunos productos a las tablas que se usan tanto en idirecto como en
+puntobyze».
+
+**Qué había:** el pedido solo se podía crear a mano desde el panel. En el storefront
+no existía carrito, ni cuentas de cliente, ni checkout; y el precio del catálogo era
+el más barato de **todas** las tarifas (podía quedar por debajo del coste de la
+tienda).
+
+**Decisiones confirmadas:** compra **con cuenta o como invitado**; formas de pago
+**transferencia, contra reembolso y recogida** (sin pasarela todavía: el pedido queda
+pendiente de pago); envío **tarifa plana + gratis desde X €**; los clientes se guardan
+**solo en nuestras tablas** (no se copian a `e_clientes` de puntobyze); y el precio de
+venta es **tarifa de la tienda + beneficio configurable**, mostrado **con IVA
+incluido** (el pedido guarda la base sin IVA).
+
+**Hecho:** migración 004 (`mt_customers`, `mt_customer_addresses`, datos de cliente/
+facturación/pago/comentario en `mt_orders` y ajustes de venta en `mt_stores`); carrito
+en sesión con precios en vivo; cuenta del cliente con registro, entrada, pedidos y
+**libreta de direcciones** (alta, edición y borrado); checkout con dirección, pago y
+comentario que crea el pedido por `Order::createWithItems()`; el mayorista recibe la
+**dirección real del cliente** y su comentario; sección **Clientes** en el panel y
+botón de «marcar como pagado»; y `Catalog::forStore()` para que cada tienda venda a su
+tarifa + beneficio con el IVA incluido. `verify.php` 90 → **118**. Detalle en
+`CHANGELOG.md`.
+
 ### 2026-10-01 · Registro de tiendas: solo clientes del mayorista (petición por chat)
 
 **Pedido:** «las tiendas que pueden usar esta web deben estar registradas en la

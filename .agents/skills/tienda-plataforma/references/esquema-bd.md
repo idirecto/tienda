@@ -27,10 +27,16 @@ salvo `mt_migrations`, `mt_plans` y `mt_themes`, tienen FK a `mt_stores(id)` con
 `header_style`, `logo_url`, `logo_key`, `favicon_url`, `tagline`, `about`,
 `address`, `city`, `province`, `postal_code`, `country`, `currency`, `tax_rate`,
 `meta_title`, `meta_description`, `show_prices`, `allow_orders`,
-`own_products_quota_override`, `created_at`, `updated_at`
+`own_products_quota_override`, `created_at`, `updated_at`, y la venta y el cobro:
+`markup` (beneficio sobre su tarifa), `shipping_flat`, `free_shipping_from`,
+`pay_transfer`, `pay_cod`, `pay_pickup`, `bank_details`.
 
 - `own_products_quota_override` gana sobre la cuota del plan (`-1` = ilimitado).
-- `show_prices` / `allow_orders` permiten una tienda "escaparate" sin compra.
+- `show_prices` / `allow_orders` permiten una tienda "escaparate" sin compra (y sin
+  botones de carrito).
+- **`markup`** decide el precio de venta: `tarifa de la tienda × (1 + markup/100)`.
+  En la web se muestra **con IVA incluido** (`Catalog::forStore(..., true)`) y en el
+  pedido se guarda la base sin IVA.
 - `id_tienda_idirecto` → `tiendas.id` (la cuenta con la que la tienda compra al
   mayorista) e `id_margen` → `precios.id_margen` (su tarifa). Los edita el dueño en
   Ajustes; la tarifa vacía cae a `tiendas.id_margen` y, si no, a
@@ -74,26 +80,48 @@ planes). `id`, `store_id`, `sku`, `name`, `description`, `price`, `sale_price`,
 ## Pedidos
 
 **`mt_orders`** — pedidos que la tienda recibe de **sus** clientes.
-`id`, `store_id`, `code` (número visible `P26-00001`), `status`
+`id`, `store_id`, `customer_id` (cliente de `mt_customers`; vacío si lo creó el
+tendero a mano), `code` (número visible `P26-00001`), `status`
 (`0` borrador, `1` activo, `2` preparado, `3` enviado, `4` facturado,
 `5` cancelado, `6` borrado/papelera), `customer_name`, `customer_email`,
-`customer_phone`, `customer_tax_id`, `ship_name`, `ship_tax_id`, `ship_address`,
-`ship_city`, `ship_province`, `ship_postal_code`, `ship_country`, `notes`,
-`subtotal`, `tax_total`, `shipping`, `total`, `id_tienda_idirecto`
-(cuenta usada al enviar), `idirecto_ref` (`TIENDA-<slug>-<código>`), `sent_at`,
-`created_at`, `updated_at`.
+`customer_phone`, `customer_tax_id`, la dirección de **envío** (`ship_name`,
+`ship_tax_id`, `ship_address`, `ship_detail` —portal/escalera—, `ship_city`,
+`ship_province`, `ship_postal_code`, `ship_country`, `ship_phone`, `ship_mobile` y
+los ids del mayorista `ship_country_id`, `ship_province_id`, `ship_poblacion_id`),
+la de **facturación** (`bill_*`, si está vacía se factura a la de envío), `notes`
+(nota interna del tendero), `customer_note` (lo que escribió el cliente),
+`subtotal`, `tax_total`, `shipping`, `total`, el cobro (`payment_method`
+`transferencia`|`cod`|`pickup`, `payment_status` 0/1, `paid_at`),
+`id_tienda_idirecto` (cuenta usada al enviar), `idirecto_ref`
+(`TIENDA-<slug>-<código>`), `sent_at`, `created_at`, `updated_at`.
 
 **`mt_order_items`** — líneas del pedido.
 `id`, `order_id`, `store_id`, `line_no`, `source` (`catalog`|`own`), `product_id`
 (`productos.id` o `mt_own_products.id`), `sku`, `name`, `qty`, `price_customer`
-(lo que paga el cliente), `tax_rate`, `price_idirecto` (tarifa de la tienda),
-`cost_idirecto` (coste del mayorista), `sent_at`, `idirecto_pedido_id`
+(lo que paga el cliente **sin IVA**), `tax_rate`, `price_idirecto` (tarifa de la
+tienda), `cost_idirecto` (coste del mayorista), `sent_at`, `idirecto_pedido_id`
 (`pedidos.id` creado) y `created_at`.
+
+**`mt_customers`** — clientes finales de cada tienda.
+`id`, `store_id`, `email` (único por tienda), `password_hash` (NULL en invitados),
+`name`, `tax_id`, `phone`, `mobile`, `is_guest`, `active`, `last_login_at`,
+`created_at`, `updated_at`.
+
+**`mt_customer_addresses`** — libreta de direcciones del cliente.
+`id`, `store_id`, `customer_id`, `label`, `name`, `tax_id`, `address`, `detail`,
+`postal_code`, `city`, `province`, `country`, ids del mayorista (`id_pais`,
+`id_provincia`, `id_poblacion`), `phone`, `mobile`, `is_default_ship`,
+`is_default_bill`, `active` (0 = borrada por el cliente), `created_at`, `updated_at`.
 
 - El envío al mayorista es **por línea**: `sent_at` + `idirecto_pedido_id` marcan
   cada línea ya enviada, de modo que un pedido de 4 líneas se puede mandar en dos
   veces (2+2) sin repetir nada.
 - Los productos `own` **no** se envían al mayorista (no están en su catálogo).
+- El **precio de venta** de la web es la tarifa de la tienda + su beneficio y **con
+  IVA**; en la línea se guarda la base sin IVA y el IVA se suma en `tax_total`, así
+  el total coincide con lo que vio el cliente.
+- Al enviar a `pedidos_addr` se le pasa la **dirección del cliente** (con sus ids y
+  el email en `localidad`) y su comentario en `pedidos.detalles`.
 
 ## Medios
 

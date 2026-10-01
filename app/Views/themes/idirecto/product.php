@@ -204,21 +204,32 @@ $initial = mb_strtoupper(mb_substr((string) $product['nombre'], 0, 2));
                     </p>
 
                     <?php if ($inStock && $tenant->allowOrders()): ?>
-                        <div class="ficha-qty">
-                            <button type="button" class="qty-btn" data-step="-1" aria-label="Menos">−</button>
-                            <input type="text" id="ficha-qty" value="1" inputmode="numeric" aria-label="Cantidad">
-                            <button type="button" class="qty-btn" data-step="1" aria-label="Más">+</button>
-                        </div>
-                        <button type="button" class="btn btn-primary btn-lg btn-block" disabled>
-                            COMPRAR (proximamente)
-                        </button>
+                        <form class="ficha-buy" method="post" action="<?= e($base) ?>/carrito/anadir">
+                            <?= \Tienda\Core\Csrf::field() ?>
+                            <input type="hidden" name="source" value="catalog">
+                            <input type="hidden" name="product_id" value="<?= (int) $product['id'] ?>">
+                            <input type="hidden" name="return" value="/producto/<?= e($product['slug']) ?>/<?= (int) $product['id'] ?>">
+                            <input type="hidden" name="stay" value="1">
+
+                            <div class="ficha-qty">
+                                <button type="button" class="qty-btn" data-step="-1" aria-label="Menos">−</button>
+                                <input type="text" id="ficha-qty" name="qty" value="1" inputmode="numeric" aria-label="Cantidad">
+                                <button type="button" class="qty-btn" data-step="1" aria-label="Más">+</button>
+                            </div>
+                            <button class="btn btn-primary btn-lg btn-block" type="submit">
+                                <?= icon_svg('cart') ?> Añadir al carrito
+                            </button>
+                        </form>
                     <?php elseif (!$inStock): ?>
                         <button type="button" class="btn btn-ghost btn-lg btn-block" disabled>No disponible</button>
                     <?php endif; ?>
 
                     <div class="ficha-pagos">
-                        <span class="pago-item">🔒 Pago 100% seguro</span>
-                        <span class="pago-item">Visa · Mastercard · PayPal · Transferencia</span>
+                        <?php $formasPago = array_column(\Tienda\Core\Checkout::paymentMethods($tenant->toArray()), 'label'); ?>
+                        <span class="pago-item">🔒 Compra protegida</span>
+                        <?php if ($formasPago !== []): ?>
+                            <span class="pago-item"><?= e(implode(' · ', $formasPago)) ?></span>
+                        <?php endif; ?>
                     </div>
                 </div>
             </div>

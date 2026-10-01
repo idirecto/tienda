@@ -28,6 +28,11 @@ return [
     // Margen (%) aplicado cuando el producto no tiene precio propio de tarifa.
     'markup'    => (float) Env::get('CATALOG_MARKUP', 30),
 
+    // Beneficio (%) con el que vende una tienda que no tenga el suyo propio
+    // (`mt_stores.markup`): el precio de venta es la tarifa de la tienda mas
+    // este beneficio. Se cambia por tienda en el panel > Ajustes.
+    'default_markup' => (float) Env::get('CATALOG_DEFAULT_MARKUP', 15),
+
     // Productos por pagina en los LISTADOS (catalogo, categoria, busqueda y
     // filtros). 20 llena bien la rejilla en escritorio (3-4 filas) sin alargar
     // demasiado la pagina; el tope duro esta en Catalog::paginate().

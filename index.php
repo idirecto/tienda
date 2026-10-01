@@ -32,6 +32,7 @@ require TIENDA_BASE . '/app/bootstrap.php';
 
 use Tienda\Controllers\Admin\AuthController;
 use Tienda\Controllers\Admin\BannerController;
+use Tienda\Controllers\Admin\CustomerController as CustomerAdminController;
 use Tienda\Controllers\Admin\DashboardController;
 use Tienda\Controllers\Admin\DesignController;
 use Tienda\Controllers\Admin\DomainController;
@@ -40,6 +41,9 @@ use Tienda\Controllers\Admin\NoticeController;
 use Tienda\Controllers\Admin\OrderController;
 use Tienda\Controllers\Admin\ProductController;
 use Tienda\Controllers\Admin\SettingsController;
+use Tienda\Controllers\CartController;
+use Tienda\Controllers\CheckoutController;
+use Tienda\Controllers\CustomerController;
 use Tienda\Controllers\RegistrationController;
 use Tienda\Controllers\StorefrontController;
 use Tienda\Core\Router;
@@ -58,6 +62,37 @@ $router->get('/producto/{slug}/{id}',  [StorefrontController::class, 'product'])
 $router->get('/producto/{id}',         [StorefrontController::class, 'productLegacy']);
 $router->get('/contacto',              [StorefrontController::class, 'contact']);
 $router->get('/pagina/{slug}',         [StorefrontController::class, 'page']);
+
+// -----------------------------------------------------------------------------
+// COMPRA DEL CLIENTE (carrito, su cuenta y cierre del pedido)
+// -----------------------------------------------------------------------------
+$router->get('/carrito',                [CartController::class, 'index']);
+$router->post('/carrito/anadir',        [CartController::class, 'add']);
+$router->post('/carrito/actualizar',    [CartController::class, 'update']);
+$router->post('/carrito/quitar',        [CartController::class, 'remove']);
+$router->post('/carrito/vaciar',        [CartController::class, 'clear']);
+
+$router->get('/checkout',               [CheckoutController::class, 'start']);
+$router->post('/checkout',              [CheckoutController::class, 'place']);
+$router->get('/checkout/gracias/{code}', [CheckoutController::class, 'thanks']);
+
+$router->get('/cuenta/login',           [CustomerController::class, 'showLogin']);
+$router->post('/cuenta/login',          [CustomerController::class, 'login']);
+$router->get('/cuenta/registro',        [CustomerController::class, 'showRegister']);
+$router->post('/cuenta/registro',       [CustomerController::class, 'register']);
+$router->post('/cuenta/salir',          [CustomerController::class, 'logout']);
+
+$router->get('/cuenta',                 [CustomerController::class, 'index']);
+$router->get('/cuenta/pedidos',         [CustomerController::class, 'orders']);
+$router->get('/cuenta/pedidos/{code}',  [CustomerController::class, 'order']);
+// OJO: 'nueva' tiene que ir ANTES de '{id}' (el router resuelve en orden).
+$router->get('/cuenta/direcciones',     [CustomerController::class, 'addresses']);
+$router->get('/cuenta/direcciones/nueva', [CustomerController::class, 'addressForm']);
+$router->get('/cuenta/direcciones/{id}', [CustomerController::class, 'addressForm']);
+$router->post('/cuenta/direcciones',    [CustomerController::class, 'addressSave']);
+$router->post('/cuenta/direcciones/{id}/borrar', [CustomerController::class, 'addressDelete']);
+$router->get('/cuenta/perfil',          [CustomerController::class, 'profile']);
+$router->post('/cuenta/perfil',         [CustomerController::class, 'profileSave']);
 
 // -----------------------------------------------------------------------------
 // REGISTRO DE UNA TIENDA NUEVA
@@ -107,10 +142,16 @@ $router->get('/panel/pedidos/{id}',        [OrderController::class, 'show']);
 $router->post('/panel/pedidos/{id}/lineas', [OrderController::class, 'addLines']);
 $router->post('/panel/pedidos/{id}/lineas/{line}/borrar', [OrderController::class, 'destroyLine']);
 $router->post('/panel/pedidos/{id}/estado', [OrderController::class, 'status']);
+// Cobro del pedido: pendiente/pagado (lo confirma el tendero al recibirlo).
+$router->post('/panel/pedidos/{id}/cobro', [OrderController::class, 'payment']);
 // Envio de las lineas elegidas al mayorista (tablas pedidos/pedidos_det).
 $router->post('/panel/pedidos/{id}/idirecto', [OrderController::class, 'send']);
 $router->post('/panel/pedidos/{id}/borrar', [OrderController::class, 'destroy']);
 $router->post('/panel/pedidos/{id}/restaurar', [OrderController::class, 'restore']);
+
+// Clientes de la tienda (quien compra en su web).
+$router->get('/panel/clientes',            [CustomerAdminController::class, 'index']);
+$router->get('/panel/clientes/{id}',       [CustomerAdminController::class, 'show']);
 
 $router->get('/panel/dominios',        [DomainController::class, 'index']);
 $router->post('/panel/dominios',       [DomainController::class, 'store']);

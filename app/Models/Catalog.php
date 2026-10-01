@@ -63,6 +63,115 @@ final class Catalog
     /** Facets normalizados de la peticion (se cachea por peticion). */
     private static ?array $facetDefinitions = null;
 
+    // -------------------------------------------------------------------------
+    // PRECIO DE VENTA DE LA TIENDA
+    //
+    // El catalogo central guarda la tarifa del mayorista (`precios.precio`), que
+    // es un precio SIN IVA. Lo que paga el cliente final lo decide cada tienda:
+    //
+    //     precio de venta = tarifa de la tienda (id_margen)
+    //                       + beneficio de la tienda (mt_stores.markup)
+    //                       [+ IVA, si se muestra con IVA incluido]
+    //
+    // El contexto se fija una vez por peticion con `forStore()`:
+    //   - Storefront: con IVA incluido (es lo que paga el cliente).
+    //   - Panel: sin IVA (es la base que se guarda en el pedido; el IVA se suma
+    //     al calcular los totales).
+    // Sin contexto (herramientas, chequeos) se usa la tarifa por defecto y sin
+    // beneficio, que es como se comportaba el catalogo antes de la tienda.
+    // -------------------------------------------------------------------------
+
+    private static ?int $pricingMargin = null;
+    private static float $pricingMarkup = 0.0;
+    private static float $pricingTax = 21.0;
+    private static bool $pricingWithTax = false;
+    private static bool $pricingSet = false;
+
+    /**
+     * Fija el precio de venta de la tienda para esta peticion.
+     *
+     * @param int|null $idMargen Tarifa de la tienda en el mayorista (precios.id_margen)
+     * @param mixed    $markup   Beneficio de la tienda en % (columna mt_stores.markup)
+     * @param float    $tax      IVA por defecto (%) para productos sin tipo propio
+     * @param bool     $withTax  true = los precios llevan el IVA incluido
+     */
+    public static function forStore(?int $idMargen, mixed $markup = 0, float $tax = 21.0, bool $withTax = false): void
+    {
+        self::$pricingMargin = $idMargen !== null && $idMargen > 0 ? $idMargen : null;
+        self::$pricingMarkup = max(0.0, min(200.0, (float) $markup));
+        self::$pricingTax = $tax > 0 ? $tax : 21.0;
+        self::$pricingWithTax = $withTax;
+        self::$pricingSet = true;
+    }
+
+    /** Hay contexto de tienda fijado en esta peticion. */
+    public static function pricingConfigured(): bool
+    {
+        return self::$pricingSet;
+    }
+
+    /** Beneficio aplicado (1 = sin beneficio). */
+    public static function markupFactor(): float
+    {
+        return 1 + self::$pricingMarkup / 100;
+    }
+
+    /** Factor para pasar de base sin IVA a precio con IVA. */
+    public static function taxFactor(?float $taxRate = null): float
+    {
+        $rate = $taxRate !== null && $taxRate > 0 ? $taxRate : self::$pricingTax;
+        return 1 + $rate / 100;
+    }
+
+    /** Tarifa de la tienda con la que se esta calculando (null = la mas barata). */
+    public static function pricingMargin(): ?int
+    {
+        return self::$pricingMargin;
+    }
+
+    /**
+     * Precio de venta a partir del COSTE del mayorista.
+     *
+     * Solo se usa cuando el producto no tiene tarifa publicada para la tarifa de
+     * la tienda: entonces el precio de venta se calcula desde el coste con el
+     * beneficio de la tienda (y el IVA, si toca).
+     */
+    public static function salePriceFromCost(float $cost, ?float $taxRate = null): float
+    {
+        $value = $cost * self::markupFactor();
+        if (self::$pricingWithTax) {
+            $value *= self::taxFactor($taxRate);
+        }
+
+        return round($value, 2);
+    }
+
+    /**
+     * Base sin IVA que se guarda en la linea del pedido a partir del precio de
+     * venta que muestra la web (que ya lleva el beneficio).
+     */
+    public static function netFromSale(float $salePrice, ?float $taxRate = null): float
+    {
+        $value = self::$pricingWithTax ? $salePrice / self::taxFactor($taxRate) : $salePrice;
+
+        return round($value, 2);
+    }
+
+    /** Precio de venta mostrado (con IVA, si es la web) a partir de la base. */
+    public static function saleFromNet(float $net, ?float $taxRate = null): float
+    {
+        $value = self::$pricingWithTax ? $net * self::taxFactor($taxRate) : $net;
+
+        return round($value, 2);
+    }
+
+    /** Clave corta del contexto de precios, para las caches. */
+    private static function pricingKey(): string
+    {
+        return 'p' . (self::$pricingMargin ?? 0) . 'm' . number_format(self::$pricingMarkup, 2, '', '')
+            . (self::$pricingWithTax ? 't' . number_format(self::$pricingTax, 2, '', '') : 'n');
+    }
+
     public static function enabled(): bool
     {
         return (bool) Config::get('catalog.enabled', true);
@@ -84,6 +193,30 @@ final class Catalog
         }
 
         return self::$available = true;
+    }
+
+    /**
+     * Olvida las caches que dependen del precio de venta de la tienda.
+     *
+     * Los destacados y el rango de precios van cacheados por tienda (tarifa +
+     * beneficio); se llama al guardar los ajustes de venta para que el cambio de
+     * beneficio se vea al momento y no cuando caduque la cache.
+     */
+    public static function forgetPriceCache(): int
+    {
+        $borrados = 0;
+        foreach (glob(TIENDA_BASE . '/storage/cache/catalog_featured_*.json') ?: [] as $file) {
+            if (@unlink($file)) {
+                $borrados++;
+            }
+        }
+        foreach (glob(TIENDA_BASE . '/storage/cache/catalog_price_bounds_*.json') ?: [] as $file) {
+            if (@unlink($file)) {
+                $borrados++;
+            }
+        }
+
+        return $borrados;
     }
 
     // =====================================================================
@@ -119,11 +252,34 @@ final class Catalog
                     AND a.tipo <> 2)';
     }
 
-    /** Precio de tarifa mas bajo disponible. */
+    /**
+     * Precio de VENTA del producto (el que ve el cliente de la tienda).
+     *
+     * Parte de la tarifa de la tienda (`precios.id_margen`); si la tienda no
+     * tiene tarifa asignada se usa la mas barata publicada (como antes). Encima
+     * se aplica el beneficio de la tienda y, cuando el contexto es de tienda
+     * publica, el IVA del producto. La tarifa se incrusta como numero (es un
+     * entero de configuracion) porque con `EMULATE_PREPARES = false` un
+     * parametro nombrado no puede repetirse en la misma consulta.
+     */
     private static function precioSql(): string
     {
-        return '(SELECT MIN(pr.precio) FROM precios pr
-                  WHERE pr.id_producto = p.id AND pr.precio > 0)';
+        $margen = self::$pricingMargin;
+        $sql = '(SELECT MIN(pr.precio) FROM precios pr
+                  WHERE pr.id_producto = p.id AND pr.precio > 0'
+            . ($margen !== null ? ' AND pr.id_margen = ' . (int) $margen : '')
+            . ')';
+
+        $factor = self::markupFactor();
+        if ($factor !== 1.0) {
+            $sql = 'ROUND((' . $sql . ') * ' . number_format($factor, 4, '.', '') . ', 2)';
+        }
+        if (self::$pricingWithTax) {
+            $sql = 'ROUND((' . $sql . ') * (1 + COALESCE(NULLIF(p.impuestos, 0), '
+                . number_format(self::$pricingTax, 2, '.', '') . ') / 100), 2)';
+        }
+
+        return $sql;
     }
 
     /** Columnas comunes de listado (sin JOIN: la marca se resuelve por lote). */
@@ -208,7 +364,7 @@ final class Catalog
         $categoryId = $categoryId !== null && $categoryId > 0 ? $categoryId : null;
 
         $items = self::cached(
-            'featured_' . ($categoryId ?? 0) . '_' . $limit,
+            'featured_' . ($categoryId ?? 0) . '_' . $limit . '_' . self::pricingKey(),
             600,
             static function () use ($limit, $categoryId): array {
                 $where = self::baseConditions();
@@ -786,7 +942,7 @@ final class Catalog
 
         $ttl = max(1800, (int) Config::get('catalog.facets_ttl', 900) * 2);
 
-        return (array) self::cached('price_bounds', $ttl, static function (): array {
+        return (array) self::cached('price_bounds_' . self::pricingKey(), $ttl, static function (): array {
             $precio = self::precioSql();
             $row = Database::first(
                 "SELECT MIN($precio) AS mn, MAX($precio) AS mx
@@ -1304,18 +1460,29 @@ final class Catalog
         $file = $img !== '' ? self::applyImagePattern($img, (int) ($item['id'] ?? 0), $size) : null;
         $item['image_url'] = ($base !== '' && $file !== null) ? $base . '/' . $file . '_1.jpg' : null;
 
-        $markup = (float) Config::get('catalog.markup', 0);
+        // Precio de venta de la tienda. `precio` ya viene de la consulta con la
+        // tarifa y el beneficio aplicados (y con el IVA, si es el storefront),
+        // asi que aqui solo queda el caso de productos sin tarifa publicada, que
+        // se resuelven desde el coste con el mismo beneficio.
         $precio = $item['precio'] ?? null;
         $costo = $item['costo'] ?? null;
+        $iva = (float) ($item['impuestos'] ?? 0);
+        if ($iva <= 0) {
+            $iva = self::$pricingTax;
+        }
 
         if ($precio !== null && (float) $precio > 0) {
             $final = (float) $precio;
         } elseif ($costo !== null && (float) $costo > 0) {
-            $final = (float) $costo * (1 + $markup / 100);
+            $final = self::salePriceFromCost((float) $costo, $iva);
         } else {
             $final = null;
         }
+
+        $item['tax_rate'] = round($iva, 2);
         $item['price_final'] = $final;
+        // Base sin IVA: es lo que se guarda como precio de la linea del pedido.
+        $item['price_net'] = $final === null ? null : self::netFromSale((float) $final, $iva);
 
         // Disponibilidad
         $item['in_stock'] = (bool) ($item['in_stock'] ?? false);
