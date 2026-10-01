@@ -135,6 +135,15 @@ sudo certbot --nginx -d valduran.com -d www.valduran.com
 > nginx como proxy de Apache (así `.htaccess` sigue funcionando) y pega en
 > *Additional nginx directives* el bloque `[PLESK]` que imprime el script.
 
+> **¿El dominio ya tenía web en ese servidor?** No añadas un vhost nuevo: **edita
+> el que ya existe** y cámbiale el `root` a la carpeta del proyecto. Si el vhost
+> viejo escucha en **IPs concretas** (`listen 51.68.7.177:80`) o sirve el
+> **443/HTTPS** con su certificado, el fichero que genera el script (que escucha
+> en `0.0.0.0:80`) **nunca ganará** y seguirás viendo la web antigua. En ese
+> caso, el bloque nuevo debe copiar el `listen`, el `ssl_certificate` y el
+> `server_name` del vhost viejo, con las reglas de `deploy/nginx-site.conf.tpl`
+> para el bloqueo de rutas internas y el front controller.
+
 > La aplicación detecta el servidor (`app/Core/Server.php`): calcula la ruta
 > pública de `/public`, el esquema real (también detrás de un proxy/CDN con
 > `X-Forwarded-Proto`) y el host de las URLs canónicas. El mismo código vale en
