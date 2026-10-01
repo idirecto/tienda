@@ -1,0 +1,43 @@
+# =============================================================================
+#  Front controller unico: todo pasa por index.php salvo ficheros reales.
+# =============================================================================
+Options +FollowSymLinks -MultiViews
+DirectoryIndex index.php
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # -------------------------------------------------------------------------
+    # RUTAS INTERNAS: nunca se sirven por web.
+    # Incluye la documentacion de agentes (.agents), el codigo, la configuracion
+    # y los datos. Deben ser legibles solo por git o por acceso al servidor.
+    # -------------------------------------------------------------------------
+    RewriteRule ^(\.agents|\.git|app|config|database|deploy|storage|tools|vendor)(/|$) - [F,L]
+
+    # No reescribir ficheros ni directorios existentes (assets, uploads...)
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^ - [L]
+
+    # Todo lo demas al front controller
+    RewriteRule ^ index.php [QSA,L]
+</IfModule>
+
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "SAMEORIGIN"
+    Header set Referrer-Policy "strict-origin-when-cross-origin"
+
+    # PHP 8.4 con mod_php anade ";HttpOnly;Secure;SameSite=None" a las cookies de
+    # sesion. En HTTP (sin TLS) el navegador DESCARTA una cookie Secure y se pierde
+    # la sesion (login que no persiste). Se elimina ese sufijo anadido; los
+    # atributos que fija la aplicacion (secure en HTTPS, SameSite=Lax) se conservan.
+    Header edit "Set-Cookie" ";HttpOnly;Secure;SameSite=None" ""
+</IfModule>
+
+<FilesMatch "\.(env|sql|md|log|json|lock|yml|yaml|sh|ini|bak|dist|example)$">
+    Require all denied
+</FilesMatch>
+
+# Sin listado de directorios en ninguna circunstancia
+Options -Indexes

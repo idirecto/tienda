@@ -1,1 +1,465 @@
-# tienda
+# Tienda — Plataforma multi-tienda (idirecto)
+
+Proyecto **nuevo e independiente** que permite a cada tienda cliente tener su
+propia web (storefront + panel de administración), alimentada por el catálogo
+central del mayorista, con productos propios según su plan, imágenes en Amazon S3
+y dominio propio con verificación DNS.
+
+> No modifica nada de la web actual de idirecto: se conecta a la misma base de
+> datos y **solo crea sus propias tablas** (prefijo `mt_`).
+
+> **¿Vas a trabajar en el código (persona o agente)?** Empieza por
+> [`.agents/PROMPT.md`](.agents/PROMPT.md) (la petición en curso) y sigue con
+> [`.agents/PROJECT.md`](.agents/PROJECT.md) (arquitectura y trampas conocidas).
+> Ese directorio **no se sirve por web**: solo es accesible por git o con acceso
+> al servidor. Compruébalo con `bash .agents/scripts/check-privacidad.sh`.
+
+---
+
+## 1. Requisitos
+
+- PHP **8.2+** (probado en 8.4)
+- MySQL 8 / MariaDB 10.5+
+- **Apache** con `mod_rewrite` **o nginx + PHP-FPM** (cualquiera de los dos;
+  la aplicación detecta el servidor y sirve los assets desde la ruta correcta).
+  Para desarrollo también vale el servidor embebido de PHP.
+- Opcional: `aws/aws-sdk-php` para subir imágenes a S3
+
+Sin dependencias obligatorias: el proyecto funciona sin Composer (driver local).
+
+---
+
+## 2. Instalación
+
+```bash
+cd /var/www/html/tienda
+
+# 1) Configuracion
+cp .env.example .env
+#   edita .env (base de datos, almacenamiento, dominios...)
+php -r 'echo bin2hex(random_bytes(16));'   # genera un APP_KEY
+
+# 2) Esquema + datos de ejemplo (crea la tienda demo)
+php database/migrate.php --seed
+
+# 3) Comprobacion
+php tools/verify.php
+```
+
+### Servidor de desarrollo
+
+```bash
+php -S 127.0.0.1:8099 index.php
+# Portada:      http://127.0.0.1:8099/
+# Panel:        http://127.0.0.1:8099/panel
+# Demo:         admin@demo.test / demo1234
+```
+
+### Dominio de pruebas con Apache: `http://local.tienda`
+
+Configura Apache, `/etc/hosts` y los permisos necesarios (requiere `sudo`):
+
+```bash
+cd /var/www/html/tienda
+sudo bash deploy/setup-local-domain.sh
+```
+
+Es idempotente y hace 5 cosas:
+
+1. **Permisos**: `.env` en `640` con grupo `www-data` (Apache debe poder leerlo) y
+   escritura para `www-data` en `storage/logs`, `storage/cache` y `public/uploads`.
+2. Añade a `/etc/hosts`: `127.0.0.1 local.tienda www.local.tienda idirecto-demo.local.tienda`
+   (con copia de seguridad previa de `/etc/hosts`).
+3. Instala el VirtualHost `deploy/apache-vhost-local.conf` en
+   `/etc/apache2/sites-available/local.tienda.conf`.
+4. Ejecuta `a2enmod rewrite` y `a2ensite local.tienda`.
+5. `apache2ctl configtest` + `systemctl reload apache2`.
+
+URLs resultantes:
+
+| URL | Contenido |
+|---|---|
+| http://local.tienda/ | Tienda demo (portada) |
+| http://local.tienda/panel | Panel — `admin@demo.test` / `demo1234` |
+| http://local.tienda/catalogo | Catálogo central |
+| http://idirecto-demo.local.tienda/ | Acceso por subdominio |
+
+> **PHP 8.4 + mod_php (importante):** añade `;HttpOnly;Secure;SameSite=None` a las
+> cookies. En HTTP el navegador descarta una cookie `Secure` y **la sesión del panel
+> no persiste** (el login parece no funcionar). El `.htaccess` del proyecto elimina
+> ese sufijo con `Header edit "Set-Cookie"`; no lo quites si pruebas sin HTTPS.
+
+### Dominio con nginx + PHP-FPM
+
+Funciona igual que con Apache, pero nginx **no lee `.htaccess`**: el enrutado al
+front controller y el bloqueo de rutas internas se definen en el `server` block.
+
+```bash
+cd /var/www/html/tienda
+sudo bash deploy/setup-nginx-domain.sh valduran.com
+```
+
+El script (idempotente, requiere nginx y PHP-FPM instalados) hace:
+
+1. **Permisos**: `.env` en `640` con grupo `www-data` y escritura para `www-data`
+   en `storage/logs`, `storage/cache` y `public/uploads`.
+2. Detecta el socket de PHP-FPM (`/run/php/phpX.Y-fpm.sock`; se puede forzar con
+   `FPM_SOCK=...`) y lo añade con el prefijo `unix:`.
+3. Renderiza [`deploy/nginx-site.conf.tpl`](deploy/nginx-site.conf.tpl) en
+   `/etc/nginx/sites-available/<dominio>.conf` y lo enlaza en `sites-enabled`.
+4. `nginx -t` + `systemctl reload nginx`.
+
+La plantilla bloquea `.env`, `.git`, `app/`, `config/`, `database/`, `deploy/`,
+`storage/`, `tools/` y `vendor/`, sirve solo `index.php` como PHP y cachea los
+estáticos 30 días. La raíz del sitio es la **del proyecto** (no `public/`), igual
+que en Apache.
+
+Para cambiar de dominio más adelante, vuelve a ejecutarlo con el nuevo nombre y
+actualiza `APP_URL`, `BASE_DOMAINS` y `PLATFORM_CNAME` en `.env`. Con HTTPS:
+
+```bash
+sudo certbot --nginx -d valduran.com -d www.valduran.com
+```
+
+> La aplicación detecta el servidor (`app/Core/Server.php`): calcula la ruta
+> pública de `/public`, el esquema real (también detrás de un proxy/CDN con
+> `X-Forwarded-Proto`) y el host de las URLs canónicas. El mismo código vale en
+> Apache y en nginx sin cambios.
+
+---
+
+## 3. Configuración (`.env`)
+
+### Base de datos (configurable)
+
+```ini
+DB_HOST=localhost
+DB_PORT=3306
+DB_NAME=idirecto_db
+DB_USER=usuario
+DB_PASS=clave
+DB_CHARSET=utf8mb4
+```
+
+Es la **base central del mayorista**: de ahí se lee el catálogo
+(`productos`, `precios`, `stock`, `marcas`, `categorias`) y ahí se crean las
+tablas propias del proyecto (`mt_*`).
+
+### Almacenamiento (configurable)
+
+```ini
+# "local" para desarrollo, "s3" para el bucket del mayorista
+STORAGE_DRIVER=local
+
+S3_REGION=eu-west-1
+S3_BUCKET=mi-bucket
+S3_KEY=...
+S3_SECRET=...
+S3_PREFIX=tenants/
+S3_PUBLIC_URL=              # opcional (CDN o dominio propio del bucket)
+
+# Si el SDK de AWS no esta en ./vendor, apunta a un autoload existente:
+AWS_SDK_AUTOLOAD=
+```
+
+Para activar S3:
+
+```bash
+composer require aws/aws-sdk-php
+# y pon STORAGE_DRIVER=s3 en .env
+```
+
+Las imágenes se guardan como `tenants/{id_tienda}/{carpeta}/{uuid}.{ext}`.
+En base de datos **solo** se persisten key y URL (`mt_media`), nunca binarios.
+
+### Multi-tenant
+
+```ini
+BASE_DOMAINS=idirecto.es,tienda.local
+DEMO_STORE=idirecto-demo          # tienda mostrada si el host no resuelve
+PLATFORM_IP=203.0.113.10          # IP para el registro A
+PLATFORM_CNAME=stores.idirecto.es # destino del CNAME
+```
+
+### Catálogo central
+
+```ini
+CATALOG_ENABLED=true
+CATALOG_IMAGE_URL=https://idirecto.es/img_products
+CATALOG_IMAGE_PATH=               # ruta en disco (opcional, solo desarrollo local)
+CATALOG_CARD_IMAGE_SIZE=l         # talla de imagen en los listados: c | l | f
+CATALOG_MARKUP=30                 # % aplicado si no hay precio de tarifa
+CATALOG_PER_PAGE=12
+```
+
+### Catálogo: qué productos se muestran
+
+Se muestran **los mismos productos que en idirecto, y solo si tienen stock**.
+Condiciones aplicadas en `app/Models/Catalog.php` (idénticas a idirecto):
+
+- `productos.estado <> 4`
+- existe stock válido: `stock.stock > 0`, `stock.activo = 1`, `stock.costo > 0`
+  y el almacén no es de tipo 2
+- se excluye la subcategoría `178`
+
+La ficha de un producto **sigue existiendo aunque se agote** (muestra "Sin stock"),
+pero los agotados **no aparecen** en los listados ni en los destacados.
+
+El contador total del listado se cachea 5 minutos en `storage/cache/` para no
+repetir un `COUNT` pesado en cada petición.
+
+### URLs de producto (SEO)
+
+Igual que idirecto: **el nombre del producto va en la URL**.
+
+```
+/producto/{nombre-slug}/{id}      ->  /producto/fusor-oki-42931703/8
+```
+
+- El `{slug}` se genera con `Tienda\Core\Str::slugify()`, el mismo criterio que
+  el `ListingUrl::slugify()` de idirecto (minúsculas, sin acentos, guiones).
+- El `{id}` es la clave real: aunque cambie el nombre, la URL antigua con otro
+  slug **redirige 301** a la canónica (evita contenido duplicado).
+- `/producto/{id}` (sin slug) también **redirige 301** a la canónica, así no se
+  rompen enlaces antiguos.
+- La ficha incluye `<link rel="canonical">` absoluto y `<title>`/`meta description`
+  con el nombre del producto.
+
+### Ficha de producto (estructura tipo idirecto)
+
+La ficha reproduce la estructura de idirecto en `app/Views/themes/idirecto/product.php`:
+
+```
+Breadcrumb:  Inicio > Categoría > Subcategoría > Producto
+┌──────────────┬──────────────────────────┬────────────────────┐
+│ 1. Galería   │ 2. Información           │ 3. Compra          │
+│ carrusel +   │ H1 + marca + referencia  │ precio grande      │
+│ miniaturas   │ ★ valoración             │ stock + envío      │
+│ + flechas    │ Especificaciones clave   │ cantidad + COMPRAR │
+│ + contador   │ (6 visibles, "Ver más")  │ medios de pago     │
+│ + zoom       │ Descripción corta        │                    │
+└──────────────┴──────────────────────────┴────────────────────┘
+De un vistazo · Descripción · Especificaciones (por grupos) · Opiniones
+```
+
+Origen de cada dato (todo del catálogo central, sin duplicar información):
+
+| Elemento | Tabla / campo |
+|---|---|
+| Breadcrumb | `categorias.categoria`, `subcategorias.subcategoria` |
+| Marca | `marcas.marca` |
+| Referencia / Modelo | `productos.part_number` |
+| Galería | `productos.img_name` (plantilla `%d`/`%s`) + `CATALOG_IMAGE_URL` |
+| Especificaciones (grupos) | `productos_ext.especificaciones` (HTML, parseado) |
+| Especificaciones clave / Descripción corta | resumen por prioridades del anterior; `productos_ext.caracteristicas` |
+| Descripción larga | `productos_ext.razones`, `contenido_enriquecido` |
+| Historia de marca | `marcas.brand_story` |
+| Stock | `stock` + `almacenes` (solo almacenes válidos) |
+| Opiniones | `productos_resenas` (`activa = 1`) |
+
+#### Imágenes: `img_name` es una plantilla, no un fichero
+
+`productos.img_name` vale p. ej. `<slug>-%d-%s`; se sustituye `%d` por el id y
+`%s` por el tamaño, y se le añade `_N.jpg` (`_1` … `_5`):
+
+| Tamaño | Uso | Peso real medido |
+|---|---|---|
+| `c` | miniaturas de la ficha | ~3 KB |
+| `l` | **listados** (catálogo y destacados) | ~7 KB |
+| `f` | **imagen grande del carrusel** | ~38 KB |
+| `g` | zoom del visor ampliado (bajo demanda) | ~4 MB |
+| `o` | original | ~12 MB |
+
+La talla de los listados se puede cambiar con `CATALOG_CARD_IMAGE_SIZE` (`c`,
+`l` o `f`); por defecto `l`.
+
+La ficha replica la **presentación de idirecto**, tomando los valores de su CSS
+real (`ficha-puntobyze.css`, `ficha-tecnica.css` y sus estilos en línea) para que
+ambas páginas se vean igual:
+
+- **Galería**: carrusel que se desliza lateralmente y se navega **solo con las
+  miniaturas** (idirecto no usa flechas: `carousel-control` no aparece en su
+  HTML). Las miniaturas son `flex: 1 1 60px; max-width: 90px` con el borde en la
+  imagen y la activa en `2px solid #428BCA` + `opacity: .7`.
+- **Especificaciones**: tarjetas blancas de radio 16px sin rayado, con filas
+  separadas por una línea fina y el **valor alineado a la derecha en negrita**.
+- **De un vistazo**: cuadros centrados sobre `#f3f5f7` con icono en caja blanca.
+- **Descripción**: puntos con viñeta circular cian sobre `#f8fafc`.
+
+Aun así el JS (`public/assets/js/shop.js`) añade dos mejoras sobre el original:
+
+- si una foto no existe (404) **se retira del carrusel y de las miniaturas**
+  (probado: un producto con `_1`…`_4` disponibles y `_5` inexistente queda con
+  4 diapositivas y 4 miniaturas, sin huecos ni iconos rotos); si lo que falta es
+  solo la miniatura, se reutiliza la imagen grande;
+- teclado (←/→), gesto de deslizar y visor ampliado con la versión `g`.
+
+#### Especificaciones agrupadas
+
+`Tienda\Core\Specs::groupsFromHtml()` parsea el HTML de `productos_ext.especificaciones`:
+los `<h3>` son los **nombres de grupo** (Procesador, Memoria…) y las celdas
+`<td>Clave: valor</td>` posteriores son sus filas, hasta el siguiente `<h3>`.
+Se ignoran las celdas contenedoras para no duplicar filas.
+
+`Specs::summary()` construye el resumen corto (Marca, Modelo y los atributos
+más relevantes para el comprador, con coincidencia exacta antes que parcial) y
+`Specs::highlights()` el bloque «De un vistazo», que respeta un orden fijo de
+ranuras para no repetir el mismo dato dos veces.
+
+`Specs::pairs()` sigue convirtiendo `caracteristicas` en pares clave/valor,
+respetando las comas dentro de un valor (p. ej. `Red de datos: 3G, EDGE`).
+
+
+---
+
+## 4. Estructura
+
+```
+tienda/
+├── index.php                Front controller (rutas)
+├── config/                  app.php, database.php, storage.php, tenant.php, catalog.php
+├── app/
+│   ├── bootstrap.php        Autoload, entorno, sesion, helpers
+│   ├── Core/                Env, Config, Database, Router, View, Controller, Model,
+│   │   │                    Auth, Csrf, Session, Tenant, TenantResolver, Dns
+│   │   └── Storage/         StorageInterface, LocalStorage, S3Storage, StorageManager
+│   ├── Controllers/         StorefrontController + Admin/*
+│   ├── Models/              Store, StoreUser, Plan, Theme, Banner, Notice,
+│   │                        OwnProduct, Media, Domain, DnsLog, ContentBlock,
+│   │                        Setting, Catalog
+│   └── Views/               layouts/, panel/, themes/idirecto|moderno|minimal/, errors/
+├── public/assets/           css/ y js/ del storefront y del panel
+├── public/uploads/          destino del driver local (no versionado)
+├── database/
+│   ├── migrations/          001_schema.sql (tablas mt_)
+│   ├── seeds/               001_seed.sql (planes, temas, tienda demo)
+│   └── migrate.php          Ejecutor de migraciones y semillas
+├── tools/verify.php         Comprobacion automatica
+└── deploy/                  Vhosts/plantillas de Apache y nginx + scripts
+```
+
+---
+
+## 5. Rutas
+
+**Storefront** (tienda resuelta por hostname)
+
+| Ruta | Descripción |
+|---|---|
+| `/` | Portada: banner, avisos, destacados y productos propios |
+| `/catalogo` | Catálogo con buscador, filtro por categoría y paginación |
+| `/producto/{slug}/{id}` | Ficha de producto central (URL SEO, ver más abajo) |
+| `/producto/{id}` | Redirige 301 a la URL canónica con slug |
+| `/contacto` | Datos de contacto de la tienda |
+| `/pagina/{slug}` | Bloques de contenido (sobre nosotros, envíos...) |
+
+**Panel de la tienda**
+
+| Ruta | Módulo |
+|---|---|
+| `/panel/login` · `/panel/logout` | Acceso |
+| `/panel` | Resumen (cuotas, actividad, primeros pasos) |
+| `/panel/diseno` | Plantilla, colores, tipografía, logo, textos y SEO |
+| `/panel/banners` | Banners con imagen (límite por plan) |
+| `/panel/avisos` | Avisos/anuncios |
+| `/panel/productos` | Productos propios (alta/edición/borrado, cuota por plan) |
+| `/panel/dominios` | Dominio propio, instrucciones DNS y verificación |
+| `/panel/ajustes` | Datos fiscales y usuarios del panel |
+| `/panel/media/subir` | Endpoint AJAX de subida de imágenes |
+
+---
+
+## 6. Resolución de tenant
+
+El storefront se decide **por el hostname** (nunca por cookies):
+
+1. `?tienda=slug` — solo fuera de producción (desarrollo).
+2. `<slug>.<dominio_base>` → `mt_stores.slug`.
+3. Dominio propio **verificado** (`mt_domains.status = 1`).
+4. `DEMO_STORE` del `.env`.
+5. Primera tienda activa.
+
+---
+
+## 7. Dominios propios (DNS)
+
+Igual que Tiendanube: el cliente compra su dominio en su registrador y lo apunta
+a la plataforma. El panel muestra las instrucciones y el estado.
+
+| Tipo | Nombre | Valor |
+|---|---|---|
+| A | `@` | `PLATFORM_IP` |
+| CNAME | `www` | `PLATFORM_CNAME` |
+
+Al pulsar **Verificar DNS** se consultan los registros reales, se actualiza el
+estado y se registra el intento en `mt_dns_log`.
+
+Vhost de Apache de ejemplo: [`deploy/apache-vhost.conf`](deploy/apache-vhost.conf).
+Para nginx: [`deploy/nginx-site.conf.tpl`](deploy/nginx-site.conf.tpl) (lo instala
+`deploy/setup-nginx-domain.sh`).
+
+---
+
+## 8. Planes y productos propios
+
+`mt_plans.own_products_quota`: `-1` ilimitado, `0` no permitido, `N` límite.
+
+| Plan | Propios | Banners | Avisos | Dominio propio |
+|---|---|---|---|---|
+| Basico | 0 | 2 | 3 | No |
+| Medio | 50 | 5 | 10 | Si |
+| Premium | ilimitado | 20 | 50 | Si |
+
+La cuota se aplica en el servidor (no solo en la interfaz): al crear un producto
+se comprueba el plan y se rechaza si se ha superado.
+
+---
+
+## 9. Base de datos
+
+Tablas propias (prefijo `mt_`, aditivas sobre la BD central):
+
+| Tabla | Uso |
+|---|---|
+| `mt_stores` | Tiendas (tenant) + configuración de diseño y datos públicos |
+| `mt_store_users` | Usuarios del panel |
+| `mt_plans` / `mt_themes` | Planes y plantillas |
+| `mt_banners` / `mt_notices` / `mt_content_blocks` | Contenido |
+| `mt_own_products` | Productos propios (cuota por plan) |
+| `mt_media` | Ficheros en S3/local (solo key + URL) |
+| `mt_domains` / `mt_dns_log` | Dominios y verificaciones |
+| `mt_settings` / `mt_migrations` | Config clave/valor y control de migraciones |
+
+```bash
+php database/migrate.php --status   # ver migraciones
+php database/migrate.php            # aplicar pendientes
+php database/migrate.php --seed     # + semillas
+```
+
+---
+
+## 10. Estado y siguientes pasos
+
+**Hecho y verificado:** núcleo MVC, configuración BD/S3, migraciones y semillas,
+multi-tenant por hostname, storefront con tema base, panel completo (diseño,
+banners, avisos, productos, dominios, ajustes), subida de imágenes con validación
+y cuota de plan aplicada en servidor.
+
+**Pendiente (siguientes iteraciones):**
+
+- Checkout de la tienda (carrito, pasarelas propias, envíos).
+- Temas `moderno` y `minimal` (ahora hay base + variables de tema).
+- Panel maestro del mayorista (supervisión, tarifas, auditoría de ventas).
+- Recuperación de contraseña y 2FA en el panel.
+- Tests automatizados (PHPUnit) y CI.
+
+---
+
+## 11. Seguridad
+
+- `.env` fuera de control de versiones; `.htaccess` bloquea `.env`, `.sql`, `.log`.
+- Todas las consultas usan sentencias preparadas.
+- Token CSRF en todos los formularios y en el endpoint de subida.
+- Contraseñas con `password_hash` (bcrypt/argon).
+- Validación de MIME real y tamaño en las subidas; nombre de objeto saneado.
+- Aislamiento por tienda: cada consulta del panel filtra por `store_id` de la sesión.

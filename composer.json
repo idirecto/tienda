@@ -1,0 +1,23 @@
+{
+    "name": "idirecto/tienda",
+    "description": "Plataforma multi-tienda (storefront + panel) conectada al catalogo central del mayorista.",
+    "type": "project",
+    "license": "proprietary",
+    "require": {
+        "php": ">=8.2"
+    },
+    "require-dev": {
+    },
+    "suggest": {
+        "aws/aws-sdk-php": "Necesario para STORAGE_DRIVER=s3 (subida de imagenes al bucket del mayorista)"
+    },
+    "autoload": {
+        "psr-4": {
+            "Tienda\\": "app/"
+        }
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "sort-packages": true
+    }
+}
