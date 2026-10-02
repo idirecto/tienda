@@ -143,6 +143,17 @@ final class Tenant
         return (string) ($this->store['header_style'] ?? 'classic');
     }
 
+    /**
+     * Estilo de menu elegido por la tienda: `compacto` o `catalogo`.
+     *
+     * Es un ajuste distinto del estilo de cabecera (`headerStyle`) y no se
+     * confunde con el: aqui solo hay dos valores posibles.
+     */
+    public function menuStyle(): string
+    {
+        return \Tienda\Models\Menu::style($this->store);
+    }
+
     public function logoUrl(): ?string
     {
         $logo = (string) ($this->store['logo_url'] ?? '');

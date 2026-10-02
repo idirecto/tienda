@@ -209,6 +209,23 @@ return [
     ],
 
     // -------------------------------------------------------------------------
+    // Etiquetas de listado (accesos comerciales de un clic).
+    //
+    // Son filtros que no dependen de una categoria: se ofrecen como accesos
+    // rapidos en el menu y como chips en el propio listado. Cada una define su
+    // etiqueta visible y el icono que pinta la tarjeta o el menu.
+    //   ofertas    -> productos con oferta activa en `ofertas`
+    //   novedades  -> dados de alta en los ultimos `days` dias
+    //   destacados -> marcados por el mayorista (`productos.etiqueta = 1`)
+    // -------------------------------------------------------------------------
+    'tags' => [
+        'todos'      => ['label' => 'Todos',      'icon' => 'grid'],
+        'ofertas'    => ['label' => 'Ofertas',    'icon' => 'bolt'],
+        'novedades'  => ['label' => 'Novedades',  'icon' => 'refresh', 'days' => 90],
+        'destacados' => ['label' => 'Destacados', 'icon' => 'star'],
+    ],
+
+    // -------------------------------------------------------------------------
     // Orden del listado. `sql` se resuelve en Catalog.
     // -------------------------------------------------------------------------
     'sorts' => [

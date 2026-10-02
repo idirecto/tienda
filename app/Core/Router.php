@@ -37,10 +37,16 @@ final class Router
         ];
     }
 
-    /** Convierte /producto/{id} en una expresion regular con grupos nombrados. */
+    /**
+     * Convierte /producto/{id} en una expresion regular con grupos nombrados.
+     *
+     *   {param}     -> un segmento           ([^/]+)
+     *   {param...}  -> el resto de la ruta   (.+)   (para rutas SEO de cola)
+     */
     private function compile(string $path): string
     {
-        $regex = preg_replace('#\{([a-zA-Z_][a-zA-Z0-9_]*)\}#', '(?P<$1>[^/]+)', $path);
+        $regex = preg_replace('#\{([a-zA-Z_][a-zA-Z0-9_]*)\.\.\.\}#', '(?P<$1>.+)', $path);
+        $regex = preg_replace('#\{([a-zA-Z_][a-zA-Z0-9_]*)\}#', '(?P<$1>[^/]+)', (string) $regex);
         return '#^' . $regex . '$#';
     }
 

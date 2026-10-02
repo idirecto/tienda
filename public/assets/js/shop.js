@@ -580,113 +580,6 @@
         });
     }
 
-    /* =====================================================================
-       MENU DE CATEGORIAS DEL CATALOGO (megamenu)
-       ===================================================================== */
-    var catMenu = document.getElementById('catalog-menu');
-    var catTrigger = document.getElementById('catalog-menu-trigger');
-    if (catMenu && catTrigger) {
-        initCatalogMenu(catMenu, catTrigger);
-    }
-
-    function initCatalogMenu(menu, trigger) {
-        var buttons = Array.prototype.slice.call(menu.querySelectorAll('[data-catmenu-cat]'));
-        var panes = Array.prototype.slice.call(menu.querySelectorAll('[data-catmenu-pane]'));
-        var lastFocus = null;
-
-        function isMobileView() {
-            return window.matchMedia('(max-width: 991px)').matches;
-        }
-
-        function select(index) {
-            buttons.forEach(function (btn, i) {
-                btn.parentNode.classList.toggle('is-active', i === index);
-                btn.setAttribute('aria-selected', i === index ? 'true' : 'false');
-            });
-            panes.forEach(function (pane, i) {
-                pane.classList.toggle('is-active', i === index);
-            });
-            if (panes[index]) {
-                panes[index].scrollTop = 0;
-            }
-            // En movil, pulsar una categoria entra en sus subcategorias.
-            if (isMobileView()) {
-                menu.classList.add('is-groups');
-            }
-        }
-
-        function open() {
-            lastFocus = document.activeElement;
-            menu.hidden = false;
-            menu.classList.remove('is-groups');
-            trigger.setAttribute('aria-expanded', 'true');
-            document.body.classList.add('no-scroll');
-            var close = menu.querySelector('[data-catmenu-close]');
-            if (close) { close.focus(); }
-        }
-
-        function close() {
-            menu.hidden = true;
-            menu.classList.remove('is-groups');
-            trigger.setAttribute('aria-expanded', 'false');
-            document.body.classList.remove('no-scroll');
-            if (lastFocus && lastFocus.focus) { lastFocus.focus(); }
-        }
-
-        trigger.addEventListener('click', function (e) {
-            e.preventDefault();
-            if (menu.hidden) { open(); } else { close(); }
-        });
-
-        menu.addEventListener('click', function (e) {
-            if (e.target.closest('[data-catmenu-close]')) { e.preventDefault(); close(); return; }
-            if (e.target.closest('[data-catmenu-back]')) { e.preventDefault(); menu.classList.remove('is-groups'); return; }
-
-            var btn = e.target.closest('[data-catmenu-cat]');
-            if (btn) {
-                e.preventDefault();
-                select(parseInt(btn.getAttribute('data-catmenu-cat'), 10) || 0);
-            }
-        });
-
-        // Con raton, cambiar de categoria al pasar por encima (como los
-        // megamenus clasicos); en tactil solo al pulsar.
-        if (window.matchMedia('(hover: hover)').matches) {
-            buttons.forEach(function (btn) {
-                btn.addEventListener('mouseenter', function () {
-                    select(parseInt(btn.getAttribute('data-catmenu-cat'), 10) || 0);
-                });
-            });
-        }
-
-        document.addEventListener('keydown', function (e) {
-            if (menu.hidden) { return; }
-
-            if (e.key === 'Escape') {
-                // Escape: en movil vuelve a las categorias; si no, cierra.
-                if (isMobileView() && menu.classList.contains('is-groups')) {
-                    menu.classList.remove('is-groups');
-                } else {
-                    close();
-                }
-                return;
-            }
-
-            // Flechas arriba/abajo para recorrer las categorias (patron tablist).
-            var current = buttons.indexOf(document.activeElement);
-            if (current !== -1 && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
-                e.preventDefault();
-                var step = e.key === 'ArrowDown' ? 1 : -1;
-                var next = (current + step + buttons.length) % buttons.length;
-                select(next);
-                buttons[next].focus();
-            }
-        });
-
-        window.addEventListener('resize', function () {
-            if (window.innerWidth >= 992) { menu.classList.remove('is-groups'); }
-        });
-    }
 })();
 
 /* =====================================================================
@@ -730,4 +623,374 @@
             });
         });
     }
+})();
+
+/* =====================================================================
+   NAVEGACION: Menú Compacto y Menú Catálogo
+
+   Los dos pintan el mismo arbol y comparten el mismo panel. Aqui solo se
+   resuelve el comportamiento:
+     - Compacto (escritorio): la barra abre el megamenu al pasar el raton o al
+       pulsar la flecha de la categoria (el enlace sigue navegando).
+     - Catalogo (escritorio): «Todas las categorias» abre el panel con fondo
+       oscuro, columna de categorias a la izquierda y grupos/destinos a la
+       derecha.
+     - Movil (<1024 px): en los dos casos, menu lateral por niveles con boton
+       «Volver».
+   Sin JavaScript el arbol sigue siendo navegable: los enlaces de los tres
+   niveles estan en el HTML.
+   ===================================================================== */
+(function () {
+    'use strict';
+
+    var root = document.querySelector('[data-menu-nav]');
+    if (!root) { return; }
+
+    var panel = root.querySelector('.mn-panel');
+    if (!panel) { return; }
+
+    var style = root.getAttribute('data-menu-style') || 'catalogo';
+    var isModal = panel.getAttribute('data-mn-modal') === 'true';
+
+    var barItems = Array.prototype.slice.call(root.querySelectorAll('.mn-bar-item'));
+    var openers = Array.prototype.slice.call(root.querySelectorAll('[data-mn-open]'));
+    var mobileOpen = document.querySelector('[data-mn-mobile-open]');
+    var tabs = Array.prototype.slice.call(panel.querySelectorAll('[data-mn-cat-tab]'));
+    var panes = Array.prototype.slice.call(panel.querySelectorAll('[data-mn-pane]'));
+    var backBtns = Array.prototype.slice.call(panel.querySelectorAll('[data-mn-back]'));
+    var titleEl = panel.querySelector('[data-mn-title]');
+    var sideTitle = titleEl ? titleEl.textContent : '';
+
+    var lastFocus = null;
+    var current = 0;
+    var openTimer = null;
+    var closeTimer = null;
+    var promoLoaded = {};
+    var isOpen = false;
+
+    function isMobile() {
+        return window.matchMedia('(max-width: 1023.98px)').matches;
+    }
+
+    function catLabel(index) {
+        var label = tabs[index] ? tabs[index].querySelector('.mn-cat-label') : null;
+        return label ? label.textContent.trim() : '';
+    }
+
+    /* ---------------------------------------------------------------
+       Contenido promocional del panel (banner, marcas y destacados).
+       Se pide una sola vez por categoria: la primera carga de la pagina
+       no paga las consultas de las 14 categorias.
+       --------------------------------------------------------------- */
+    function loadPromo(index) {
+        var pane = panes[index];
+        if (!pane) { return; }
+
+        var box = pane.querySelector('[data-menu-panel]');
+        if (!box) { return; }
+
+        var url = box.getAttribute('data-menu-panel-url');
+        var key = box.getAttribute('data-menu-panel');
+        if (!url || promoLoaded[key]) { return; }
+        promoLoaded[key] = true;
+
+        if (!window.fetch) { return; }
+
+        window.fetch(url, { headers: { 'X-Requested-With': 'fetch' }, credentials: 'same-origin' })
+            .then(function (response) { return response.ok ? response.json() : null; })
+            .then(function (data) {
+                if (data && typeof data.html === 'string') {
+                    box.innerHTML = data.html;
+                }
+            })
+            .catch(function () { /* Si falla, el panel se queda sin bloque promocional. */ });
+    }
+
+    /* ---------------------------------------------------------------
+       Seleccion de categoria (pestana del panel)
+       --------------------------------------------------------------- */
+    function select(index, focusTab) {
+        if (index < 0 || index >= tabs.length) { return; }
+        current = index;
+
+        tabs.forEach(function (tab, i) {
+            var active = i === index;
+            tab.setAttribute('aria-selected', active ? 'true' : 'false');
+            tab.setAttribute('aria-expanded', active ? 'true' : 'false');
+        });
+
+        panes.forEach(function (pane, i) {
+            var active = i === index;
+            pane.classList.toggle('is-active', active);
+            pane.hidden = !active;
+        });
+
+        if (titleEl && isMobile() && panel.classList.contains('is-steps')) {
+            titleEl.textContent = catLabel(index) || sideTitle;
+        }
+
+        loadPromo(index);
+
+        if (focusTab && tabs[index]) {
+            tabs[index].focus();
+        }
+    }
+
+    /* ---------------------------------------------------------------
+       Abrir / cerrar
+       --------------------------------------------------------------- */
+    function openPanel(index, opener, moveFocus) {
+        window.clearTimeout(closeTimer);
+
+        lastFocus = opener || document.activeElement;
+        isOpen = true;
+        panel.hidden = false;
+        panel.classList.add('is-open');
+        // La clase del body NO puede llamarse `mn-open`: ese nombre ya lo usa el
+        // boton del Menu Catalogo (`.mn-trigger .mn-open`) y el body acababa con
+        // display:inline-flex y fondo de marca, que descolocaba la pagina entera.
+        document.body.classList.add('mn-panel-open');
+
+        if (isMobile()) {
+            panel.classList.remove('is-steps');
+            if (titleEl) { titleEl.textContent = sideTitle; }
+        }
+
+        select(typeof index === 'number' ? index : current, false);
+
+        // Solo el disparador de la categoria activa queda «expandido»: en el
+        // Menu Compacto los demas botones no senalan ninguna subcategoria.
+        openers.forEach(function (el) {
+            var elIndex = parseInt(el.getAttribute('data-mn-open'), 10) || 0;
+            var active = openers.length === 1 || elIndex === current;
+            el.setAttribute('aria-expanded', active ? 'true' : 'false');
+        });
+        if (mobileOpen) { mobileOpen.setAttribute('aria-expanded', 'true'); }
+
+        if (moveFocus) {
+            if (tabs[current]) { tabs[current].focus(); }
+        }
+    }
+
+    function closePanel(returnFocus) {
+        if (!isOpen) { return; }
+        isOpen = false;
+        panel.classList.remove('is-open', 'is-steps');
+        panel.hidden = true;
+        document.body.classList.remove('mn-panel-open');
+        setBack(false);
+
+        barItems.forEach(function (item) { item.classList.remove('is-open'); });
+        openers.forEach(function (el) { el.setAttribute('aria-expanded', 'false'); });
+        if (mobileOpen) { mobileOpen.setAttribute('aria-expanded', 'false'); }
+
+        if (returnFocus && lastFocus && typeof lastFocus.focus === 'function') {
+            lastFocus.focus();
+        }
+    }
+
+    function setBack(visible) {
+        backBtns.forEach(function (btn) { btn.hidden = !visible; });
+    }
+
+    function goToCats() {
+        panel.classList.remove('is-steps');
+        setBack(false);
+        if (titleEl) { titleEl.textContent = sideTitle; }
+    }
+
+    function goToSteps() {
+        panel.classList.add('is-steps');
+        setBack(true);
+        if (titleEl) { titleEl.textContent = catLabel(current) || sideTitle; }
+        if (!panel.hidden) { loadPromo(current); }
+    }
+
+    /* ---------------------------------------------------------------
+       Disparadores
+       --------------------------------------------------------------- */
+    openers.forEach(function (opener) {
+        var index = parseInt(opener.getAttribute('data-mn-open'), 10) || 0;
+
+        opener.addEventListener('click', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            if (isOpen && current === index) {
+                closePanel(true);
+                return;
+            }
+            openPanel(index, opener, true);
+        });
+
+        opener.addEventListener('keydown', function (e) {
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                openPanel(index, opener, true);
+            }
+        });
+    });
+
+    if (mobileOpen) {
+        mobileOpen.addEventListener('click', function (e) {
+            e.preventDefault();
+            // Sin esto, el manejador de «clic fuera» del documento veria el clic
+            // (el boton vive en la cabecera, fuera del contenedor del menu) y
+            // cerraria el cajon en el mismo clic que lo abre.
+            e.stopPropagation();
+            if (isOpen) { closePanel(true); return; }
+            openPanel(current, mobileOpen, true);
+        });
+    }
+
+    /* Escritorio: el raton abre y cierra el megamenu (Menu Compacto). */
+    if (style === 'compacto' && window.matchMedia('(hover: hover)').matches) {
+        barItems.forEach(function (item, index) {
+            item.addEventListener('mouseenter', function () {
+                if (isMobile()) { return; }
+                window.clearTimeout(closeTimer);
+                openTimer = window.setTimeout(function () {
+                    openPanel(index, null, false);
+                    item.classList.add('is-open');
+                }, 110);
+            });
+
+            item.addEventListener('mouseleave', function () {
+                if (isMobile()) { return; }
+                window.clearTimeout(openTimer);
+                closeTimer = window.setTimeout(function () {
+                    if (panel.contains(document.activeElement)) { return; }
+                    closePanel(false);
+                }, 260);
+            });
+        });
+
+        panel.addEventListener('mouseenter', function () { window.clearTimeout(closeTimer); });
+        panel.addEventListener('mouseleave', function () {
+            if (isMobile()) { return; }
+            closeTimer = window.setTimeout(function () {
+                if (panel.contains(document.activeElement)) { return; }
+                closePanel(false);
+            }, 260);
+        });
+    }
+
+    /* Pestanas del panel */
+    tabs.forEach(function (tab) {
+        var index = parseInt(tab.getAttribute('data-mn-cat-tab'), 10) || 0;
+
+        tab.addEventListener('click', function () {
+            select(index, false);
+            if (isMobile()) { goToSteps(); }
+        });
+
+        tab.addEventListener('mouseenter', function () {
+            if (isMobile() || style !== 'catalogo') { return; }
+            select(index, false);
+        });
+    });
+
+    /* Volver (solo movil) y cerrar */
+    panel.querySelectorAll('[data-mn-back]').forEach(function (btn) {
+        btn.addEventListener('click', function (e) {
+            e.preventDefault();
+            goToCats();
+            if (tabs[current]) { tabs[current].focus(); }
+        });
+    });
+
+    panel.querySelectorAll('[data-mn-close]').forEach(function (el) {
+        el.addEventListener('click', function (e) {
+            e.preventDefault();
+            closePanel(true);
+        });
+    });
+
+    /* Clic fuera: en movil el cajon se cierra; en escritorio tambien. */
+    document.addEventListener('click', function (e) {
+        if (!isOpen) { return; }
+        if (panel.contains(e.target)) { return; }
+        if (root.contains(e.target)) { return; }
+        // Los disparadores del menu pueden vivir fuera del contenedor (el boton
+        // del menu lateral esta en la cabecera): no cuentan como «clic fuera».
+        if (e.target.closest && e.target.closest('[data-mn-open], [data-mn-mobile-open], [data-mn-more-btn], .mn-more-panel')) {
+            return;
+        }
+        closePanel(false);
+    });
+
+    /* Teclado: Escape y navegacion por flechas entre categorias */
+    document.addEventListener('keydown', function (e) {
+        if (!isOpen) { return; }
+
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            if (isMobile() && panel.classList.contains('is-steps')) {
+                goToCats();
+                if (tabs[current]) { tabs[current].focus(); }
+            } else {
+                closePanel(true);
+            }
+            return;
+        }
+
+        var index = tabs.indexOf(document.activeElement);
+        if (index !== -1 && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+            e.preventDefault();
+            var step = e.key === 'ArrowDown' ? 1 : -1;
+            var next = (index + step + tabs.length) % tabs.length;
+            select(next, true);
+            return;
+        }
+
+        /* En el panel modal (Menu Catalogo) el foco no debe salirse. */
+        if (isModal && e.key === 'Tab') {
+            var focusables = panel.querySelectorAll(
+                'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])'
+            );
+            var list = Array.prototype.filter.call(focusables, function (el) {
+                return el.offsetParent !== null || el === document.activeElement;
+            });
+            if (!list.length) { return; }
+
+            var first = list[0];
+            var last = list[list.length - 1];
+            if (e.shiftKey && document.activeElement === first) {
+                e.preventDefault();
+                last.focus();
+            } else if (!e.shiftKey && document.activeElement === last) {
+                e.preventDefault();
+                first.focus();
+            }
+        }
+    });
+
+    /* «Mas categorias» (Menu Compacto) */
+    var moreBtn = root.querySelector('[data-mn-more-btn]');
+    var morePanel = root.querySelector('.mn-more-panel');
+    if (moreBtn && morePanel) {
+        moreBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            var open = moreBtn.getAttribute('aria-expanded') === 'true';
+            moreBtn.setAttribute('aria-expanded', open ? 'false' : 'true');
+            morePanel.hidden = open;
+        });
+
+        document.addEventListener('click', function (e) {
+            if (morePanel.hidden) { return; }
+            if (root.contains(e.target)) { return; }
+            morePanel.hidden = true;
+            moreBtn.setAttribute('aria-expanded', 'false');
+        });
+    }
+
+    /* Al cambiar de escritorio/movil se cierra: evita estados a medias. */
+    var wasMobile = isMobile();
+    window.addEventListener('resize', function () {
+        var nowMobile = isMobile();
+        if (nowMobile !== wasMobile) {
+            wasMobile = nowMobile;
+            closePanel(false);
+        }
+    });
 })();

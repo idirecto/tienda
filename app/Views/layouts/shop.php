@@ -19,6 +19,7 @@ use Tienda\Core\Cart;
 use Tienda\Core\CustomerAuth;
 use Tienda\Core\Session;
 use Tienda\Models\Catalog;
+use Tienda\Models\Menu;
 
 $scheme = Appearance::scheme($tenant);
 $themeCss = Appearance::css($tenant);
@@ -32,9 +33,12 @@ $flashError = Session::pullFlash('error');
 $cartUnits = Cart::count($tenant->id());
 $shopCustomer = CustomerAuth::customer($tenant->id());
 
-// Menu de categorias del catalogo (categorias -> subcategorias con stock).
-// Va cacheado en fichero, asi que es barato en cada pagina del storefront.
-$catalogMenu = isset($catalogMenu) ? $catalogMenu : Catalog::menuTree();
+// Menu de navegacion. El arbol es UNO (`mt_menu_items`) y lo comparten los dos
+// estilos: `menu_style` solo decide cual se pinta (Compacto o Catalogo).
+$menuStyle = $tenant->menuStyle();
+$menuTree = Menu::forStore($tenant->id());
+$menuQuick = Menu::quickLinks();
+$hasMenu = ((array) ($menuTree['categories'] ?? [])) !== [];
 
 // Precarga de la conexion con el CDN de imagenes del catalogo: ahorra el
 // saludo TLS en cuanto aparece la primera tarjeta.
@@ -148,19 +152,18 @@ $headerStyle = preg_replace('/[^a-z0-9_\-]/i', '', $tenant->headerStyle()) ?: 'c
 
     <nav class="mainnav" aria-label="Navegacion principal">
         <div class="container nav-inner">
-            <a href="<?= e($base) ?>/">Inicio</a>
-            <?php if ($catalogMenu !== []): ?>
-                <span class="nav-catalog">
-                    <a href="<?= e($base) ?>/catalogo">Catalogo</a>
-                    <button type="button" class="nav-catalog-toggle" id="catalog-menu-trigger"
-                            aria-expanded="false" aria-controls="catalog-menu"
-                            aria-label="Abrir menu de categorias">
-                        <span class="nav-catalog-caret" aria-hidden="true"></span>
-                    </button>
-                </span>
-            <?php else: ?>
-                <a href="<?= e($base) ?>/catalogo">Catalogo</a>
+            <?php if ($hasMenu): ?>
+                <?php /* En movil (<1024 px) este boton abre el menu lateral; en
+                         escritorio lo oculta el CSS porque el menu ya esta visible. */ ?>
+                <button type="button" class="nav-menu-btn" data-mn-mobile-open
+                        aria-expanded="false" aria-controls="mn-panel"
+                        aria-label="Abrir menu de categorias">
+                    <?= icon_svg('list') ?>
+                    <span class="nav-menu-btn-text">Categorias</span>
+                </button>
             <?php endif; ?>
+            <a href="<?= e($base) ?>/">Inicio</a>
+            <a href="<?= e($base) ?>/catalogo">Catalogo</a>
             <?php foreach (($blocks ?? []) as $b): ?>
                 <a href="<?= e($base) ?>/pagina/<?= e($b['slug']) ?>"><?= e($b['title']) ?></a>
             <?php endforeach; ?>
@@ -169,64 +172,18 @@ $headerStyle = preg_replace('/[^a-z0-9_\-]/i', '', $tenant->headerStyle()) ?: 'c
     </nav>
 </header>
 
-<?php if ($catalogMenu !== []): ?>
-    <div class="catmenu" id="catalog-menu" hidden>
-        <div class="catmenu-backdrop" data-catmenu-close></div>
-        <div class="catmenu-panel" role="dialog" aria-modal="true" aria-label="Categorias del catalogo">
-            <div class="catmenu-head">
-                <button type="button" class="catmenu-back" data-catmenu-back aria-label="Volver a categorias">&larr;</button>
-                <span class="catmenu-title">Categorias</span>
-                <button type="button" class="catmenu-close" data-catmenu-close aria-label="Cerrar menu">&times;</button>
-            </div>
-
-            <div class="catmenu-body">
-                <nav class="catmenu-side" aria-label="Categorias del catalogo">
-                    <a class="catmenu-all" href="<?= e($base) ?>/catalogo">Ver todo el catalogo</a>
-                    <ul class="catmenu-cats" role="tablist" aria-orientation="vertical">
-                        <?php foreach ($catalogMenu as $i => $cat): ?>
-                            <li class="catmenu-cat<?= $i === 0 ? ' is-active' : '' ?>" role="presentation">
-                                <button type="button" class="catmenu-cat-btn" data-catmenu-cat="<?= $i ?>"
-                                        id="catmenu-tab-<?= (int) $cat['id'] ?>" role="tab"
-                                        aria-selected="<?= $i === 0 ? 'true' : 'false' ?>"
-                                        aria-controls="catmenu-pane-<?= (int) $cat['id'] ?>">
-                                    <span class="catmenu-cat-name"><?= e($cat['name']) ?></span>
-                                    <i class="catmenu-arrow" aria-hidden="true"></i>
-                                </button>
-                            </li>
-                        <?php endforeach; ?>
-                    </ul>
-                </nav>
-
-                <div class="catmenu-content">
-                    <?php foreach ($catalogMenu as $i => $cat): ?>
-                        <section class="catmenu-pane<?= $i === 0 ? ' is-active' : '' ?>"
-                                 id="catmenu-pane-<?= (int) $cat['id'] ?>" data-catmenu-pane="<?= $i ?>"
-                                 role="tabpanel" aria-labelledby="catmenu-tab-<?= (int) $cat['id'] ?>"
-                                 tabindex="0">
-                            <div class="catmenu-pane-head">
-                                <h3 class="catmenu-pane-title">
-                                    <?= e($cat['name']) ?>
-                                    <small><?= (int) $cat['total'] ?> productos</small>
-                                </h3>
-                                <a class="catmenu-pane-all" href="<?= e($base) ?>/catalogo?cat=<?= (int) $cat['id'] ?>">
-                                    Ver todo &rarr;
-                                </a>
-                            </div>
-                            <ul class="catmenu-links">
-                                <?php foreach ($cat['subcategories'] as $sub): ?>
-                                    <li>
-                                        <a href="<?= e($base) ?>/catalogo?cat=<?= (int) $cat['id'] ?>&amp;subcat=<?= (int) $sub['id'] ?>">
-                                            <?= e($sub['name']) ?>
-                                        </a>
-                                    </li>
-                                <?php endforeach; ?>
-                            </ul>
-                        </section>
-                    <?php endforeach; ?>
-                </div>
-            </div>
-        </div>
-    </div>
+<?php if ($hasMenu): ?>
+    <?php
+    // Navegacion: Menú Compacto o Menú Catálogo, con el mismo arbol. El movil lo
+    // resuelve el propio parcial (menu lateral por niveles). Si el tema activo
+    // no implementa `_menu.php` se usa el del tema base, como en `themeView()`.
+    $menuTheme = preg_replace('/[^a-z0-9_\-]/i', '', $tenant->theme()) ?: 'idirecto';
+    $menuPartial = __DIR__ . '/../themes/' . $menuTheme . '/_menu.php';
+    if (!is_file($menuPartial)) {
+        $menuPartial = __DIR__ . '/../themes/idirecto/_menu.php';
+    }
+    include $menuPartial;
+    ?>
 <?php endif; ?>
 
 <?php if (!empty($notices)): ?>

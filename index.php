@@ -37,6 +37,8 @@ use Tienda\Controllers\Admin\DashboardController;
 use Tienda\Controllers\Admin\DesignController;
 use Tienda\Controllers\Admin\DomainController;
 use Tienda\Controllers\Admin\MediaController;
+use Tienda\Controllers\Admin\MenuController;
+use Tienda\Controllers\Admin\PlatformMenuController;
 use Tienda\Controllers\Admin\NoticeController;
 use Tienda\Controllers\Admin\OrderController;
 use Tienda\Controllers\Admin\ProductController;
@@ -62,6 +64,21 @@ $router->get('/producto/{slug}/{id}',  [StorefrontController::class, 'product'])
 $router->get('/producto/{id}',         [StorefrontController::class, 'productLegacy']);
 $router->get('/contacto',              [StorefrontController::class, 'contact']);
 $router->get('/pagina/{slug}',         [StorefrontController::class, 'page']);
+
+// -----------------------------------------------------------------------------
+// NAVEGACION COMERCIAL (accesos rapidos del menu)
+//
+//   /marcas           directorio de marcas con stock
+//   /marca/{id}       listado de una marca
+//   /ofertas /novedades /destacados   listados por etiqueta
+//   /menu/panel/{id}  contenido del panel de una categoria (JSON)
+// -----------------------------------------------------------------------------
+$router->get('/marcas',                [StorefrontController::class, 'brands']);
+$router->get('/marca/{id}',            [StorefrontController::class, 'brand']);
+foreach (['ofertas', 'novedades', 'destacados'] as $tagRoute) {
+    $router->get('/' . $tagRoute, [StorefrontController::class, 'tag']);
+}
+$router->get('/menu/panel/{id}',       [StorefrontController::class, 'menuPanel']);
 
 // -----------------------------------------------------------------------------
 // COMPRA DEL CLIENTE (carrito, su cuenta y cierre del pedido)
@@ -110,6 +127,35 @@ $router->post('/panel/login',          [AuthController::class, 'login']);
 $router->get('/panel/logout',          [AuthController::class, 'logout']);
 
 $router->get('/panel',                 [DashboardController::class, 'index']);
+
+// Menu de navegacion: estilo (Compacto/Catalogo) y arbol de la tienda.
+// Ojo con el orden: 'regenerar' es una ruta fija.
+$router->get('/panel/menu',            [MenuController::class, 'index']);
+$router->post('/panel/menu',           [MenuController::class, 'save']);
+$router->post('/panel/menu/regenerar', [MenuController::class, 'seed']);
+// Editor del arbol (borrador), vista previa y publicacion (con invalidacion de cache).
+$router->get('/panel/menu/previa',             [MenuController::class, 'preview']);
+$router->get('/panel/menu/previa/marco',       [MenuController::class, 'previewFrame']);
+$router->post('/panel/menu/publicar',          [MenuController::class, 'publish']);
+$router->post('/panel/menu/orden',             [MenuController::class, 'nodeOrder']);
+$router->post('/panel/menu/nodo',              [MenuController::class, 'nodeCreate']);
+$router->post('/panel/menu/nodo/{id}',         [MenuController::class, 'nodeUpdate']);
+$router->post('/panel/menu/nodo/{id}/borrar',  [MenuController::class, 'nodeDelete']);
+$router->post('/panel/menu/nodo/{id}/activar', [MenuController::class, 'nodeToggle']);
+
+// Menu de la PLATAFORMA: arbol compartido, visibilidad por tienda y por nivel.
+$router->get('/panel/plataforma/menu',           [PlatformMenuController::class, 'index']);
+$router->post('/panel/plataforma/menu/publicar', [PlatformMenuController::class, 'publishAll']);
+$router->post('/panel/plataforma/menu/orden',    [PlatformMenuController::class, 'nodeOrder']);
+$router->post('/panel/plataforma/menu/nodo',     [PlatformMenuController::class, 'nodeCreate']);
+$router->post('/panel/plataforma/menu/nodo/{id}',              [PlatformMenuController::class, 'nodeUpdate']);
+$router->post('/panel/plataforma/menu/nodo/{id}/borrar',       [PlatformMenuController::class, 'nodeDelete']);
+$router->post('/panel/plataforma/menu/nodo/{id}/activar',      [PlatformMenuController::class, 'nodeToggle']);
+$router->post('/panel/plataforma/menu/nodo/{id}/visibilidad',  [PlatformMenuController::class, 'visibility']);
+$router->get('/panel/plataforma/menu/{store}/previa',          [PlatformMenuController::class, 'preview']);
+$router->get('/panel/plataforma/menu/{store}/previa/marco',    [PlatformMenuController::class, 'previewFrame']);
+$router->post('/panel/plataforma/menu/{store}/publicar',       [PlatformMenuController::class, 'publishStore']);
+$router->post('/panel/plataforma/menu/{store}/compartir',      [PlatformMenuController::class, 'shareStore']);
 
 $router->get('/panel/diseno',          [DesignController::class, 'index']);
 $router->post('/panel/diseno',         [DesignController::class, 'save']);
@@ -164,6 +210,17 @@ $router->post('/panel/ajustes',        [SettingsController::class, 'save']);
 // Subida de imagenes (usada por banners, productos, logo...)
 $router->post('/panel/media/subir',    [MediaController::class, 'upload']);
 $router->post('/panel/media/{id}/borrar', [MediaController::class, 'destroy']);
+
+// -----------------------------------------------------------------------------
+// Rutas SEO del catalogo (esquema de PuntoByZE). SIEMPRE la ultima de los GET:
+//   /{categoria}
+//   /{categoria}/{subcategoria}
+//   /{categoria}/{subcategoria}/m/{marca}/orden/{orden}/page/{n}
+// Cualquier otra ruta de un bloque cae aqui y responde 404 si el primer
+// segmento no es una categoria real. Si se declara antes, se traga el resto de
+// rutas GET (panel incluido): no moverla de sitio.
+// -----------------------------------------------------------------------------
+$router->get('/{ruta...}',             [StorefrontController::class, 'seoListado']);
 
 // -----------------------------------------------------------------------------
 // Resolucion de tenant + despacho

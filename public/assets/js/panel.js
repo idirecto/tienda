@@ -492,6 +492,201 @@
         sync();
     }
 
+    /* =====================================================================
+       EDITOR DEL MENU: arbol con drag & drop, formulario de nodo y vista previa.
+
+       El orden se guarda por AJAX al soltar; el resto de acciones son
+       formularios normales, para que funcionen tambien sin JavaScript.
+       ===================================================================== */
+
+    function initMenuEditor() {
+        var editor = document.querySelector('[data-menu-editor]');
+        if (!editor) { return; }
+
+        var base = editor.getAttribute('data-menu-base') || (CFG.base + '/panel/menu');
+        var dialog = document.querySelector('[data-menu-dialog]');
+        var form = document.querySelector('[data-menu-form]');
+        var status = document.querySelector('[data-menu-status]');
+        var dragged = null;
+
+        var aviso = function (texto, esError) {
+            if (!status) { return; }
+            status.textContent = texto;
+            status.style.color = esError ? 'var(--danger)' : '';
+        };
+
+        /* Datos del nodo: se leen del propio DOM (nombre, id y padre). */
+        var datosNodo = function (li) {
+            var lista = li.parentNode;
+            var etiqueta = li.querySelector('.mn-node-label strong') || li.querySelector('.mn-node-label span');
+            var padreLi = lista.parentNode && lista.parentNode.classList.contains('mn-node') ? lista.parentNode : null;
+            return {
+                id: li.getAttribute('data-id'),
+                label: etiqueta ? etiqueta.textContent.trim() : '',
+                parent: padreLi ? padreLi.getAttribute('data-id') : '',
+                nivel: parseInt(lista.getAttribute('data-menu-level'), 10) || 1
+            };
+        };
+
+        var abrirFormulario = function (nodo) {
+            if (!dialog || !form) { return; }
+            form.reset();
+            form.action = base + '/nodo';
+            form.querySelector('[name="id"]').value = nodo.id || '';
+            form.querySelector('[name="parent_id"]').value = nodo.parent || '';
+            var titulo = form.querySelector('[data-menu-dialog-title]');
+            if (titulo) {
+                titulo.textContent = nodo.id
+                    ? 'Editar: ' + nodo.label
+                    : (nodo.parent ? 'Nuevo nodo (nivel ' + (nodo.nivel + 1) + ')' : 'Nueva categoria');
+            }
+            var campoLabel = form.querySelector('[data-menu-field="label"]');
+            if (nodo.id && campoLabel) { campoLabel.value = nodo.label; }
+            if (dialog.showModal) { dialog.showModal(); } else { dialog.setAttribute('open', 'open'); }
+            if (campoLabel) { campoLabel.focus(); }
+        };
+
+        document.addEventListener('click', function (e) {
+            var editar = e.target.closest('[data-menu-edit]');
+            if (editar) {
+                e.preventDefault();
+                var li = editar.closest('.mn-node');
+                if (li) { abrirFormulario(datosNodo(li)); }
+                return;
+            }
+            var nuevo = e.target.closest('[data-menu-new]');
+            if (nuevo) {
+                e.preventDefault();
+                abrirFormulario({
+                    id: '',
+                    parent: nuevo.getAttribute('data-menu-parent') || '',
+                    nivel: nuevo.getAttribute('data-menu-parent') ? 2 : 1,
+                    label: ''
+                });
+                return;
+            }
+            if (e.target.closest('[data-menu-close]')) {
+                e.preventDefault();
+                if (dialog && dialog.close) { dialog.close(); }
+                else if (dialog) { dialog.removeAttribute('open'); }
+            }
+        });
+
+        /* Guardado del orden: una sola peticion con la lista nueva. */
+        var guardarOrden = function (destino) {
+            var ids = [].map.call(destino.children, function (li) { return parseInt(li.getAttribute('data-id'), 10); });
+            var padreLi = destino.parentNode && destino.parentNode.classList.contains('mn-node') ? destino.parentNode : null;
+            var cuerpo = {
+                parent: padreLi ? parseInt(padreLi.getAttribute('data-id'), 10) : null,
+                order: ids,
+                _token: CFG.csrf || ''
+            };
+
+            aviso('Guardando orden...');
+            fetch(base + '/orden', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'fetch',
+                    'X-CSRF-Token': CFG.csrf || ''
+                },
+                body: JSON.stringify(cuerpo)
+            })
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    aviso(data && data.message ? data.message : 'Orden guardado.', !(data && data.ok));
+                })
+                .catch(function () {
+                    aviso('No se ha podido guardar el orden: recarga la pagina.', true);
+                });
+        };
+
+        editor.addEventListener('dragstart', function (e) {
+            var li = e.target.closest('.mn-node');
+            if (!li) { return; }
+            dragged = li;
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', li.getAttribute('data-id') || '');
+            li.classList.add('is-dragging');
+        });
+
+        editor.addEventListener('dragend', function () {
+            if (dragged) { dragged.classList.remove('is-dragging'); }
+            dragged = null;
+            editor.querySelectorAll('.is-drop').forEach(function (el) { el.classList.remove('is-drop'); });
+        });
+
+        editor.addEventListener('dragover', function (e) {
+            if (!dragged) { return; }
+            var sobre = e.target.closest('.mn-node');
+            if (!sobre) { return; }
+
+            if (sobre === dragged) { return; }
+
+            // Mismo padre: reordenar (antes o despues segun la mitad del nodo).
+            if (sobre.parentNode === dragged.parentNode) {
+                e.preventDefault();
+                var caja = sobre.getBoundingClientRect();
+                var despues = (e.clientY - caja.top) > (caja.height / 2);
+                var referencia = despues ? sobre.nextSibling : sobre;
+                if (referencia !== dragged && referencia !== dragged.nextSibling) {
+                    dragged.parentNode.insertBefore(dragged, referencia);
+                    aviso('Suelta para guardar el orden nuevo.');
+                }
+                return;
+            }
+
+            // Otro padre: se permite soltarlo DENTRO (cambia de nivel).
+            if (sobre.contains(dragged)) { return; }
+            e.preventDefault();
+            sobre.classList.add('is-drop');
+        });
+
+        editor.addEventListener('dragleave', function (e) {
+            var sobre = e.target.closest('.mn-node');
+            if (sobre) { sobre.classList.remove('is-drop'); }
+        });
+
+        editor.addEventListener('drop', function (e) {
+            if (!dragged) { return; }
+            var sobre = e.target.closest('.mn-node');
+            if (sobre) { sobre.classList.remove('is-drop'); }
+
+            if (sobre && sobre !== dragged && sobre.parentNode !== dragged.parentNode && !sobre.contains(dragged)) {
+                e.preventDefault();
+                var lista = sobre.querySelector(':scope > ul[data-menu-level]');
+                if (lista) {
+                    lista.appendChild(dragged);
+                }
+                guardarOrden(dragged.parentNode);
+                return;
+            }
+
+            if (sobre && sobre.parentNode === dragged.parentNode) {
+                e.preventDefault();
+                guardarOrden(dragged.parentNode);
+            }
+        });
+    }
+
+    /** La vista previa cambia de estilo sin recargar el panel. */
+    function initMenuPreview() {
+        var botones = document.querySelectorAll('[data-menu-preview-style]');
+        if (!botones.length) { return; }
+
+        botones.forEach(function (boton) {
+            boton.addEventListener('click', function () {
+                var estilo = boton.getAttribute('data-menu-preview-style');
+                document.querySelectorAll('[data-menu-frame]').forEach(function (frame) {
+                    var url = new URL(frame.getAttribute('src'), window.location.origin);
+                    url.searchParams.set('estilo', estilo);
+                    frame.setAttribute('src', url.toString());
+                });
+            });
+        });
+    }
+
     document.addEventListener('DOMContentLoaded', function () {
         document.querySelectorAll('.uploader').forEach(initUploader);
 
@@ -503,5 +698,7 @@
         initLineEditors();
         initOrderSend();
         initShipToggle();
+        initMenuEditor();
+        initMenuPreview();
     });
 })();

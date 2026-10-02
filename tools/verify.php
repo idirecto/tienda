@@ -41,7 +41,10 @@ use Tienda\Core\Storage\StorageKey;
 use Tienda\Core\Storage\StorageManager;
 use Tienda\Core\Tenant;
 use Tienda\Core\TenantResolver;
+use Tienda\Core\CatalogUrl;
 use Tienda\Models\Catalog;
+use Tienda\Models\Menu;
+use Tienda\Models\MenuAdmin;
 use Tienda\Models\Customer;
 use Tienda\Models\CustomerAddress;
 use Tienda\Models\Order;
@@ -883,6 +886,370 @@ if (OrderGateway::isAvailable()) {
         $pedidosDespues = [(int) Database::scalar('SELECT COUNT(*) FROM pedidos'), (int) Database::scalar('SELECT COALESCE(MAX(id), 0) FROM pedidos')];
         check($pedidosAntes === $pedidosDespues, 'la vista previa no escribe en las tablas del mayorista');
     }
+}
+
+echo "\n== Navegacion: Menú Compacto y Menú Catalogo ==\n";
+
+// El ajuste de menu tiene EXACTAMENTE dos valores: no hay tercera variante.
+$menuStyles = Menu::styles();
+check(count($menuStyles) === 2 && isset($menuStyles['compacto'], $menuStyles['catalogo']),
+    'solo existen dos estilos de menu: Compacto y Catalogo');
+check(Menu::style(['menu_style' => 'compacto']) === 'compacto'
+    && Menu::style(['menu_style' => 'catalogo']) === 'catalogo'
+    && Menu::style(['menu_style' => 'otro-inventado']) === (string) config('menu.fallback_style', 'catalogo'),
+    'el estilo de menu se sanea contra la lista de dos');
+
+// Tablas y columnas de la migracion 005.
+check(Database::tableExists('mt_menu_items'), 'tabla mt_menu_items creada (migracion 005)');
+check((bool) Database::scalar(
+    "SELECT COUNT(*) FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'mt_stores' AND COLUMN_NAME = 'menu_style'"
+), 'columna mt_stores.menu_style creada');
+
+// Arbol comun: los dos menus pintan lo mismo.
+$demoStoreId = (int) (Database::scalar('SELECT id FROM mt_stores ORDER BY id ASC LIMIT 1') ?? 0);
+$menuTree = Menu::forStore($demoStoreId);
+check(count($menuTree['categories']) > 0 && $menuTree['groups'] > 0 && $menuTree['links'] > 0,
+    sprintf('arbol de menu de la tienda demo (%d categorias, %d grupos, %d destinos)',
+        count($menuTree['categories']), $menuTree['groups'], $menuTree['links']));
+
+// Todos los enlaces del menu son rutas que el parser reconoce: ningun 404.
+$rutasMenu = [];
+$niveles = 0;
+foreach ($menuTree['categories'] as $cat) {
+    $rutasMenu[] = $cat['path'];
+    foreach ($cat['groups'] as $group) {
+        $rutasMenu[] = $group['path'];
+        $niveles = max($niveles, 2);
+        foreach ($group['links'] as $link) {
+            $rutasMenu[] = $link['path'];
+            $niveles = max($niveles, 3);
+        }
+    }
+}
+$invalidas = array_values(array_filter($rutasMenu, static fn (string $path): bool => str_starts_with($path, '/')
+    && CatalogUrl::parse($path) === null
+    && !preg_match('#^/(catalogo|marca/|ofertas|novedades|destacados)#', $path)));
+check($invalidas === [],
+    'los enlaces del menu son rutas validas' . ($invalidas ? ' (rotas: ' . implode(', ', array_slice($invalidas, 0, 3)) . ')' : ''));
+check($niveles === 3, 'el arbol del menu tiene tres niveles');
+check(array_filter($rutasMenu, static fn (string $p): bool => str_contains($p, '/f/')) === [],
+    'los filtros pendientes no se pintan en el menu');
+
+// Accesos rapidos del menu.
+$quickKeys = array_map(static fn (array $q): string => $q['key'], Menu::quickLinks());
+sort($quickKeys);
+check($quickKeys === ['destacados', 'marcas', 'novedades', 'ofertas'],
+    'accesos rapidos del menu: Ofertas, Novedades, Marcas y Destacados');
+
+// Etiquetas de listado.
+check(Catalog::tagKey('ofertas') === 'ofertas' && Catalog::tagKey('inventada') === 'todos',
+    'las etiquetas de listado se sanean contra la configuracion');
+
+$ofertasResult = Catalog::paginate(1, 3, null, null, null, [], null, null, 'relevance', 'ofertas');
+$ofertasOk = $ofertasResult['total'] > 0;
+if ($ofertasOk) {
+    $ids = array_map(static fn (array $item): int => (int) $item['id'], $ofertasResult['items']);
+    $enOferta = (int) Database::scalar(
+        'SELECT COUNT(*) FROM ofertas WHERE id_producto IN (' . implode(',', array_map('intval', $ids)) . ')
+           AND inicio <= NOW() AND (final IS NULL OR final >= NOW())'
+    );
+    $ofertasOk = $ids !== [] && $enOferta === count($ids);
+}
+check($ofertasOk, 'la etiqueta Ofertas devuelve solo productos con oferta activa (' . (int) $ofertasResult['total'] . ')');
+
+$novedadesResult = Catalog::paginate(1, 3, null, null, null, [], null, null, 'relevance', 'novedades');
+check($novedadesResult['total'] > 0, 'la etiqueta Novedades tiene resultados (' . (int) $novedadesResult['total'] . ')');
+
+check(count(Catalog::brandList(10)) > 0, 'el directorio de marcas tiene resultados');
+
+// Rutas SEO: construir, parsear y canonicalizar.
+$catId = (int) (Database::scalar('SELECT id FROM categorias WHERE id = 9') ?? 0);
+$catPath = CatalogUrl::categoryPath($catId);
+$rutaParseada = $catPath !== null ? CatalogUrl::parse($catPath) : null;
+check($catPath !== null && $rutaParseada !== null && $rutaParseada['cat'] === $catId,
+    'la ruta SEO de una categoria vuelve a resolver su id (' . (string) $catPath . ')');
+
+$subId = (int) (Database::scalar('SELECT id FROM subcategorias WHERE id_categoria = 9 ORDER BY orden ASC LIMIT 1') ?? 0);
+$subPath = $subId > 0 ? CatalogUrl::subPath($subId) : null;
+$conMarca = $subPath !== null ? CatalogUrl::parse($subPath . '/m/35') : null;
+check($conMarca !== null && $conMarca['subcat'] === $subId
+    && (int) ($conMarca['f'][Catalog::brandFacetKey()][0] ?? 0) === 35,
+    'la ruta SEO de subcategoria con marca se parsea (subcategoria + marca)');
+
+$conOrden = $subPath !== null ? CatalogUrl::parse($subPath . '/orden/precio-asc/page/3') : null;
+check($conOrden !== null && $conOrden['orden'] === 'precio-asc' && $conOrden['page'] === 3,
+    'la ruta SEO admite orden y paginacion');
+
+check(CatalogUrl::parse('/categoria-que-no-existe') === null
+    && CatalogUrl::parse((string) $subPath . '/f/164-1282') === null,
+    'una ruta SEO invalida (o con filtros aun no soportados) no resuelve');
+
+$desdeQuery = CatalogUrl::fromQuery(['cat' => $catId, 'f' => ['socket' => ['am5']]]);
+check(str_starts_with($desdeQuery, (string) $catPath) && str_contains($desdeQuery, 'socket'),
+    'la query del catalogo se convierte en ruta SEO conservando las facetas');
+check(CatalogUrl::canonicalFromQuery(['q' => 'teclado']) === null
+    && CatalogUrl::canonicalFromQuery(['cat' => $catId]) === $catPath,
+    'la busqueda no se redirige y la categoria si');
+
+// Vistas de los dos menus.
+foreach (['_menu.php', '_menu_panel.php', 'marcas.php', 'menu_preview_frame.php'] as $vista) {
+    check(is_file(TIENDA_BASE . '/app/Views/themes/idirecto/' . $vista), 'vista del tema base: ' . $vista);
+}
+check(is_file(TIENDA_BASE . '/app/Views/panel/_menu_tree.php'), 'vista compartida del editor: panel/_menu_tree.php');
+
+// ---------------------------------------------------------------------------
+echo "\n== Panel del menu: editor, publicacion y aislamiento entre tiendas ==\n";
+// ---------------------------------------------------------------------------
+// Todo lo que sigue escribe en tablas PROPIAS dentro de una transaccion que se
+// deshace al final: la verificacion no deja ni un dato de prueba.
+$editorStore = (int) (Database::scalar('SELECT id FROM mt_stores ORDER BY id ASC LIMIT 1') ?? 0);
+
+if (!$editorStore) {
+    check(false, 'hay una tienda para probar el editor del menu');
+} else {
+    // --- Estructura de las migraciones 006 y 007 ---
+    $columnas = [];
+    foreach (Database::select(
+        "SELECT COLUMN_NAME c, COLUMN_TYPE t, IS_NULLABLE n FROM information_schema.COLUMNS
+          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'mt_menu_items'"
+    ) as $col) {
+        $columnas[$col['c']] = ['type' => (string) $col['t'], 'nullable' => (string) $col['n']];
+    }
+    $nuevas = ['icon', 'badge_color', 'banner_id', 'banner_url', 'min_customer_level', 'hide_empty', 'visibility'];
+    $faltan = array_values(array_filter($nuevas, static fn (string $c): bool => !isset($columnas[$c])));
+    check($faltan === [], 'mt_menu_items tiene los campos del editor' . ($faltan ? ' (faltan: ' . implode(', ', $faltan) . ')' : ''));
+    check(($columnas['store_id']['nullable'] ?? 'NO') === 'YES', 'store_id admite NULL (nodo compartido de la plataforma)');
+    check((int) preg_replace('/\D/', '', $columnas['badge_color']['type'] ?? '0') >= 32,
+        'badge_color admite un token de la identidad visual (' . ($columnas['badge_color']['type'] ?? '?') . ')');
+    check(Database::tableExists('mt_menu_item_stores') && Database::tableExists('mt_menu_published')
+        && Database::tableExists('mt_menu_revisions'), 'tablas de visibilidad, publicacion e historico creadas');
+
+    // --- Rol de plataforma ---
+    $sesionPrevia = $_SESSION['auth_user'] ?? null;
+    $_SESSION['auth_user'] = ['id' => 999, 'store_id' => $editorStore, 'name' => 'prueba', 'email' => 'p@t', 'role' => 'platform'];
+    $esPlataforma = Auth::isPlatform();
+    $_SESSION['auth_user']['role'] = 'owner';
+    $esDueno = Auth::isPlatform();
+    if ($sesionPrevia === null) {
+        unset($_SESSION['auth_user']);
+    } else {
+        $_SESSION['auth_user'] = $sesionPrevia;
+    }
+    check($esPlataforma && !$esDueno, 'Auth::isPlatform() distingue el rol platform del owner');
+
+    // --- Transaccion: lo que sigue se deshace ---
+    $pdo = Database::pdo();
+    $pdo->beginTransaction();
+
+    try {
+        // Segunda tienda, solo para probar el aislamiento.
+        $otraStore = (int) Database::insert('mt_stores', [
+            'slug'   => 'aislamiento-' . substr((string) time(), -5),
+            'name'   => 'Tienda de prueba (aislamiento)',
+            'status' => 1,
+        ]);
+
+        $base = MenuAdmin::create($editorStore, false, [
+            'parent_id' => null, 'label' => 'Categoria de prueba', 'target_type' => 'categoria',
+            'target_id' => 9, 'icon' => 'grid', 'badge' => 'NUEVO', 'badge_color' => '#e30613',
+            'active' => 1,
+        ]);
+        check($base['ok'] && $base['id'] !== null, 'se crea una categoria desde el panel');
+        $catId = (int) ($base['id'] ?? 0);
+
+        $nivel2 = MenuAdmin::create($editorStore, false, [
+            'parent_id' => $catId, 'label' => 'Grupo de prueba', 'target_type' => 'categoria',
+            'target_id' => 9, 'active' => 1,
+        ]);
+        $nivel3 = MenuAdmin::create($editorStore, false, [
+            'parent_id' => (int) ($nivel2['id'] ?? 0), 'label' => 'Enlace de prueba',
+            'target_type' => 'subcategoria', 'target_id' => 102, 'active' => 1,
+        ]);
+        $filaN2 = MenuAdmin::node((int) ($nivel2['id'] ?? 0), $editorStore, false);
+        $filaN3 = MenuAdmin::node((int) ($nivel3['id'] ?? 0), $editorStore, false);
+        check((int) ($filaN2['level'] ?? 0) === 2 && (int) ($filaN3['level'] ?? 0) === 3,
+            'el nivel se calcula por el padre (1 -> 2 -> 3)');
+
+        $cuarto = MenuAdmin::create($editorStore, false, [
+            'parent_id' => (int) ($nivel3['id'] ?? 0), 'label' => 'Cuarto nivel',
+            'target_type' => 'categoria', 'target_id' => 9,
+        ]);
+        check($cuarto['ok'] === false, 'no se puede crear un cuarto nivel');
+
+        $repetido = MenuAdmin::create($editorStore, false, [
+            'parent_id' => $catId, 'label' => 'Grupo de prueba', 'slug' => 'grupo-de-prueba',
+            'target_type' => 'categoria', 'target_id' => 9,
+        ]);
+        check($repetido['ok'] === false, 'el slug no se puede repetir entre hermanos');
+
+        $malDestino = MenuAdmin::create($editorStore, false, [
+            'parent_id' => $catId, 'label' => 'Destino inexistente', 'target_type' => 'categoria',
+            'target_id' => 999999,
+        ]);
+        check($malDestino['ok'] === false, 'se rechaza un destino que no existe en el catalogo');
+
+        $malColor = MenuAdmin::create($editorStore, false, [
+            'parent_id' => $catId, 'label' => 'Color invalido', 'target_type' => 'categoria',
+            'target_id' => 9, 'badge_color' => 'rojo chillon',
+        ]);
+        check($malColor['ok'] === false, 'se rechaza un color de badge que no es hex ni token');
+
+        $editado = MenuAdmin::update($catId, $editorStore, false, [
+            'parent_id' => null, 'label' => 'Categoria editada', 'slug' => 'categoria-editada',
+            'target_type' => 'categoria', 'target_id' => 24, 'icon' => 'bolt', 'badge' => 'OFERTA',
+            'badge_color' => '--c-accent', 'min_customer_level' => '', 'hide_empty' => 1, 'active' => 1,
+        ]);
+        $filaCat = MenuAdmin::node($catId, $editorStore, false);
+        check($editado['ok'] && (string) $filaCat['label'] === 'Categoria editada'
+            && (string) $filaCat['icon'] === 'bolt' && (string) $filaCat['badge'] === 'OFERTA'
+            && (string) $filaCat['badge_color'] === '--c-accent' && (int) $filaCat['hide_empty'] === 1,
+            'se editan nombre, slug, icono, badge, color y categoria vacia');
+
+        MenuAdmin::toggle($catId, $editorStore, false);
+        $trasToggle = (int) MenuAdmin::node($catId, $editorStore, false)['active'];
+        MenuAdmin::toggle($catId, $editorStore, false);
+        check($trasToggle === 0 && (int) MenuAdmin::node($catId, $editorStore, false)['active'] === 1,
+            'activar y desactivar un nodo');
+
+        $movido = MenuAdmin::move((int) $nivel2['id'], null, 0, $editorStore, false);
+        $filaMovida = MenuAdmin::node((int) $nivel2['id'], $editorStore, false);
+        $hijoMovido = MenuAdmin::node((int) $nivel3['id'], $editorStore, false);
+        check($movido['ok'] && (int) $filaMovida['level'] === 1 && (int) $hijoMovido['level'] === 2,
+            'mover un nodo de nivel arrastra a toda su rama');
+
+        // Volver a colgar el grupo de la categoria (la rama vuelve a su sitio).
+        MenuAdmin::move((int) $nivel2['id'], $catId, 0, $editorStore, false);
+        $ciclo = MenuAdmin::move((int) $nivel2['id'], (int) $nivel3['id'], 0, $editorStore, false);
+        check($ciclo['ok'] === false, 'no se puede mover una categoria dentro de su propia rama');
+
+        // Orden: la lista COMPLETA de hermanos, como la manda el drag & drop.
+        $otraSub = (int) (Database::scalar('SELECT id FROM subcategorias WHERE id_categoria = 9 AND id <> 102 ORDER BY orden ASC LIMIT 1') ?? 0);
+        $hijoA = MenuAdmin::create($editorStore, false, [
+            'parent_id' => (int) $nivel2['id'], 'label' => 'Hermano A',
+            'target_type' => 'subcategoria', 'target_id' => 102, 'active' => 1,
+        ]);
+        $hijoB = MenuAdmin::create($editorStore, false, [
+            'parent_id' => (int) $nivel2['id'], 'label' => 'Hermano B',
+            'target_type' => 'subcategoria', 'target_id' => $otraSub, 'active' => 1,
+        ]);
+        $orden = MenuAdmin::reorder(
+            [(int) $hijoB['id'], (int) $hijoA['id'], (int) $nivel3['id']],
+            (int) $nivel2['id'],
+            $editorStore,
+            false
+        );
+        $sorts = [
+            (int) MenuAdmin::node((int) $hijoB['id'], $editorStore, false)['sort'],
+            (int) MenuAdmin::node((int) $hijoA['id'], $editorStore, false)['sort'],
+            (int) MenuAdmin::node((int) $nivel3['id'], $editorStore, false)['sort'],
+        ];
+        check($orden['ok'] && $sorts === [0, 1, 2], 'el orden del drag & drop se guarda (sort 0,1,2)');
+
+        // --- Aislamiento entre tiendas ---
+        check(MenuAdmin::node($catId, $otraStore, false) === null, 'una tienda no ve los nodos de otra');
+        $roboUpdate = MenuAdmin::update($catId, $otraStore, false, [
+            'label' => 'HACKEADO', 'target_type' => 'categoria', 'target_id' => 9, 'active' => 1,
+        ]);
+        MenuAdmin::delete($catId, $otraStore, false);
+        $intacto = MenuAdmin::node($catId, $editorStore, false);
+        check($roboUpdate['ok'] === false && $intacto !== null && (string) $intacto['label'] === 'Categoria editada',
+            'otra tienda no puede editar ni borrar un nodo ajeno');
+
+        $propioOtra = MenuAdmin::create($otraStore, false, [
+            'parent_id' => null, 'label' => 'Categoria de la otra tienda', 'target_type' => 'categoria',
+            'target_id' => 9, 'active' => 1,
+        ]);
+        $storeIdOtra = (int) ($propioOtra['id'] ?? 0);
+        $arrancado = MenuAdmin::update($storeIdOtra, $editorStore, false, [
+            'label' => 'HACKEADO', 'target_type' => 'categoria', 'target_id' => 9, 'active' => 1,
+        ]);
+        $visibleParaSuDueno = in_array($storeIdOtra, array_map('intval', array_column(Menu::visibleRows($otraStore), 'id')), true);
+        $invisibleParaOtra = in_array($storeIdOtra, array_map('intval', array_column(Menu::visibleRows($editorStore), 'id')), true);
+        check($propioOtra['ok'] && $arrancado['ok'] === false && $visibleParaSuDueno && !$invisibleParaOtra,
+            'los nodos de otra tienda no se pueden modificar (aunque se conozca el id)');
+
+        // --- Visibilidad por tienda (solo plataforma) ---
+        $compartido = MenuAdmin::create(0, true, [
+            'parent_id' => null, 'label' => 'Solo para una tienda', 'target_type' => 'categoria',
+            'target_id' => 9, 'active' => 1, 'owner' => 0, 'visibility' => 'todas',
+        ]);
+        $compId = (int) ($compartido['id'] ?? 0);
+        $vis = MenuAdmin::saveVisibility($compId, 'solo', [$otraStore], 0, true);
+        $idsEditor = array_map('intval', array_column(Menu::visibleRows($editorStore), 'id'));
+        $idsOtra = array_map('intval', array_column(Menu::visibleRows($otraStore), 'id'));
+        check($vis['ok'] && !in_array($compId, $idsEditor, true) && in_array($compId, $idsOtra, true),
+            'visibility=solo: el nodo compartido se ve en la tienda marcada y no en la otra');
+
+        $visExcepto = MenuAdmin::saveVisibility($compId, 'excepto', [$otraStore], 0, true);
+        $idsEditor = array_map('intval', array_column(Menu::visibleRows($editorStore), 'id'));
+        $idsOtra = array_map('intval', array_column(Menu::visibleRows($otraStore), 'id'));
+        check($visExcepto['ok'] && in_array($compId, $idsEditor, true) && !in_array($compId, $idsOtra, true),
+            'visibility=excepto: se ve en todas menos en la marcada');
+
+        check(MenuAdmin::saveVisibility($compId, 'solo', [$otraStore], $editorStore, false)['ok'] === false,
+            'una tienda no puede repartir el menu entre tiendas');
+
+        // --- Nivel minimo de cliente ---
+        $nivelTelefonia = 0;
+        foreach (Menu::customerLevels() as $nivel) {
+            if ((int) $nivel['order'] === 2) {
+                $nivelTelefonia = (int) $nivel['id'];
+            }
+        }
+        $nivelado = MenuAdmin::create(0, true, [
+            'parent_id' => null, 'label' => 'Solo niveles altos', 'target_type' => 'categoria',
+            'target_id' => 9, 'active' => 1, 'owner' => 0, 'visibility' => 'todas',
+            'min_customer_level' => $nivelTelefonia,
+        ]);
+        $nivelId = (int) ($nivelado['id'] ?? 0);
+        $idsEditor = array_map('intval', array_column(Menu::visibleRows($editorStore), 'id'));
+        check($nivelado['ok'] && $nivelId > 0 && !in_array($nivelId, $idsEditor, true),
+            'un nodo con nivel minimo no se muestra a una tienda sin nivel asignado');
+        check(Menu::storeLevelOrder($editorStore) === null, 'una tienda sin cuenta del mayorista no tiene nivel');
+
+        // --- Publicacion (y cache) ---
+        $versionAntes = Menu::publishedVersion($editorStore);
+        $patronCache = TIENDA_BASE . '/storage/cache/menu_tree_v*_' . $editorStore . '_*.json';
+        $pub = Menu::publish($editorStore, null);
+        check($pub['ok'] && $pub['version'] === $versionAntes + 1, 'publicar sube la version (' . (int) $pub['version'] . ')');
+        check(Menu::publishedVersion($editorStore) === $versionAntes + 1 && Menu::publishedAt($editorStore) !== null,
+            'la version publicada queda guardada con su fecha');
+        check(Menu::hasDraftChanges($editorStore) === false, 'justo despues de publicar no hay cambios pendientes');
+        check((int) (Menu::publishedTree($editorStore)['links'] ?? 0) > 0, 'lo publicado incluye los tres niveles');
+        check((array) glob($patronCache) === [], 'publicar invalida la cache del arbol');
+        $publicado = Menu::forStore($editorStore);
+        check(((array) ($publicado['categories'] ?? [])) !== [], 'la tienda sirve el arbol publicado');
+        check((int) Database::scalar(
+            'SELECT COUNT(*) FROM mt_menu_revisions WHERE store_id = :s AND version = :v',
+            ['s' => $editorStore, 'v' => $pub['version']]
+        ) === 1, 'cada publicacion deja su revision en el historico');
+
+        // Un cambio en el borrador NO se ve hasta publicar (sobre un destino de
+        // tercer nivel, que es el que aparece en el arbol pintado).
+        MenuAdmin::update((int) $nivel3['id'], $editorStore, false, [
+            'parent_id' => (int) $nivel2['id'], 'label' => 'Cambio sin publicar',
+            'target_type' => 'subcategoria', 'target_id' => 102, 'active' => 1,
+        ]);
+        $publicadoAhora = Menu::publishedTree($editorStore);
+        $labelsPublicados = array_column((array) ($publicadoAhora['categories'] ?? []), 'label');
+        check(Menu::hasDraftChanges($editorStore) === true && !in_array('Cambio sin publicar', $labelsPublicados, true),
+            'el borrador no se ve en la tienda hasta publicar');
+
+        // --- Borrado en cascada ---
+        $hijosAntes = (int) Database::scalar('SELECT COUNT(*) FROM mt_menu_items WHERE parent_id = :p', ['p' => $catId])
+            + (int) Database::scalar('SELECT COUNT(*) FROM mt_menu_items WHERE parent_id = :p', ['p' => (int) $nivel2['id']]);
+        $borrado = MenuAdmin::delete($catId, $editorStore, false);
+        $hijosDespues = (int) Database::scalar('SELECT COUNT(*) FROM mt_menu_items WHERE parent_id = :p', ['p' => $catId])
+            + (int) Database::scalar('SELECT COUNT(*) FROM mt_menu_items WHERE parent_id = :p', ['p' => (int) $nivel2['id']]);
+        check($borrado['ok'] && $hijosAntes > 0 && $hijosDespues === 0,
+            'borrar un nodo se lleva su rama por delante');
+    } catch (\Throwable $e) {
+        check(false, 'el editor del menu no lanza excepciones (' . $e->getMessage() . ' en ' . $e->getFile() . ':' . $e->getLine() . ')');
+    }
+
+    $pdo->rollBack();
+    check(true, 'la prueba del editor deshace sus datos de prueba (transaccion)');
 }
 
 echo "\n==============================================================\n";

@@ -36,6 +36,9 @@ $initial = mb_strtoupper(mb_substr((string) ($p['nombre'] ?? ''), 0, 2));
             <?php if (!empty($p['is_new']) && $band !== 'out'): ?>
                 <span class="badge badge-new">Novedad</span>
             <?php endif; ?>
+            <?php if (!empty($p['on_offer'])): ?>
+                <span class="badge badge-offer"><?= icon_svg('bolt') ?>Oferta</span>
+            <?php endif; ?>
         </div>
     </div>
 

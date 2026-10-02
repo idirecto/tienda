@@ -85,7 +85,12 @@ $initial = mb_strtoupper(mb_substr((string) $product['nombre'], 0, 2));
             &gt; <span><?= e($product['categoria']) ?></span>
         <?php endif; ?>
         <?php if (!empty($product['subcategoria'])): ?>
-            &gt; <a href="<?= e($base) ?>/catalogo?subcat=<?= (int) $product['id_subcategoria'] ?>"><?= e($product['subcategoria']) ?></a>
+            <?php $subcatPath = \Tienda\Core\CatalogUrl::subPath((int) $product['id_subcategoria']); ?>
+            <?php if ($subcatPath !== null): ?>
+                &gt; <a href="<?= e($base . $subcatPath) ?>"><?= e($product['subcategoria']) ?></a>
+            <?php else: ?>
+                &gt; <span><?= e($product['subcategoria']) ?></span>
+            <?php endif; ?>
         <?php endif; ?>
         &gt; <span class="current"><?= e($product['nombre']) ?></span>
     </div>

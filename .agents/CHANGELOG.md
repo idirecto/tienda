@@ -5,6 +5,183 @@ El detalle línea a línea está en `git log`.
 
 ---
 
+## 2026-10-02 · Parpadeo del Menú Compacto al pasar el ratón por una categoría
+
+**Motivo:** «cuando me posiciono sobre las clases `mn-bar-toggle` la pantalla empieza a
+parpadear; solo debería mostrar las subcategorías de la categoría en el menú».
+
+**Causa raíz (reproducida en navegador real, Chrome por CDP).** El JS abría el panel
+añadiendo la clase `mn-open` al `<body>`, pero **`mn-open` ya era el nombre de la clase
+del botón «Todas las categorías» del Menú Catálogo**, y sus reglas estaban sin acotar:
+`.mn-open { display:inline-flex; padding:.6rem .95rem; background: var(--c-primary); … }`.
+Al abrirse el megamenú, el body pasaba a `display:inline-flex` con el fondo de marca: la
+página se descolocaba entera y la flecha `.mn-bar-toggle` **saltaba de `y≈134` a `y≈3844`**.
+El navegador disparaba entonces `mouseleave`, a los 260 ms se cerraba el panel, el body
+volvía a `block`, la flecha regresaba bajo el cursor y `mouseenter` lo abría otra vez:
+**entre 3 y 4 aperturas y cierres por segundo** (medido: 16 mutaciones en 3,5 s). Eso era
+el parpadeo, no un problema de la animación ni del HTML del árbol.
+
+**Arreglo**
+- La clase de estado del body pasa a `mn-panel-open`: **única y sin choque** con el
+  componente. Se actualizan el JS y la regla `body.mn-panel-open { overflow: hidden }`.
+- Las reglas del botón del Menú Catálogo se acotan a `.mn-trigger .mn-open` (más
+  `:hover` y `[aria-expanded="true"]`), de modo que ningún otro elemento con esa clase
+  pueda heredar estilos de botón.
+- El **bloqueo de scroll** de fondo se deja solo donde toca: cajón móvil y panel modal
+  del Menú Catálogo. El megamenú desplegable del Menú Compacto en escritorio **no**
+  bloquea la página (`body.mn-panel-open:has(.mn--compacto) { overflow: visible }`),
+  porque al quitar la barra de scroll la página daba un salto lateral con cada apertura.
+- `aria-expanded` pasa a marcarse **solo en el disparador de la categoría activa** (antes
+  los siete botones decían «expandido» a la vez): en el panel solo se pinta el panel de
+  esa categoría (`.mn-pane.is-active`), como se pidió.
+
+**Verificación (Chrome headless por CDP, hover emulado).** Con el ratón quieto sobre
+`.mn-bar-toggle`: **una sola mutación** del panel (antes 16 en 3,5 s), `body` en `block`,
+la flecha se queda en `y≈134` y el panel muestra **solo** el panel de la categoría
+apuntada (`mn-pane-3` → «Periféricos», `mn-pane-6` → «Software», `mn-pane-2` →
+«Componentes»), con los `aria-expanded` correctos. Probado además: entrar en el panel no
+lo cierra, salir sí; Menú Catálogo en escritorio (Escape y cambio de categoría) y el cajón
+móvil a 390 px en **los dos** estilos (abrir, bajar de nivel, «Volver», Escape), todo sin
+errores de JavaScript. `php tools/verify.php` → **TODO OK (176)**.
+
+---
+
+## 2026-10-02 · El menú se administra desde el panel (editor, publicación y visibilidad)
+
+**Motivo:** «el sistema debe permitir administrar el menú desde el panel» con, como
+mínimo, tipo de menú, categoría padre, nombre, slug, orden, activo, icono, badge (texto
+y color), banner y su enlace, nivel mínimo de cliente, visibilidad por tienda,
+configuración de categorías vacías y fechas; y 15 capacidades concretas (elegir estilo,
+drag & drop, mover de nivel, CRUD, activar/desactivar, iconos, badges, banners,
+visibilidad por tienda y por nivel, vista previa escritorio/móvil, borrador, publicar e
+invalidar la caché), con **aislamiento total entre tiendas**.
+
+**Auditoría previa (reutilizar antes de crear).** Se comprobó qué había ya:
+`categorias`, `subcategorias`, `productos` y `marcas` (catálogo del mayorista, solo
+lectura), `mt_stores` (**ya tiene `menu_style`**), `mt_settings` (clave/valor por
+tienda), `mt_store_users` (**ya tiene `role`**), `mt_banners` (banner del nodo),
+`categoria_cliente` (los niveles de cliente: 10/11/12 con `orden` 1/2/3) y
+`tiendas.id_categ_cliente` (el nivel de cada tienda). De los 17 campos pedidos, 8 ya
+existían. Propuesta escrita en `.agents/MENU-ADMIN-2026-10-02.md` antes de tocar nada.
+
+**Decisiones del dueño:** árbol **global con visibilidad por tienda**; **rol
+`platform`** en `mt_store_users` para el panel maestro; **borrador + publicación**;
+se mantienen los valores `compacto|catalogo`.
+
+**Estructuras nuevas (aditivas y reversibles)**
+- `006_menu_admin.sql`: `icon`, `badge_color`, `banner_id`, `banner_url`,
+  `min_customer_level`, `hide_empty`, `visibility`; `store_id` pasa a admitir NULL
+  (nodo compartido de la plataforma) soltando y recreando su clave foránea; y las
+  tablas `mt_menu_item_stores` (qué tiendas ven cada nodo), `mt_menu_published`
+  (versión publicada) y `mt_menu_revisions` (histórico).
+- `007_menu_badge_color.sql`: `badge_color` pasa a `varchar(32)` para que quepan los
+  tokens de la identidad visual (`--c-primary-contrast` son 20 caracteres). Fallo
+  encontrado al probar el editor: el `varchar(9)` inicial daba un 500.
+
+**Cómo funciona**
+- `Menu` lee **lo publicado** (una fila, sin JOIN) y cae al árbol de trabajo si la
+  tienda nunca ha publicado: nada se rompe al actualizar. La caché lleva la versión
+  publicada en la clave, y `invalidate()` la borra al publicar (tenía un fallo: los
+  comodines se saneaban y el `glob()` no encontraba nada).
+- `MenuAdmin` (`app/Models/MenuAdmin.php`, nuevo) concentra el editor: validación
+  (nombre, slug único entre hermanos, destino real en el catálogo, hex o token en el
+  color, nivel de cliente existente, **banner de la propia tienda**), CRUD, mover de
+  nivel con recálculo de la rama, detección de ciclos, reordenado con `sort`
+  normalizado, visibilidad y errores de base de datos convertidos en mensajes.
+- `Auth::isPlatform()` + `PlatformMenuController`: el panel de plataforma exige el rol
+  y responde 403 al resto. `tools/platform-user.php` crea o promueve ese usuario.
+- Vista compartida `panel/_menu_tree.php` para los dos paneles (mismo árbol, mismas
+  acciones), `panel/menu.php`, `panel/menu_plataforma.php` y la vista previa con dos
+  marcos (`panel/menu_preview.php` + `themes/idirecto/menu_preview_frame.php`), donde
+  el ancho del iframe activa las media queries reales (1280 escritorio, 390 móvil).
+- `panel.js`: drag & drop que guarda el orden al soltar (una petición JSON) y el
+  formulario de nodo que se rellena desde el DOM. `requireCsrf()` acepta ahora el token
+  por cabecera `X-CSRF-Token` o en el cuerpo JSON: sin eso, el guardado del orden por
+  AJAX no podía pasar el control de seguridad.
+
+**Aislamiento (regla dura, probada)**
+- El `store_id` **nunca** viene del formulario: sale de la sesión.
+- Una tienda solo puede crear/editar/mover/borrar **sus** nodos; los compartidos son
+  de solo lectura para ella, y los de otra tienda ni aparecen ni se pueden tocar
+  aunque se conozca el `id`.
+- `verify.php` lo comprueba con **dos tiendas** dentro de una transacción que se
+  deshace (no deja datos de prueba).
+
+**Verificación:** `php tools/verify.php` → **TODO OK (176)**, 36 comprobaciones nuevas.
+Y con navegador real (CDP): **20 comprobaciones del editor** (tres niveles pintados,
+formulario de editar/crear, drag & drop que guarda el orden, los dos marcos de la
+vista previa a 1280 y 390 px, el 403 del panel de plataforma) más las 38 del menú del
+escaparate, sin errores de JavaScript.
+
+---
+
+## 2026-10-02 · Navegación: Menú Compacto y Menú Catálogo sobre el mismo árbol
+
+**Motivo:** el dueño pide los dos menús «utilizando el mismo árbol de categorías y la
+misma fuente de datos», exactamente dos variantes (sin tercera), con el árbol tomado
+de PuntoByZE y editable después, y que **la tienda elija** cuál presenta.
+
+**Por qué así.** PuntoByZE no tiene un «menú»: tiene un árbol editorial de tres
+niveles (`websites_owned` → `websites_menu` → `websites_list` → `websites_item`, la
+web de referencia es `id_websites_owned = 2`) donde el tercer nivel apunta a
+subcategoría, a marca (`m/{id}`), a filtro (`f/{id}-{id}`) o incluso a otra categoría.
+Se copia **una vez** (solo nombres y orden) a una tabla propia y aditiva
+(`mt_menu_items`, migración `005` idempotente) porque las tablas del mayorista son de
+solo lectura. El estilo elegido vive en una columna nueva `mt_stores.menu_style`.
+
+**Lo importante del diseño:** **una sola vista** (`themes/idirecto/_menu.php`) pinta los
+dos diseños, conmutados por `data-menu-style`. Así es imposible que los dos menús
+enseñen información distinta, que era el requisito explícito. Cambia solo la
+presentación: barra horizontal con megamenu desplegable (Compacto) o botón «Todas las
+categorías» con panel modal y fondo oscuro (Catálogo). El estilo se sanea siempre
+contra `Menu::styles()`, que solo tiene esas dos claves: **no puede existir un tercer
+menú** ni por configuración ni por base de datos.
+
+**Cómo se hizo**
+- `Core/CatalogUrl`: rutas SEO del catálogo como única fuente de slugs
+  (`/categoria`, `/categoria/subcategoria`, `/m/marca`, `/etiqueta/…`, `/orden/…`,
+  `/page/n`) con `parse()`, `fromQuery()` y `canonicalFromQuery()`. Las URLs antiguas
+  con query string hacen **301** a su ruta; `f/…` (filtros estructurados) devuelve 404
+  a propósito en vez de enseñar un listado equivocado.
+- `Models/Menu`: árbol cacheado por tienda con **versión de forma** en la clave
+  (`menu_tree_v2_<id>`), siembra desde la referencia, `stats()`/`pending()` para el
+  panel, accesos rápidos y panel promocional. En la siembra el destino se resuelve por
+  id (`/productos/s/128/…`), por nombre y por slug; **lo que no se reconoce se guarda
+  inactivo con su aviso** (21 destinos: 14 filtros y 7 subcategorías), así el menú
+  nunca enlaza a una página rota y la tienda ve qué falta.
+- `Catalog`: etiquetas de listado (`ofertas` contra la tabla `ofertas` con fechas,
+  `novedades` por `fecha_alta`, `destacados` por `etiqueta = 1`), `attachOffers()` para
+  el aviso «Oferta» de las tarjetas y `brandList()`/`topBrands()` para `/marcas`.
+- `StorefrontController`: 301 canónico, `seoListado()`, `tag()`, `brands()`, `brand()`
+  y `menuPanel()` (devuelve **HTML ya renderizado**, no datos: así el JS no duplica
+  tarjetas ni colores).
+- Panel: `Admin/MenuController` + `panel/menu.php` con la elección de estilo
+  (validada contra las dos claves), el resumen del árbol y la lista de pendientes.
+- `_menu.php` + CSS/JS nuevos: teclado (flechas, Escape, trampa de foco en el modal),
+  clic fuera, foco devuelto al disparador, `aria-expanded`/`aria-modal`/`role=tablist`
+  y móvil por niveles con «Volver» y áreas de 44 px.
+
+**Fallo encontrado y corregido en las pruebas de navegador** (Chrome headless por
+CDP): el botón del menú lateral vive en la cabecera, **fuera** del contenedor del
+menú, así que el manejador de «clic fuera» veía su propio clic y cerraba el cajón en
+el mismo clic que lo abría. Se arregló con `stopPropagation()` y una guarda por
+selector. También se corrigió que el árbol exponía el id del nodo de menú en lugar del
+id de la categoría (el bloque promocional pedía una categoría inexistente) y una regla
+CSS de escritorio (`.mn--compacto .mn-side { display: none }`) que dejaba el cajón
+móvil sin la lista de categorías. Se retiró además el CSS muerto del antiguo
+`.catmenu`/`.nav-catalog` y se movió la ruta comodín `/{ruta...}` al final del
+fichero de rutas, porque declarada antes se tragaba el panel entero.
+
+**Verificación:** `php tools/verify.php` → **TODO OK (140)**, con 22 comprobaciones
+nuevas (dos estilos y saneo, tablas/columnas de la 005, árbol de tres niveles, que
+ningún enlace del menú sea una ruta inválida, que los filtros pendientes no se pinten,
+etiquetas de listado contra las tablas reales, rutas SEO y canonicalización) y
+**prueba en navegador real**: 22 comprobaciones con el Menú Catálogo y 16 con el Menú
+Compacto (apertura, Escape, clic fuera, carga diferida del bloque promocional, cajón
+móvil a 390 px con «Volver» y 44 px), sin errores de JavaScript.
+
+---
+
 ## 2026-10-01 · Compra como cliente final: carrito, cuenta, direcciones y pedido
 
 **Motivo:** el dueño pide el proceso para que un cliente compre en la web —

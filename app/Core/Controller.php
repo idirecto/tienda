@@ -99,12 +99,29 @@ abstract class Controller
     /**
      * Valida el token CSRF de la peticion POST.
      *
+     * Acepta el token en el formulario (`_token`), en la cabecera
+     * `X-CSRF-Token` o en el cuerpo JSON (las llamadas por AJAX envian JSON, no
+     * un formulario, y sin esto no podrian mandar el token).
+     *
      * @param string $redirect Donde volver si el token no vale (por defecto, el
      *                         panel; las paginas publicas pasan su propia ruta)
      */
     protected function requireCsrf(string $redirect = 'panel'): void
     {
-        if (!Csrf::validate($_POST['_token'] ?? null)) {
+        $token = $_POST['_token'] ?? $_SERVER['HTTP_X_CSRF_TOKEN'] ?? null;
+
+        if (!is_string($token) || $token === '') {
+            // Cuerpo JSON: se lee una sola vez y se guarda para el controlador.
+            $raw = (string) file_get_contents('php://input');
+            if ($raw !== '' && str_starts_with(ltrim($raw), '{')) {
+                $json = json_decode($raw, true);
+                if (is_array($json) && isset($json['_token']) && is_string($json['_token'])) {
+                    $token = $json['_token'];
+                }
+            }
+        }
+
+        if (!Csrf::validate(is_string($token) ? $token : null)) {
             // 419 no lo entienden Apache/PHP y acaba en 500: se responde 403.
             http_response_code(403);
             Session::flash('error', 'Token de seguridad invalido. Vuelve a enviar el formulario.');

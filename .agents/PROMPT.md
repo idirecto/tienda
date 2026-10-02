@@ -21,6 +21,72 @@ _(vacío — sin petición pendiente)_
 
 Cada petición terminada se anota aquí con la fecha, qué se pidió y qué se hizo.
 
+### 2026-10-02 · Parpadeo del Menú Compacto al pasar el ratón por una categoría (petición por chat)
+
+**Pedido:** «cuando me posiciono sobre las clases `mn-bar-toggle` la pantalla empieza a
+parpadear; revisa eso, solo debería mostrar las subcategorías de la categoría en el menú».
+
+**Qué era:** no fallaba el HTML ni el árbol. Al abrir el panel, el JS añadía la clase
+`mn-open` al `<body>`, pero `mn-open` ya era la clase del botón «Todas las categorías» y
+sus reglas estaban sin acotar. El body pasaba a `display:inline-flex` con fondo de marca,
+la página se descolocaba y la flecha de la categoría se iba a ~3700 px: el navegador
+disparaba `mouseleave`, el panel se cerraba y volvía a abrirse **3-4 veces por segundo**.
+
+**Qué se hizo:** la clase del body pasa a `mn-panel-open`; el botón del Menú Catálogo se
+acota a `.mn-trigger .mn-open`; el bloqueo de scroll queda solo para el cajón móvil y el
+modal de Catálogo (el desplegable de escritorio ya no bloquea la página); y
+`aria-expanded` solo se marca en el disparador de la categoría activa, de modo que el
+panel enseña **solo** las subcategorías de esa categoría. Reproducido y verificado con
+Chrome real por CDP.
+
+### 2026-10-02 · Administrar el menú desde el panel (petición por chat)
+
+**Pedido:** «el sistema debe permitir administrar el menú desde el panel», revisando
+antes las tablas equivalentes (categorías, subcategorías, productos, tiendas, clientes,
+usuarios, configuración, banners, marcas, niveles de cliente) y proponiendo las
+estructuras nuevas antes de crearlas. Como mínimo había que poder guardar tipo de menú,
+categoría padre, nombre, slug, orden, activo, icono, badge (texto y color), banner y su
+enlace, nivel mínimo de cliente, visibilidad por tienda, categorías vacías y fechas; y
+el administrador debía poder elegir el estilo, reordenar con drag & drop, mover de
+nivel, crear/editar/eliminar nodos, activar/desactivar, cambiar nombres y slugs, poner
+iconos, badges y banners, decidir qué ve cada tienda y cada nivel de cliente,
+previsualizar en escritorio y móvil, guardar borrador, publicar e invalidar la caché,
+con **aislamiento total entre tiendas**.
+
+**Auditoría y propuesta:** en `.agents/MENU-ADMIN-2026-10-02.md` (tabla de tablas
+existentes que se reutilizan, estructuras nuevas propuestas con SQL y las 15
+capacidades mapeadas). De los 17 campos pedidos, 8 ya existían.
+
+**Decisiones confirmadas:** árbol global con visibilidad por tienda; rol `platform`
+para el panel maestro; borrador + publicación; se mantienen `compacto|catalogo`.
+
+**Qué se hizo:** migraciones `006` y `007` (campos del editor, `store_id` nulable,
+`mt_menu_item_stores`, `mt_menu_published` y `mt_menu_revisions`), `Models/MenuAdmin`
+(CRUD, mover, reordenar, visibilidad, validación), panel de tienda con editor +
+borrador/publicación + vista previa, panel de plataforma (`/panel/plataforma/menu`)
+con árbol compartido y reparto por tienda y nivel, `tools/platform-user.php` y 36
+comprobaciones nuevas en `verify.php` (incluido el aislamiento con dos tiendas).
+
+### 2026-10-02 · Los dos menús (Compacto y Catálogo) sobre el mismo árbol (petición por chat)
+
+**Pedido:** «implementa los siguientes dos diseños de menú utilizando el mismo árbol
+de categorías y la misma fuente de datos»: **Menú Compacto** (barra horizontal bajo
+la cabecera, con «Más categorías» si no caben, megamenu con segundo y tercer nivel,
+«Ver todo», accesos rápidos a Ofertas/Novedades/Marcas/Destacados, teclado, Escape y
+clic fuera) y **Menú Catálogo** (botón «Todas las categorías», panel con fondo oscuro,
+categorías a la izquierda, subcategorías y tercer nivel a la derecha, banners/marcas/
+promociones y cierre). En **móvil (<1024 px)** los dos deben convertirse en el mismo
+menú lateral por niveles, con botón de apertura, «Volver», cierre, áreas de 44 px,
+teclado y ARIA. Y **que la tienda pueda elegir** cuál presenta.
+
+**Qué se hizo:** un solo árbol editable (`mt_menu_items`, migración `005`), sembrado
+una vez del menú de PuntoByZE (14 categorías / 83 grupos / 346 destinos), pintado por
+una única vista (`_menu.php`) con dos presentaciones conmutadas por
+`mt_stores.menu_style` (`compacto|catalogo`, sin tercera opción), el bloque
+promocional cargado por AJAX y una sección **Panel > Menu** para elegir el estilo y
+volver a copiar el árbol de referencia. Además, las URLs de navegación pasan a ser
+**rutas SEO** (`/categoria/subcategoria/m/marca/…`) con **301** desde las antiguas.
+
 ### 2026-10-01 · Compra del cliente final, como en puntobyze (petición por chat)
 
 **Pedido:** «haz el proceso para poder comprar como cliente: que pueda registrarse

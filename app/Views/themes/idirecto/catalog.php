@@ -16,6 +16,8 @@
  * @var array $facets @var array $activeFilters @var array $sorts @var string $sort
  */
 
+use Tienda\Core\CatalogUrl;
+
 $total = (int) ($result['total'] ?? 0);
 $page = (int) ($result['page'] ?? 1);
 $pages = (int) ($result['pages'] ?? 0);
@@ -51,7 +53,13 @@ $baseParams = static function () use ($q, $category, $subcategory, $sort, $selec
     return $params;
 };
 
-/** URL con los cambios indicados (null elimina la clave). */
+/**
+ * URL con los cambios indicados (null elimina la clave).
+ *
+ * Se construye siempre con las rutas SEO del catalogo (`CatalogUrl::fromQuery`)
+ * para que los enlaces internos no pasen por la redireccion 301: el 301 es para
+ * las URLs antiguas que ya esten enlazadas o indexadas, no para navegar.
+ */
 $buildUrl = static function (array $changes = []) use ($baseParams, $base): string {
     $params = $baseParams();
     foreach ($changes as $key => $value) {
@@ -61,6 +69,12 @@ $buildUrl = static function (array $changes = []) use ($baseParams, $base): stri
             $params[$key] = $value;
         }
     }
+
+    $path = CatalogUrl::fromQuery($params);
+    if ($path !== '') {
+        return $base . $path;
+    }
+
     $query = http_build_query($params);
     return $base . '/catalogo' . ($query !== '' ? '?' . $query : '');
 };

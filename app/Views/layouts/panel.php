@@ -8,16 +8,19 @@
  * @var string $pageTitle
  * @var string $base
  */
+use Tienda\Core\Auth;
 use Tienda\Core\Session;
 
 $current = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
 $success = Session::pullFlash('success');
 $error = Session::pullFlash('error');
+$warning = Session::pullFlash('warning');
 
 $nav = [
     ['panel',          'Panel',            'Resumen de tu tienda'],
     ['panel/pedidos',  'Pedidos',          'Pedidos de tus clientes'],
     ['panel/clientes', 'Clientes',         'Quien te compra y sus direcciones'],
+    ['panel/menu',     'Menu',             'Menu Compacto o Menu Catalogo'],
     ['panel/diseno',   'Diseno',           'Plantilla, colores y textos'],
     ['panel/banners',  'Banners',          'Imagenes destacadas'],
     ['panel/avisos',   'Avisos',           'Anuncios para tus clientes'],
@@ -25,6 +28,11 @@ $nav = [
     ['panel/dominios', 'Dominios',         'Tu direccion web'],
     ['panel/ajustes',  'Ajustes',          'Datos y usuarios'],
 ];
+
+// El menu de la plataforma solo lo ve el rol `platform`.
+if (Auth::isPlatform()) {
+    $nav[] = ['panel/plataforma/menu', 'Menu plataforma', 'Arbol compartido y que ve cada tienda'];
+}
 
 $isActive = static function (string $path) use ($current, $base): bool {
     $full = $base . '/' . $path;
@@ -78,6 +86,7 @@ $isActive = static function (string $path) use ($current, $base): bool {
 
         <div class="content">
             <?php if ($success): ?><div class="alert alert-success"><?= e($success) ?></div><?php endif; ?>
+            <?php if ($warning): ?><div class="alert alert-warning"><?= e($warning) ?></div><?php endif; ?>
             <?php if ($error): ?><div class="alert alert-error"><?= e($error) ?></div><?php endif; ?>
             <?= $content ?>
         </div>

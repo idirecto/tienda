@@ -308,7 +308,8 @@ final class Catalog
         array $facetSelection = [],
         ?float $priceMin = null,
         ?float $priceMax = null,
-        string $sort = 'relevance'
+        string $sort = 'relevance',
+        string $tag = 'todos'
     ): array {
         $perPage = $perPage ?? (int) Config::get('catalog.per_page', 12);
         $perPage = max(1, min(60, $perPage));
@@ -318,7 +319,7 @@ final class Catalog
             return ['items' => [], 'total' => 0, 'page' => $page, 'per_page' => $perPage, 'pages' => 0];
         }
 
-        [$whereSql, $params] = self::buildFilters($q, $categoryId, $subcategoryId, $facetSelection, $priceMin, $priceMax);
+        [$whereSql, $params] = self::buildFilters($q, $categoryId, $subcategoryId, $facetSelection, $priceMin, $priceMax, $tag);
         $orderSql = self::orderSql($sort);
 
         $total = self::cachedCount(
@@ -483,6 +484,64 @@ final class Catalog
         if ($withStock) {
             self::attachStock($items);
         }
+
+        self::attachOffers($items);
+    }
+
+    /**
+     * Marca las filas con oferta activa en el mayorista (`ofertas`). Es una
+     * consulta por listado, no una por tarjeta: la tarjeta solo pinta la
+     * etiqueta "Oferta" cuando `on_offer` es verdadero.
+     *
+     * @param array<int, array> $items
+     */
+    private static function attachOffers(array &$items): void
+    {
+        foreach ($items as &$item) {
+            $item['on_offer'] = false;
+        }
+        unset($item);
+
+        if (!Database::tableExists('ofertas')) {
+            return;
+        }
+
+        $ids = [];
+        foreach ($items as $item) {
+            $id = (int) ($item['id'] ?? 0);
+            if ($id > 0) {
+                $ids[$id] = true;
+            }
+        }
+        if ($ids === []) {
+            return;
+        }
+
+        $params = [];
+        $placeholders = [];
+        foreach (array_keys($ids) as $i => $id) {
+            $ph = 'of' . $i;
+            $placeholders[] = ':' . $ph;
+            $params[$ph] = $id;
+        }
+
+        $onOffer = [];
+        foreach (Database::select(
+            'SELECT DISTINCT id_producto FROM ofertas
+             WHERE id_producto IN (' . implode(',', $placeholders) . ')
+               AND inicio <= NOW() AND (final IS NULL OR final >= NOW())',
+            $params
+        ) as $row) {
+            $onOffer[(int) $row['id_producto']] = true;
+        }
+        if ($onOffer === []) {
+            return;
+        }
+
+        foreach ($items as &$item) {
+            $item['on_offer'] = isset($onOffer[(int) ($item['id'] ?? 0)]);
+        }
+        unset($item);
     }
 
     /**
@@ -921,11 +980,145 @@ final class Catalog
     /** Nombre de una marca por id (para los chips de filtros activos). */
     private static function brandName(int $id): ?string
     {
+        return self::brandLabel($id);
+    }
+
+    /** Nombre publico de una marca (paginas /marca/{id} y /marcas). */
+    public static function brandLabel(int $id): ?string
+    {
         if ($id <= 0 || !Database::tableExists('marcas')) {
             return null;
         }
         $name = Database::scalar('SELECT marca FROM marcas WHERE id = :id', ['id' => $id]);
-        return $name === null ? null : (string) $name;
+        return $name === null || trim((string) $name) === '' ? null : (string) $name;
+    }
+
+    // =====================================================================
+    // ETIQUETAS DE LISTADO Y MARCAS (navegacion)
+    // =====================================================================
+
+    /** Etiquetas de listado declaradas en config/catalog.php. */
+    public static function tags(): array
+    {
+        return (array) Config::get('catalog.tags', []);
+    }
+
+    /** Etiqueta valida (cualquier cosa desconocida cae a `todos`). */
+    public static function tagKey(?string $key): string
+    {
+        $key = $key === null ? '' : strtolower(trim($key));
+        return $key !== '' && isset(self::tags()[$key]) ? $key : 'todos';
+    }
+
+    /** Texto legible de una etiqueta. */
+    public static function tagLabel(string $key): string
+    {
+        $tags = self::tags();
+        return (string) ($tags[$key]['label'] ?? $key);
+    }
+
+    /**
+     * Marcas con mas productos con stock, para los paneles del menu.
+     * Reutiliza la cache de los facetas (no anade consultas nuevas).
+     *
+     * @return array<int, array{value:string,label:string,count:int}>
+     */
+    public static function topBrands(?int $categoryId, int $limit = 6): array
+    {
+        if (!self::isAvailable()) {
+            return [];
+        }
+
+        return self::brandOptions($categoryId !== null && $categoryId > 0 ? $categoryId : null, null, $limit);
+    }
+
+    /**
+     * Listado de marcas con stock para la pagina /marcas.
+     *
+     * Es una agrupacion sobre todo el catalogo (~1 s en frio), asi que se cachea
+     * una hora: no cambia de un minuto a otro.
+     *
+     * @return array<int, array{id:int,label:string,total:int,path:string}>
+     */
+    public static function brandList(int $limit = 200): array
+    {
+        if (!self::isAvailable() || !Database::tableExists('marcas')) {
+            return [];
+        }
+        $limit = max(1, min(500, $limit));
+
+        $rows = self::cached(
+            'brand_list_' . $limit,
+            3600,
+            static function () use ($limit): array {
+                $rows = Database::select(
+                    'SELECT p.id_marca, COUNT(*) AS total
+                     FROM productos p
+                     WHERE ' . self::baseConditions() . '
+                       AND p.id_marca IS NOT NULL AND p.id_marca > 0
+                     GROUP BY p.id_marca
+                     ORDER BY total DESC, p.id_marca ASC
+                     LIMIT ' . $limit
+                );
+                if ($rows === []) {
+                    return [];
+                }
+
+                $names = [];
+                $placeholders = [];
+                $params = [];
+                foreach ($rows as $i => $row) {
+                    $ph = 'bm' . $i;
+                    $placeholders[] = ':' . $ph;
+                    $params[$ph] = (int) $row['id_marca'];
+                }
+                foreach (Database::select('SELECT id, marca FROM marcas WHERE id IN (' . implode(',', $placeholders) . ')', $params) as $row) {
+                    $names[(int) $row['id']] = (string) $row['marca'];
+                }
+
+                $out = [];
+                foreach ($rows as $row) {
+                    $id = (int) $row['id_marca'];
+                    $label = trim($names[$id] ?? '');
+                    if ($label === '') {
+                        continue;
+                    }
+                    $out[] = [
+                        'id'    => $id,
+                        'label' => $label,
+                        'total' => (int) $row['total'],
+                    ];
+                }
+
+                return $out;
+            }
+        );
+
+        // La ruta de cada marca es su pagina propia (/marca/{id}); se resuelve
+        // aqui porque no depende de la cache del listado.
+        $out = [];
+        foreach ((array) $rows as $row) {
+            $out[] = [
+                'id'    => (int) $row['id'],
+                'label' => (string) $row['label'],
+                'total' => (int) $row['total'],
+                'path'  => '/marca/' . (int) $row['id'],
+            ];
+        }
+
+        return $out;
+    }
+
+    /** Clave del facet de marca declarado en config/catalog.php. */
+    public static function brandFacetKey(): string
+    {
+        foreach ((array) Config::get('catalog.facets', []) as $key => $def) {
+            if ((string) ($def['type'] ?? '') === 'brand') {
+                return (string) $key;
+            }
+        }
+
+        return 'marca';
     }
 
     /**
@@ -1169,11 +1362,25 @@ final class Catalog
         ?int $subcategoryId = null,
         array $facetSelection = [],
         ?float $priceMin = null,
-        ?float $priceMax = null
+        ?float $priceMax = null,
+        string $tag = 'todos'
     ): array {
         $where = [self::baseConditions()];
         $params = [];
         $counter = 0;
+
+        // Etiqueta de listado (accesos comerciales: ofertas, novedades...).
+        $tag = self::tagKey($tag);
+        if ($tag === 'ofertas' && Database::tableExists('ofertas')) {
+            $where[] = 'p.id IN (SELECT o.id_producto FROM ofertas o
+                                 WHERE o.inicio <= NOW() AND (o.final IS NULL OR o.final >= NOW()))';
+        } elseif ($tag === 'novedades') {
+            $days = (int) (self::tags()['novedades']['days'] ?? 90);
+            $days = max(1, min(3650, $days));
+            $where[] = 'p.fecha_alta >= DATE_SUB(NOW(), INTERVAL ' . $days . ' DAY)';
+        } elseif ($tag === 'destacados') {
+            $where[] = 'p.etiqueta = 1';
+        }
 
         if ($q !== null && $q !== '') {
             // Con PDO::ATTR_EMULATE_PREPARES = false un parametro nombrado no

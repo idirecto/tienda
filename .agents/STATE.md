@@ -1,7 +1,7 @@
 # STATE — Estado del proyecto
 
 > **El agente actualiza este fichero al terminar cada sesión.**
-> Última actualización: **2026-10-01**
+> Última actualización: **2026-10-02**
 
 ---
 
@@ -13,9 +13,13 @@ al mayorista**. Falta el ciclo de compra en la tienda (carrito y pago) para que
 los pedidos entren solos: hoy se dan de alta a mano o los meterá el futuro
 checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
 
-> ✅ **Entorno (2026-10-01).** `idirecto_db` está **completa** (239 tablas:
+> ✅ **Entorno (2026-10-02).** `idirecto_db` está **completa** (239 tablas:
 > catálogo con 41.289 productos con stock, 33 categorías con stock, y las `mt_`),
-> la web responde 200 y `php tools/verify.php` da **TODO OK (118)**.
+> la web responde 200 y `php tools/verify.php` da **TODO OK (176)**. El menú se
+> verificó además **en navegador real** (Chrome headless por CDP): 22 comprobaciones
+> con el Menú Catálogo, 16 con el Menú Compacto y 20 del **editor del panel**
+> (drag & drop incluido), sin errores de JavaScript. El **parpadeo** del Menú Compacto
+> al pasar el ratón por una categoría se reprodujo y se corrigió (ver más abajo).
 >
 > ⚠️ **Si vuelve a salir un 500 con «Error interno»**: casi siempre es que el
 > usuario del servidor web (`www-data`) **no puede leer `.env`**, no un fallo de
@@ -31,6 +35,10 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
 | **Registro de tiendas (solo con cuenta activa del mayorista)** | ✅ Completo |
 | **Compra del cliente final (carrito, cuenta, direcciones y pedido)** | ✅ Completo (**sin pasarela de pago**) |
 | Catálogo central (stock, búsqueda, paginación) | ✅ Completo (**listados en ~20 ms**, ver notas) |
+| **Navegación: Menú Compacto y Menú Catalogo (un solo árbol de 3 niveles)** | ✅ Completo (14 categorías / 83 grupos / 346 destinos) |
+| **Menú administrable: editor, borrador/publicación, visibilidad por tienda y nivel de cliente** | ✅ Completo (panel de tienda + panel de plataforma con rol `platform`) |
+| **Rutas SEO de catálogo (`/categoria/subcategoria/m/marca/orden/…`)** | ✅ Completo (301 desde las URLs con query string) |
+| **Etiquetas de listado (Ofertas, Novedades, Destacados) y directorio de marcas** | ✅ Completo |
 | Ficha de producto (galería + especificaciones) | ✅ Completo (colores ya tokenizados) |
 | **Sistema de diseño white-label (tokens, claro/oscuro, presets, previa en vivo)** | ✅ Completo |
 | **Portada (slider + accesos rápidos) y tarjetas con specs y stock** | ✅ Completo |
@@ -106,7 +114,7 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
 
 ### Storefront
 - Catálogo filtrado a **productos con stock**, con las mismas condiciones que
-  idirecto: 39.437 de 233.773 productos; contador cacheado 10 min.
+  idirecto: 41.289 de 235.165 productos; contador cacheado 10 min.
 - **Sistema de diseño tokenizado** (`config/appearance.php` + `Core/Appearance`):
   el CSS no tiene ni un color a mano; cada tienda define marca (`primary`,
   `secondary`, `accent`), superficies, texto y bordes, más modo
@@ -156,6 +164,66 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
 - CRUD de banners, avisos y productos propios con **cuota por plan**.
 - Subida de imágenes con validación de MIME real y vista previa.
 - Alta de dominios propios con instrucciones DNS y verificación.
+
+### Menú administrable desde el panel (2026-10-02)
+- **Un solo árbol** (`mt_menu_items`) con **borrador y publicación**: el escaparate
+  lee la última versión publicada (`mt_menu_published`, una fila por tienda) y el
+  panel edita el borrador; hasta que no se pulsa «Publicar» la tienda no cambia.
+  Al publicar se guarda el histórico (`mt_menu_revisions`) y **se invalida la caché**.
+- **Todo editable desde el panel**: crear, editar, borrar (con su rama), activar y
+  desactivar, ordenar con **drag & drop**, mover de nivel (con validación de ciclos y
+  de los tres niveles), nombre, slug (único entre hermanos), icono, badge («NUEVO»,
+  «OFERTA», «TOP»…) con su color, banner de la tienda o enlace de banner, y
+  «ocultar si no tiene productos».
+- **Menú global de la plataforma** (`store_id` NULL = compartido) con visibilidad
+  por tienda (`todas` / `solo estas` / `todas menos estas`, en `mt_menu_item_stores`)
+  y por **nivel de cliente** (`min_customer_level`, comparado con el `orden` de
+  `categoria_cliente`: Informática 1, Telefonía 2, Papelería 3). Una tienda sin nivel
+  asignado no ve los nodos con nivel mínimo.
+- **Panel de plataforma** (`/panel/plataforma/menu`) para el rol `platform`
+  (`tools/platform-user.php` lo crea): árbol compartido, propiedad de cada nodo
+  (compartida o de una tienda), visibilidad, publicación por tienda o de todas, y
+  un botón para convertir el árbol de una tienda en compartido.
+- **Aislamiento entre tiendas**: el `store_id` sale siempre de la sesión y cada
+  consulta lo comprueba; los nodos de otra tienda ni se ven ni se pueden modificar
+  (probado con dos tiendas en `verify.php`, y a mano: «Ese nodo no es de tu tienda»).
+- **Vista previa** del borrador en escritorio (marco de 1280 px) y móvil (390 px),
+  cada uno con su media query real.
+
+### Navegación: Menú Compacto y Menú Catalogo (2026-10-02)
+- **Un solo árbol de categorías de 3 niveles** (`mt_menu_items`, migración `005`)
+  que alimenta **los dos** estilos: primero se copia del menú de la web de
+  referencia (PuntoByZE, solo nombres y orden, leyendo sus tablas sin tocarlas) y
+  luego se edita desde el panel. Hoy: **14 categorías / 83 grupos / 346 destinos**;
+  quedan **21 destinos pendientes** (14 filtros estructurados y 7 subcategorías que
+  no se reconocieron) guardados **desactivados** con su aviso, visibles en el panel.
+- **Menú Catalogo** (por defecto): botón «Todas las categorías» → panel con fondo
+  oscuro, categorías a la izquierda y grupos con el tercer nivel a la derecha.
+- **Menú Compacto**: barra horizontal bajo la cabecera con las 7 primeras
+  categorías (`MENU_COMPACT_MAX`), el resto en «Más categorías», megamenu al pulsar
+  o al pasar el ratón y accesos rápidos (Ofertas, Novedades, Marcas, Destacados).
+- Los dos se abren y se cierran igual: **Escape**, clic fuera, botón de cierre,
+  `aria-expanded`/`aria-modal`, foco al abrir y vuelta del foco al cerrar.
+- **Arreglado el parpadeo del Menú Compacto** (2026-10-02): el panel abría añadiendo
+  `mn-open` al `<body>` y esa clase ya era la del botón «Todas las categorías», así
+  que el body pasaba a `inline-flex` con fondo de marca, la flecha se desplazaba
+  ~3700 px, saltaba `mouseleave` y el menú se abría/cerraba en bucle. El estado del
+  body ahora es **`mn-panel-open`** (y el botón se acota a `.mn-trigger .mn-open`);
+  el scroll de fondo solo se bloquea en el cajón móvil y en el modal de Catálogo, no
+  en el desplegable de escritorio. `aria-expanded` solo en el disparador activo.
+- **Móvil (<1024 px)**: los dos pasan al **mismo cajón lateral** por niveles
+  (categorías → grupos → destinos), con «Volver», cierre, áreas de 44 px y teclado.
+- El bloque promocional (banner, marcas y destacados) se carga **por AJAX**
+  (`GET /menu/panel/{id}` devuelve HTML ya renderizado), así el primer pintado no
+  paga la consulta de marcas (64–278 ms).
+- **Rutas SEO** (`Core/CatalogUrl`): `/categoria`, `/categoria/subcategoria`,
+  `/m/marca`, `/etiqueta/…`, `/orden/…`, `/page/n`, más `/marcas`, `/marca/{id}` y
+  `/ofertas`, `/novedades`, `/destacados`. Las URLs con query string hacen **301** a
+  su ruta; `f/…` (filtros estructurados) todavía responde 404 a propósito en vez de
+  enseñar un listado equivocado. Las facetas y el rango de precio siguen en query.
+- Etiquetas de listado resueltas en SQL contra `ofertas` (218 productos),
+  `fecha_alta` (90 días, 196) y `etiqueta = 1` (26.000), y **aviso «Oferta»** en las
+  tarjetas (`Catalog::attachOffers`).
 
 ### Pedidos y envío al mayorista (2026-10-01)
 - Tablas propias `mt_orders` (pedido) y `mt_order_items` (líneas) con **envío por

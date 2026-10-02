@@ -185,22 +185,6 @@ svg { flex: 0 0 auto; }
 }
 .nav-inner a:hover { color: var(--c-primary); border-bottom-color: var(--c-primary); }
 
-.nav-catalog { display: inline-flex; align-items: center; }
-.nav-catalog > a { border-bottom: 2px solid transparent; }
-.nav-catalog-toggle {
-    display: inline-flex; align-items: center; justify-content: center;
-    width: 26px; height: 36px; margin-left: .1rem; padding: 0;
-    border: 0; background: transparent; color: var(--c-muted); cursor: pointer;
-}
-.nav-catalog-toggle:hover, .nav-catalog-toggle[aria-expanded="true"] { color: var(--c-primary); }
-.nav-catalog-caret {
-    width: 7px; height: 7px;
-    border-right: 2px solid currentColor; border-bottom: 2px solid currentColor;
-    transform: rotate(45deg) translate(-1px, -1px);
-    transition: transform .2s ease;
-}
-.nav-catalog-toggle[aria-expanded="true"] .nav-catalog-caret { transform: rotate(-135deg); }
-
 /* Cabeceras alternativas que puede elegir la tienda. */
 .header-centered .header-main { flex-direction: column; gap: .75rem; text-align: center; }
 .header-centered .nav-inner { justify-content: center; }
@@ -517,6 +501,8 @@ svg { flex: 0 0 auto; }
 .badge-low { color: var(--c-stock-low); }
 .badge-out { color: var(--c-stock-out); }
 .badge-new { background: var(--c-primary); color: var(--c-primary-contrast); }
+.badge-offer { background: var(--c-accent); color: var(--c-accent-contrast); gap: .2rem; }
+.badge-offer svg { width: 12px; height: 12px; }
 .badge-own { background: var(--c-secondary); color: var(--c-secondary-contrast); }
 
 .product-card[data-stock="out"] .product-media img { opacity: .65; }
@@ -948,85 +934,6 @@ body.no-scroll { overflow: hidden; }
 .footer-grid p { margin: .2rem 0; font-size: .88rem; }
 .footer-bottom { border-top: 1px solid rgba(255, 255, 255, .12); font-size: .8rem; }
 .footer-bottom .container { display: flex; justify-content: space-between; gap: 1rem; padding: .9rem 0; flex-wrap: wrap; }
-
-/* =============================================================================
-   MENU DE CATEGORIAS (megamenu)
-   ============================================================================= */
-.catmenu { position: fixed; inset: 0; z-index: 80; }
-.catmenu[hidden] { display: none; }
-.catmenu-backdrop { position: absolute; inset: 0; background: rgba(9, 12, 18, .55); animation: catmenu-fade .15s ease; }
-.catmenu-panel {
-    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-    display: flex; flex-direction: column;
-    width: min(1180px, 94vw); max-height: min(680px, 86vh);
-    background: var(--c-surface); border-radius: var(--c-radius-lg); overflow: hidden;
-    box-shadow: var(--c-shadow-lg);
-    animation: catmenu-pop .18s ease;
-}
-@keyframes catmenu-fade { from { opacity: 0; } }
-@keyframes catmenu-pop { from { opacity: 0; transform: translate(-50%, -47%) scale(.985); } }
-
-.catmenu-head {
-    display: flex; align-items: center; gap: .75rem; flex-shrink: 0;
-    padding: .85rem 1.15rem; border-bottom: 1px solid var(--c-border); background: var(--c-surface);
-}
-.catmenu-title { flex: 1; font-size: 1rem; font-weight: 700; color: var(--c-heading); }
-.catmenu-close, .catmenu-back {
-    display: inline-flex; align-items: center; justify-content: center;
-    width: 36px; height: 36px; flex-shrink: 0;
-    border: 0; border-radius: 50%; background: var(--c-surface-2);
-    color: var(--c-text); font-size: 1.35rem; line-height: 1; cursor: pointer;
-}
-.catmenu-close:hover, .catmenu-back:hover { background: var(--c-border); }
-.catmenu-back { display: none; font-size: 1.1rem; }
-.catmenu-body { display: flex; flex: 1; min-height: 0; }
-
-.catmenu-side { display: flex; flex-direction: column; flex: 0 0 268px; background: var(--c-surface-2); border-right: 1px solid var(--c-border); overflow-y: auto; }
-.catmenu-all { padding: .8rem 1rem; font-size: .85rem; font-weight: 700; color: var(--c-primary); border-bottom: 1px solid var(--c-border); }
-.catmenu-all:hover { background: var(--c-surface); }
-.catmenu-cats { list-style: none; margin: 0; padding: .35rem 0; }
-.catmenu-cat-btn {
-    display: flex; align-items: center; gap: .5rem; width: 100%;
-    padding: .68rem 1rem; border: 0; border-left: 3px solid transparent;
-    background: transparent; color: var(--c-text);
-    font: inherit; font-size: .9rem; font-weight: 600; text-align: left; cursor: pointer;
-    transition: background .15s ease, color .15s ease, border-color .15s ease;
-}
-.catmenu-cat-name { flex: 1; min-width: 0; }
-.catmenu-cat-btn:hover, .catmenu-cat.is-active .catmenu-cat-btn { background: var(--c-surface); color: var(--c-primary); border-left-color: var(--c-primary); }
-.catmenu-arrow::after { content: '\203A'; font-size: 1.1rem; line-height: 1; color: var(--c-border-strong); }
-.catmenu-cat.is-active .catmenu-arrow::after { color: var(--c-primary); }
-
-.catmenu-content { flex: 1; min-width: 0; overflow-y: auto; padding: 1.15rem 1.4rem 1.5rem; }
-.catmenu-pane { display: none; }
-.catmenu-pane.is-active { display: block; }
-.catmenu-pane-head {
-    display: flex; align-items: baseline; justify-content: space-between; gap: 1rem;
-    margin-bottom: .9rem; padding-bottom: .6rem; border-bottom: 2px solid var(--c-primary);
-}
-.catmenu-pane-title { margin: 0; font-size: 1.1rem; }
-.catmenu-pane-title small { display: block; margin-top: .1rem; font-size: .78rem; font-weight: 500; color: var(--c-muted); }
-.catmenu-pane-all { font-size: .85rem; font-weight: 600; color: var(--c-primary); white-space: nowrap; }
-.catmenu-links { list-style: none; margin: 0; padding: 0; columns: 4; column-gap: 1.5rem; }
-.catmenu-links li { break-inside: avoid; }
-.catmenu-links a { display: block; padding: .34rem .45rem; border-radius: var(--c-radius-sm); font-size: .88rem; color: var(--c-text); }
-.catmenu-links a:hover { background: var(--c-surface-2); color: var(--c-primary); }
-
-@media (max-width: 1400px) { .catmenu-links { columns: 3; } }
-@media (max-width: 1100px) { .catmenu-links { columns: 2; } }
-@media (min-width: 992px) { .catmenu-arrow { display: none; } }
-
-@media (max-width: 991px) {
-    .catmenu-panel { top: 0; left: 0; transform: none; width: 100%; height: 100%; max-height: none; border-radius: 0; animation: none; }
-    .catmenu-back { display: inline-flex; }
-    .catmenu-side { flex: 1 1 auto; width: 100%; border-right: 0; }
-    .catmenu-content { display: none; flex: 1 1 auto; padding: 1rem 1.15rem 2rem; }
-    .catmenu.is-groups .catmenu-side { display: none; }
-    .catmenu.is-groups .catmenu-content { display: block; }
-    .catmenu-links { columns: 1; }
-    .catmenu-links a { padding: .55rem .45rem; font-size: .95rem; }
-}
-
 /* =============================================================================
    FILTROS EN MOVIL (panel lateral)
    El JS activa `.is-drawer` en el contenedor; sin JS los filtros se ven
@@ -1203,4 +1110,245 @@ body.no-scroll { overflow: hidden; }
 @media (max-width: 900px) {
     .cart-grid, .checkout-grid, .account-grid, .thanks-grid { grid-template-columns: minmax(0, 1fr); }
     .cart-summary, .checkout-side { position: static; }
+}
+
+/* =============================================================================
+   NAVEGACION: Menú Compacto y Menú Catálogo
+   -----------------------------------------------------------------------------
+   Los dos menus pintan el mismo arbol (`.mn-*`): categorias de primer nivel,
+   grupos de segundo nivel y destinos de tercer nivel. `data-menu-style` decide
+   la presentacion y por debajo de 1024 px los dos se convierten en un menu
+   lateral por niveles. Ningun color literal: todo sale de los tokens --c-*.
+   ============================================================================= */
+
+.mn { position: relative; z-index: 70; }
+.mn-panel[hidden] { display: none; }
+
+/* Etiqueta pequena (NUEVO, Oportunidad...) */
+.mn-badge {
+    display: inline-block; margin-left: .4rem; padding: .05rem .35rem;
+    border-radius: var(--c-radius-sm); font-size: .68rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .02em;
+    background: var(--c-accent-soft); color: var(--c-accent);
+}
+
+/* Accesos rapidos (Ofertas, Novedades, Marcas, Destacados) */
+.mn-quick { display: flex; align-items: center; gap: .25rem; list-style: none; margin: 0; padding: 0; }
+.mn-quick-link {
+    display: inline-flex; align-items: center; gap: .4rem; padding: .55rem .6rem;
+    font-size: .88rem; font-weight: 600; color: var(--c-text); white-space: nowrap;
+    border-radius: var(--c-radius-md);
+}
+.mn-quick-link:hover { color: var(--c-primary); background: var(--c-surface-2); }
+.mn-quick-icon { width: 18px; height: 18px; flex: 0 0 auto; }
+
+/* ---------- MENU COMPACTO: barra horizontal bajo la cabecera ---------------- */
+.mn--compacto { background: var(--c-surface); border-bottom: 1px solid var(--c-border); }
+.mn-bar-inner { display: flex; align-items: center; gap: .3rem; min-height: 46px; }
+.mn-bar-list { display: flex; align-items: center; flex: 1 1 auto; min-width: 0; list-style: none; margin: 0; padding: 0; }
+.mn-bar-item { display: flex; align-items: center; position: relative; }
+.mn-bar-link { padding: .55rem .6rem; font-size: .92rem; font-weight: 600; color: var(--c-text); white-space: nowrap; }
+.mn-bar-link:hover, .mn-bar-item.is-open .mn-bar-link { color: var(--c-primary); }
+.mn-bar-toggle {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 30px; height: 34px; padding: 0; border: 0; background: none; cursor: pointer;
+    color: var(--c-muted); border-radius: var(--c-radius-sm);
+}
+.mn-bar-toggle:hover { color: var(--c-primary); background: var(--c-surface-2); }
+.mn-caret {
+    display: inline-block; width: 8px; height: 8px; margin-left: .3rem;
+    border-right: 2px solid currentColor; border-bottom: 2px solid currentColor;
+    transform: rotate(45deg) translateY(-1px); transition: transform .18s ease;
+}
+.mn-bar-item.is-open .mn-caret, .mn-more-btn[aria-expanded="true"] .mn-caret { transform: rotate(-135deg) translateY(-1px); }
+
+/* «Mas categorias»: agrupa las categorias que no caben en la barra */
+.mn-more { position: relative; }
+.mn-more-btn {
+    display: inline-flex; align-items: center; padding: .55rem .6rem; border: 0; background: none;
+    font: inherit; font-size: .92rem; font-weight: 600; color: var(--c-text); cursor: pointer; white-space: nowrap;
+}
+.mn-more-btn:hover { color: var(--c-primary); }
+.mn-more-panel {
+    position: absolute; right: 0; top: calc(100% + 6px); z-index: 85; width: min(420px, 84vw);
+    background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--c-radius-md);
+    box-shadow: 0 18px 40px rgb(9 12 18 / 18%); padding: .5rem; max-height: 70vh; overflow-y: auto;
+}
+.mn-more-panel ul { list-style: none; margin: 0; padding: 0; }
+.mn-more-panel li { padding: .45rem .5rem; border-radius: var(--c-radius-sm); }
+.mn-more-panel li:hover { background: var(--c-surface-2); }
+.mn-more-panel a { font-weight: 600; color: var(--c-text); }
+.mn-more-panel a:hover { color: var(--c-primary); }
+.mn-more-groups { display: block; font-size: .78rem; color: var(--c-muted); }
+
+/* ---------- MENU CATALOGO: boton principal ---------------- */
+/* El boton se estiliza SIEMPRE dentro de `.mn-trigger`: `.mn-open` a secas
+   chocaba con la clase de estado que el JS pone en `<body>` al abrir el panel
+   y el body acababa con display:inline-flex y el color de marca (parpadeo). */
+.mn-trigger { background: var(--c-surface); border-bottom: 1px solid var(--c-border); }
+.mn-trigger .container { display: flex; align-items: center; gap: .75rem; min-height: 52px; }
+.mn-trigger .mn-open {
+    display: inline-flex; align-items: center; gap: .5rem; padding: .6rem .95rem;
+    border: 1px solid transparent; border-radius: var(--c-radius-md); cursor: pointer;
+    background: var(--c-primary); color: var(--c-primary-contrast);
+    font: inherit; font-weight: 700; font-size: .95rem;
+}
+.mn-trigger .mn-open:hover { background: var(--c-primary-hover); }
+.mn-open-icon { width: 20px; height: 20px; }
+.mn-trigger .mn-open[aria-expanded="true"] { background: var(--c-primary-active); }
+
+/* ---------- Panel compartido ---------------- */
+.mn-backdrop { position: fixed; inset: 0; background: rgb(9 12 18 / 55%); }
+.mn-dialog {
+    display: flex; flex-direction: column; background: var(--c-surface); color: var(--c-text);
+    border-radius: var(--c-radius-lg); overflow: hidden;
+}
+.mn-head {
+    display: flex; align-items: center; gap: .5rem; padding: .6rem .8rem;
+    border-bottom: 1px solid var(--c-border); background: var(--c-surface-2);
+}
+.mn-title { flex: 1; font-weight: 700; color: var(--c-heading); }
+.mn-close, .mn-back {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 40px; height: 40px; padding: 0; border: 0; border-radius: var(--c-radius-md);
+    background: none; color: var(--c-heading); cursor: pointer;
+}
+.mn-close:hover, .mn-back:hover { background: var(--c-border); }
+.mn-close svg, .mn-back svg { width: 20px; height: 20px; }
+.mn-back[hidden] { display: none; }
+.mn-body { display: flex; flex: 1; min-height: 0; }
+
+.mn-side { display: flex; flex-direction: column; flex: 0 0 280px; background: var(--c-surface-2); border-right: 1px solid var(--c-border); }
+.mn-cats { flex: 1; overflow-y: auto; list-style: none; margin: 0; padding: .35rem 0; }
+.mn-cat {
+    display: flex; align-items: center; gap: .5rem; width: 100%; padding: .7rem .9rem;
+    border: 0; border-left: 3px solid transparent; background: none; cursor: pointer;
+    font: inherit; font-size: .92rem; font-weight: 600; color: var(--c-text); text-align: left;
+}
+.mn-cat:hover, .mn-cat[aria-selected="true"], .mn-cat[aria-expanded="true"] {
+    background: var(--c-surface); color: var(--c-primary); border-left-color: var(--c-primary);
+}
+.mn-cat-label { flex: 1; min-width: 0; }
+.mn-cat-count { font-size: .75rem; color: var(--c-muted); font-weight: 500; }
+.mn-arrow::after { content: '\203A'; font-size: 1.1rem; line-height: 1; color: var(--c-border-strong); }
+.mn-side-foot { border-top: 1px solid var(--c-border); }
+.mn-side-all { display: flex; align-items: center; gap: .5rem; padding: .75rem .9rem; font-weight: 700; color: var(--c-primary); }
+.mn-side-all:hover { background: var(--c-surface); }
+
+.mn-content { flex: 1; min-width: 0; overflow-y: auto; padding: 1rem 1.2rem 1.4rem; }
+.mn-pane { display: none; }
+.mn-pane.is-active { display: block; }
+.mn-pane-head { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; margin-bottom: .8rem; }
+.mn-pane-title { margin: 0; font-size: 1.15rem; }
+.mn-pane-title small { display: block; margin-top: .1rem; font-size: .78rem; font-weight: 500; color: var(--c-muted); }
+.mn-pane-all { font-size: .85rem; font-weight: 700; color: var(--c-primary); white-space: nowrap; }
+
+.mn-cols { display: grid; grid-template-columns: repeat(auto-fill, minmax(185px, 1fr)); gap: .9rem 1.4rem; }
+.mn-col-title { margin: 0 0 .35rem; font-size: .82rem; text-transform: uppercase; letter-spacing: .04em; color: var(--c-muted); }
+.mn-col-title a { color: inherit; }
+.mn-col-title a:hover { color: var(--c-primary); }
+.mn-links { list-style: none; margin: 0; padding: 0; }
+.mn-links a { display: block; padding: .18rem 0; font-size: .9rem; color: var(--c-text); }
+.mn-links a:hover { color: var(--c-primary); }
+
+/* Bloque promocional del panel (banner + marcas + destacados) */
+.mn-promo:empty { display: none; }
+.mn-promo-inner { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 1rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--c-border); }
+.mn-promo-inner > :only-child { grid-column: 1 / -1; }
+.mn-promo-banner { position: relative; border-radius: var(--c-radius-md); overflow: hidden; }
+.mn-promo-banner img { display: block; width: 100%; height: 100%; max-height: 220px; object-fit: cover; }
+.mn-promo-caption { position: absolute; left: 0; right: 0; bottom: 0; padding: .6rem .8rem; background: linear-gradient(transparent, rgb(9 12 18 / 72%)); color: var(--c-text-inverse); }
+.mn-promo-caption strong { display: block; }
+.mn-promo-caption em { font-style: normal; font-size: .82rem; opacity: .9; }
+.mn-promo-title { margin: 0 0 .45rem; font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; color: var(--c-muted); }
+.mn-promo-brands { display: flex; flex-wrap: wrap; gap: .35rem; list-style: none; margin: 0; padding: 0; }
+.mn-promo-brands a {
+    display: inline-flex; align-items: center; gap: .35rem; padding: .3rem .5rem;
+    border: 1px solid var(--c-border); border-radius: var(--c-radius-sm);
+    font-size: .82rem; font-weight: 600; color: var(--c-text);
+}
+.mn-promo-brands a:hover { border-color: var(--c-primary); color: var(--c-primary); }
+.mn-promo-count { font-size: .72rem; color: var(--c-muted); font-weight: 500; }
+.mn-promo-products { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: .6rem; }
+.mn-promo-products .product-card { font-size: .85rem; }
+
+/* ---------- Escritorio: cada estilo con su presentacion ---------------- */
+.mn--compacto .mn-panel { position: absolute; left: 0; right: 0; top: 100%; z-index: 85; }
+.mn--compacto .mn-backdrop { display: none; }
+.mn--compacto .mn-dialog--drop {
+    border: 1px solid var(--c-border); border-top: 0; border-radius: 0 0 var(--c-radius-lg) var(--c-radius-lg);
+    max-height: min(72vh, 660px); box-shadow: 0 22px 46px rgb(9 12 18 / 18%);
+}
+.mn--compacto .mn-side { display: none; }   /* la barra ya lista las categorias */
+
+.mn--catalogo .mn-panel { position: fixed; inset: 0; z-index: 90; }
+.mn--catalogo .mn-dialog--full {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    width: min(1180px, calc(100% - 2rem)); max-height: min(86vh, 860px);
+    box-shadow: 0 30px 60px rgb(9 12 18 / 25%);
+}
+
+/* Boton de menu lateral: solo en movil */
+.nav-menu-btn {
+    display: none; align-items: center; gap: .4rem; padding: .35rem .5rem;
+    border: 0; border-radius: var(--c-radius-md); background: none; cursor: pointer;
+    font: inherit; font-size: .82rem; font-weight: 600; color: var(--c-text);
+}
+.nav-menu-btn:hover { background: var(--c-surface); }
+.nav-menu-btn svg { width: 20px; height: 20px; }
+
+/* ---------- Movil (<1024 px): un solo menu lateral por niveles ---------- */
+@media (max-width: 1023.98px) {
+    .mn-bar, .mn-trigger { display: none; }
+    .nav-menu-btn { display: inline-flex; }
+    .nav-menu-btn-text { display: none; }
+
+    .mn-panel { position: fixed; inset: 0; z-index: 95; }
+    .mn-backdrop { display: block; }
+    .mn-dialog,
+    .mn--compacto .mn-dialog--drop,
+    .mn--catalogo .mn-dialog--full {
+        position: absolute; left: 0; top: 0; bottom: 0; transform: translateX(-100%);
+        width: min(92vw, 420px); max-width: none; max-height: none; height: 100%;
+        border: 0; border-radius: 0; box-shadow: 0 0 40px rgb(9 12 18 / 30%);
+        transition: transform .22s ease;
+    }
+    .mn-panel.is-open .mn-dialog { transform: none; }
+    .mn-back { display: inline-flex; }
+    .mn-body { position: relative; }
+    /* En movil el cajon SIEMPRE lista las categorias a la izquierda, tambien en
+       el Menú Compacto: por eso se repite el selector con la variante (gana a
+       `.mn--compacto .mn-side { display: none }`, que es de escritorio). */
+    .mn-side,
+    .mn--compacto .mn-side {
+        display: flex; flex: 0 0 100%; width: 100%; border-right: 0; overflow-y: auto;
+        transition: transform .22s ease;
+    }
+    .mn-content {
+        position: absolute; inset: 0; background: var(--c-surface);
+        transform: translateX(100%); transition: transform .22s ease; padding: 1rem 1.1rem 1.4rem;
+    }
+    .mn-panel.is-steps .mn-side { transform: translateX(-30%); }
+    .mn-panel.is-steps .mn-content { transform: none; }
+
+    /* Areas tactiles de 44 px como minimo */
+    .mn-cat, .mn-side-all, .mn-quick-link, .mn-close, .mn-back, .mn-more-panel a { min-height: 44px; }
+    .mn-cat, .mn-side-all, .mn-quick-link { padding-top: .6rem; padding-bottom: .6rem; }
+    .mn-links a, .mn-col-title a { min-height: 44px; display: flex; align-items: center; padding: .1rem 0; }
+    .mn-cols { display: block; }
+    .mn-col { margin-bottom: 1.1rem; }
+    .mn-promo-inner { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Con el panel abierto no se hace scroll de fondo. OJO con la clase: no puede
+   llamarse `mn-open` porque ese nombre ya es el del boton del Menu Catalogo
+   (`.mn-trigger .mn-open`) y el body heredaba sus estilos. */
+body.mn-panel-open { overflow: hidden; }
+
+/* El Menu Compacto de escritorio es un desplegable, no un cajon: al abrirlo no
+   se bloquea la pagina (bloquearla hacia saltar la barra de scroll y el menu
+   se abria y cerraba en bucle al pasar el raton). El cajon movil y el panel
+   modal del Menu Catalogo si bloquean. */
+@media (min-width: 1024px) {
+    body.mn-panel-open:has(.mn--compacto) { overflow: visible; }
 }
