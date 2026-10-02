@@ -208,8 +208,15 @@ final class MenuAdmin
                 $errors[] = 'Elige una etiqueta (Ofertas, Novedades o Destacados).';
             }
         }
+        $targetExtra = (int) ($input['target_extra'] ?? 0);
         if ($type === 'filtro') {
-            $errors[] = 'Los filtros del catalogo todavia no se pueden enlazar: elige otro destino.';
+            if ($targetId <= 0) {
+                $errors[] = 'Escribe el id del filtro del catalogo.';
+            } elseif ($targetExtra <= 0) {
+                $errors[] = 'Escribe el id del subfiltro (la ruta es /f/{filtro}-{subfiltro}).';
+            } elseif (!self::filterExists($targetId, $targetExtra)) {
+                $errors[] = 'Ese filtro no existe en el catalogo.';
+            }
         }
 
         $icon = trim((string) ($input['icon'] ?? ''));
@@ -276,7 +283,8 @@ final class MenuAdmin
                 'slug'               => $slug,
                 'icon'               => $icon !== '' ? $icon : null,
                 'target_type'        => $type,
-                'target_id'          => in_array($type, ['categoria', 'subcategoria', 'marca'], true) ? $targetId : null,
+                'target_id'          => in_array($type, ['categoria', 'subcategoria', 'marca', 'filtro'], true) ? $targetId : null,
+                'target_extra'       => $type === 'filtro' && $targetExtra > 0 ? $targetExtra : null,
                 'target_key'         => $type === 'etiqueta' ? $targetKey : null,
                 'url'                => $type === 'url' ? $url : null,
                 'badge'              => $badge !== '' ? $badge : null,
@@ -737,9 +745,11 @@ final class MenuAdmin
 
     /**
      * Destinos disponibles para el selector: categorias, subcategorias (con su
-     * categoria) y las etiquetas comerciales. Las marcas se buscan aparte.
+     * categoria), etiquetas comerciales y los filtros del catalogo que ya usa
+     * algun nodo del menu (los filtros del mayorista son miles: no tiene
+     * sentido volcarlos todos). Las marcas se buscan aparte.
      *
-     * @return array{categories:array,subcategories:array,tags:array}
+     * @return array{categories:array,subcategories:array,tags:array,filters:array}
      */
     public static function destinations(): array
     {
@@ -771,7 +781,32 @@ final class MenuAdmin
             $tags[] = ['key' => (string) $key, 'label' => (string) ($def['label'] ?? $key)];
         }
 
-        return ['categories' => $categories, 'subcategories' => $subcategories, 'tags' => $tags];
+        // Filtros del mayorista ya presentes en el menu: se ofrecen para no
+        // perderlos al editar un nodo de tipo filtro.
+        $filters = [];
+        if (Database::tableExists('mt_menu_items') && Database::tableExists('filtros') && Database::tableExists('subfiltros')) {
+            foreach (Database::select(
+                'SELECT n.target_id AS id_filtro, n.target_extra AS id_subfiltro,
+                        f.filtro AS filtro, sf.nombre AS subfiltro
+                   FROM mt_menu_items n
+                   LEFT JOIN filtros f ON f.id = n.target_id
+                   LEFT JOIN subfiltros sf ON sf.id = n.target_extra
+                  WHERE n.target_type = :tipo AND n.target_id > 0
+                  GROUP BY n.target_id, n.target_extra, f.filtro, sf.nombre
+                  ORDER BY f.filtro ASC, sf.nombre ASC',
+                ['tipo' => 'filtro']
+            ) as $row) {
+                $filterId = (int) $row['id_filtro'];
+                $subfilterId = (int) $row['id_subfiltro'];
+                $filters[] = [
+                    'id'        => $filterId,
+                    'extra'     => $subfilterId,
+                    'label'     => Catalog::structuredChipLabel($filterId, $subfilterId),
+                ];
+            }
+        }
+
+        return ['categories' => $categories, 'subcategories' => $subcategories, 'tags' => $tags, 'filters' => $filters];
     }
 
     // =====================================================================
@@ -795,7 +830,7 @@ final class MenuAdmin
             case 'url':
                 return 'Enlace: ' . (string) ($row['url'] ?? '');
             case 'filtro':
-                return 'Filtro del catalogo (pendiente)';
+                return 'Filtro: ' . Catalog::structuredChipLabel($id, (int) ($row['target_extra'] ?? 0));
         }
 
         return 'Sin destino';
@@ -848,6 +883,27 @@ final class MenuAdmin
     private static function brandExists(int $id): bool
     {
         return $id > 0 && (bool) Database::scalar('SELECT 1 FROM marcas WHERE id = :id LIMIT 1', ['id' => $id]);
+    }
+
+    /** ¿Existe el filtro del mayorista (y, si se indica, ese subfiltro suyo)? */
+    private static function filterExists(int $filterId, int $subfilterId): bool
+    {
+        if ($filterId <= 0
+            || !Database::tableExists('filtros')
+            || !Database::tableExists('subfiltros')) {
+            return false;
+        }
+        if ($subfilterId <= 0) {
+            return (bool) Database::scalar(
+                'SELECT 1 FROM filtros WHERE id = :id AND deleted = 0 LIMIT 1',
+                ['id' => $filterId]
+            );
+        }
+
+        return (bool) Database::scalar(
+            'SELECT 1 FROM subfiltros WHERE id = :sub AND id_filtro = :filter LIMIT 1',
+            ['sub' => $subfilterId, 'filter' => $filterId]
+        );
     }
 
     private static function storeExists(int $id): bool

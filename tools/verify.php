@@ -281,6 +281,75 @@ if (Catalog::isAvailable()) {
         }
         check($filtrado['total'] > 0 && $soloSubcategoria, 'filtro por subcategoria (' . $filtrado['total'] . ' productos)');
     }
+
+    // Filtros estructurados del mayorista (filtros/subfiltros por subcategoria):
+    // son los que usan idirecto y puntobyze en sus listados.
+    $hayFiltros = Database::tableExists('filtros')
+        && Database::tableExists('subfiltros')
+        && Database::tableExists('rel_filtros_subcat')
+        && Database::tableExists('rel_filtro_producto');
+    $subFiltro = null;
+    $gruposFiltro = [];
+    if ($hayFiltros) {
+        foreach (Database::select(
+            'SELECT id_subcategoria FROM rel_filtros_subcat
+              GROUP BY id_subcategoria ORDER BY COUNT(*) DESC LIMIT 12'
+        ) as $row) {
+            $candidato = (int) $row['id_subcategoria'];
+            $grupos = Catalog::structuredFilters($candidato);
+            if ($grupos !== [] && !empty($grupos[0]['options'])) {
+                $subFiltro = $candidato;
+                $gruposFiltro = $grupos;
+                break;
+            }
+        }
+    }
+    check(!$hayFiltros || $subFiltro !== null, 'filtros del mayorista por subcategoria (' . count($gruposFiltro) . ' grupos)');
+
+    if ($subFiltro !== null && $gruposFiltro !== []) {
+        $grupo = $gruposFiltro[0];
+        $opcion = $grupo['options'][0];
+        $sinFiltro = Catalog::paginate(1, 4, null, null, $subFiltro);
+        $conFiltro = Catalog::paginate(1, 4, null, null, $subFiltro, [$grupo['key'] => [$opcion['value']]]);
+        check(
+            $conFiltro['total'] > 0 && $conFiltro['total'] <= $sinFiltro['total'],
+            'aplicar filtro estructurado (' . $conFiltro['total'] . ' de ' . $sinFiltro['total'] . ')'
+        );
+
+        $sel = Catalog::selectionFromQuery(['f' => [$grupo['key'] => [$opcion['value']]]]);
+        check(
+            ($sel['terms'][$grupo['key']] ?? []) === [(string) $opcion['value']] && $sel['flat'] !== [],
+            'leer filtro estructurado de la URL'
+        );
+
+        $rutaFiltro = CatalogUrl::fromQuery(['subcat' => $subFiltro, 'f' => [$grupo['key'] => [$opcion['value']]]]);
+        check(str_contains($rutaFiltro, '/f/' . $grupo['key'] . '-' . $opcion['value']), 'ruta SEO del filtro (' . $rutaFiltro . ')');
+        $estadoFiltro = CatalogUrl::parse($rutaFiltro);
+        check(
+            is_array($estadoFiltro) && ($estadoFiltro['f'][$grupo['key']][0] ?? '') === (string) $opcion['value'],
+            'parsear ruta SEO del filtro'
+        );
+    }
+
+    // Los facetas de configuracion (marca, socket...) tienen que filtrar de
+    // verdad: el WHERE los ignoraba por un envoltorio mal formado.
+    $topMarca = Catalog::brandList(1);
+    if ($topMarca !== []) {
+        $marcaId = (string) $topMarca[0]['id'];
+        $conMarca = Catalog::paginate(1, 4, null, null, null, [Catalog::brandFacetKey() => [$marcaId]]);
+        check(
+            $conMarca['total'] > 0 && $conMarca['total'] <= Catalog::paginate(1, 4)['total'],
+            'aplicar faceta de marca (' . $conMarca['total'] . ' productos)'
+        );
+    }
+
+    // La marca y la etiqueta no se pierden al construir enlaces (el fallo que
+    // tenia el catalogo: /ofertas + marca acababa en el catalogo entero).
+    $tagUrl = CatalogUrl::fromQuery(['etiqueta' => 'ofertas', 'f' => [Catalog::brandFacetKey() => ['43']], 'page' => 2]);
+    check(
+        str_starts_with($tagUrl, '/ofertas?') && str_contains($tagUrl, 'f%5Bmarca%5D') && str_contains($tagUrl, 'page=2'),
+        'la etiqueta y la marca se conservan en los enlaces (' . $tagUrl . ')'
+    );
 }
 
 echo "\n== Sistema de diseno (design tokens) ==\n";
@@ -933,8 +1002,15 @@ $invalidas = array_values(array_filter($rutasMenu, static fn (string $path): boo
 check($invalidas === [],
     'los enlaces del menu son rutas validas' . ($invalidas ? ' (rotas: ' . implode(', ', array_slice($invalidas, 0, 3)) . ')' : ''));
 check($niveles === 3, 'el arbol del menu tiene tres niveles');
-check(array_filter($rutasMenu, static fn (string $p): bool => str_contains($p, '/f/')) === [],
-    'los filtros pendientes no se pintan en el menu');
+$rutasFiltro = array_values(array_filter($rutasMenu, static fn (string $p): bool => str_contains($p, '/f/')));
+$filtrosMenuValidos = true;
+foreach ($rutasFiltro as $rutaFiltro) {
+    if (CatalogUrl::parse($rutaFiltro) === null) {
+        $filtrosMenuValidos = false;
+        break;
+    }
+}
+check($filtrosMenuValidos, 'los destinos de filtro del menu son rutas validas (' . count($rutasFiltro) . ' filtros)');
 
 // Accesos rapidos del menu.
 $quickKeys = array_map(static fn (array $q): string => $q['key'], Menu::quickLinks());
@@ -981,9 +1057,11 @@ $conOrden = $subPath !== null ? CatalogUrl::parse($subPath . '/orden/precio-asc/
 check($conOrden !== null && $conOrden['orden'] === 'precio-asc' && $conOrden['page'] === 3,
     'la ruta SEO admite orden y paginacion');
 
+$rutaConFiltro = $subPath !== null ? CatalogUrl::parse((string) $subPath . '/f/164-1282') : null;
 check(CatalogUrl::parse('/categoria-que-no-existe') === null
-    && CatalogUrl::parse((string) $subPath . '/f/164-1282') === null,
-    'una ruta SEO invalida (o con filtros aun no soportados) no resuelve');
+    && is_array($rutaConFiltro)
+    && ($rutaConFiltro['f']['164'][0] ?? '') === '1282',
+    'una ruta SEO invalida no resuelve y la de filtro si');
 
 $desdeQuery = CatalogUrl::fromQuery(['cat' => $catId, 'f' => ['socket' => ['am5']]]);
 check(str_starts_with($desdeQuery, (string) $catPath) && str_contains($desdeQuery, 'socket'),

@@ -416,6 +416,10 @@ final class Specs
                     }
                     $key = self::normalize((string) $key);
                     foreach ($index as $norm => $value) {
+                        // Una clave numerica ("1440") se guarda como entero en el
+                        // array: sin convertirla, str_contains() recibe un int y
+                        // el listado se cae con TypeError.
+                        $norm = (string) $norm;
                         if (isset($used[$norm])) {
                             continue;
                         }

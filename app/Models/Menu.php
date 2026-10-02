@@ -689,9 +689,24 @@ final class Menu
                 break;
 
             case 'filtro':
-                // Los filtros estructurados (rel_filtro_producto) aun no estan
-                // implementados: el destino queda pendiente y no se pinta.
-                return null;
+                // Filtro estructurado del mayorista: /f/{id_filtro}-{id_subfiltro}.
+                // La subcategoria no es la del ancla del grupo (puede no tener
+                // productos para ese filtro), sino la que tiene stock: se
+                // resuelve contra el catalogo para no enlazar a una lista vacia.
+                if ($targetId <= 0) {
+                    return null;
+                }
+                $extraFilter = (int) ($link['target_extra'] ?? 0);
+                if ($extraFilter <= 0) {
+                    return null; // La ruta SEO necesita el par filtro-subfiltro.
+                }
+                $subId = Catalog::filterSubcategory($targetId, $extraFilter);
+                $subPath = $subId !== null ? CatalogUrl::subPath($subId) : null;
+                if ($subPath === null) {
+                    return null;
+                }
+                $path = $subPath . '/f/' . $targetId . ($extraFilter > 0 ? '-' . $extraFilter : '');
+                break;
 
             default:
                 return null;
@@ -1019,7 +1034,7 @@ final class Menu
                 $sortLink = 0;
                 foreach ($resueltos as $target) {
                     $sortLink++;
-                    $isPending = $target['type'] === 'filtro' || !empty($target['note']);
+                    $isPending = !empty($target['note']);
                     Database::insert('mt_menu_items', [
                         'store_id'    => $storeId,
                         'parent_id'   => $groupItemId,
@@ -1081,8 +1096,6 @@ final class Menu
             $base['type'] = 'filtro';
             $base['id'] = (int) $m[1];
             $base['extra'] = isset($m[2]) ? (int) $m[2] : null;
-            $base['note'] = 'Filtro del catalogo (rel_filtro_producto): pendiente de implementar.';
-            $skipped[] = $label . ' (filtro ' . $m[1] . ')';
             return $base;
         }
 

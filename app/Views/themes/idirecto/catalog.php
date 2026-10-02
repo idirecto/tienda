@@ -14,6 +14,7 @@
  * @var string|null $categoryName @var array|null $subcategory @var array $subcategories
  * @var string $title @var array $ownProducts @var bool $catalogReady @var string $base
  * @var array $facets @var array $activeFilters @var array $sorts @var string $sort
+ * @var array $structuredFacets filtros del mayorista de la subcategoria activa
  */
 
 use Tienda\Core\CatalogUrl;
@@ -25,7 +26,7 @@ $pages = (int) ($result['pages'] ?? 0);
 // ---------------------------------------------------------------------------
 // Constructores de URL: conservan siempre lo que el usuario ya ha elegido.
 // ---------------------------------------------------------------------------
-$baseParams = static function () use ($q, $category, $subcategory, $sort, $selection): array {
+$baseParams = static function () use ($q, $category, $subcategory, $sort, $selection, $tag): array {
     $params = [];
     if ($q !== '') {
         $params['q'] = $q;
@@ -38,6 +39,11 @@ $baseParams = static function () use ($q, $category, $subcategory, $sort, $selec
     }
     if ($sort !== 'relevancia') {
         $params['orden'] = $sort;
+    }
+    // La etiqueta (ofertas, novedades, destacados) viaja en todos los enlaces:
+    // sin esto, filtrar u ordenar desde /ofertas volvia al catalogo completo.
+    if ($tag !== 'todos') {
+        $params['etiqueta'] = $tag;
     }
     // Facets y precio activos: cualquier enlace que se genere a partir de aqui
     // los conserva, de modo que quitar un filtro no borre los demas.
@@ -163,6 +169,9 @@ $priceMax = $selection['price_max'];
                 <?php if ($sort !== 'relevancia'): ?>
                     <input type="hidden" name="orden" value="<?= e($sort) ?>">
                 <?php endif; ?>
+                <?php if ($tag !== 'todos'): ?>
+                    <input type="hidden" name="etiqueta" value="<?= e($tag) ?>">
+                <?php endif; ?>
                 <?php foreach ($selection['terms'] as $facetKey => $values): ?>
                     <?php foreach ($values as $value): ?>
                         <input type="hidden" name="f[<?= e($facetKey) ?>][]" value="<?= e($value) ?>">
@@ -262,6 +271,38 @@ $priceMax = $selection['price_max'];
                     </ul>
                 </nav>
             <?php endif; ?>
+
+            <?php /* Filtros estructurados del mayorista (filtros/subfiltros de la
+                     subcategoria). Son los mismos que usan idirecto y puntobyze:
+                     OR dentro del mismo filtro y AND entre filtros. */ ?>
+            <?php foreach ($structuredFacets as $facet): ?>
+                <nav class="facet" aria-labelledby="facet-<?= e($facet['key']) ?>">
+                    <h3 class="facet-head" id="facet-<?= e($facet['key']) ?>">
+                        <?= e($facet['label']) ?>
+                        <?php if (!empty($facet['selected'])): ?>
+                            <span class="facet-count"><?= count($facet['selected']) ?></span>
+                        <?php endif; ?>
+                    </h3>
+                    <ul class="facet-list facet-list--scroll">
+                        <?php foreach ($facet['options'] as $option): ?>
+                            <?php
+                            $isActive = !empty($option['selected']);
+                            $count = isset($option['count'])
+                                ? ' <small>(' . number_format((int) $option['count'], 0, ',', '.') . ')</small>'
+                                : '';
+                            ?>
+                            <li>
+                                <a class="facet-option<?= $isActive ? ' is-active' : '' ?>"
+                                   href="<?= e($toggleTerm((string) $facet['key'], (string) $option['value'])) ?>"
+                                   <?= $isActive ? 'aria-pressed="true"' : 'aria-pressed="false"' ?>>
+                                    <span class="facet-box" aria-hidden="true"><?= icon_svg('check') ?></span>
+                                    <span class="facet-label"><?= e($option['label']) ?><?= $count ?></span>
+                                </a>
+                            </li>
+                        <?php endforeach; ?>
+                    </ul>
+                </nav>
+            <?php endforeach; ?>
         </aside>
 
         <div class="catalog-results">

@@ -91,9 +91,14 @@ final class StorefrontController extends Controller
         $menu = Catalog::menuTree();
 
         // La subcategoria manda: fija tambien su categoria para que filtros,
-        // titulo y migas de pan queden coherentes entre si.
+        // titulo y migas de pan queden coherentes entre si. Si llegan las dos y
+        // no concuerdan (p. ej. al cambiar la categoria en el formulario sin
+        // quitar la subcategoria), manda la categoria.
         $subInfo = $subcategory !== null ? Catalog::subcategory($subcategory) : null;
         if ($subInfo === null) {
+            $subcategory = null;
+        } elseif ($category !== null && $category > 0 && (int) $subInfo['categoria_id'] !== $category) {
+            $subInfo = null;
             $subcategory = null;
         } else {
             $subcategory = (int) $subInfo['id'];
@@ -146,7 +151,8 @@ final class StorefrontController extends Controller
             'tag'           => $tag,
             'tags'          => Catalog::tags(),
             'brandId'       => $this->selectedBrandId($selection),
-            'facets'        => Catalog::facets($category, $subcategory, $selection),
+            'facets'        => Catalog::facets($category, $subcategory, $selection, $tag, $q),
+            'structuredFacets' => Catalog::structuredFilters($subcategory, $selection['terms']),
             'selection'     => $selection,
             'activeFilters' => $selection['flat'],
             'sorts'         => Catalog::sorts($narrowed),
@@ -241,11 +247,19 @@ final class StorefrontController extends Controller
             return $this->notFound();
         }
 
-        $_GET = ['etiqueta' => $path, 'page' => max(1, (int) ($_GET['page'] ?? 1))];
+        // La etiqueta reescribe la ruta, pero hay que conservar lo que ya venia
+        // en la query (facetas del mayorista y de configuracion, precio, orden
+        // y pagina): antes se perdia todo `f[...]` y marcar una marca en
+        // /ofertas devolvia el catalogo entero.
+        $original = $_GET;
+        $_GET = ['etiqueta' => $path, 'page' => max(1, (int) ($original['page'] ?? 1))];
         foreach (['pmin', 'pmax', 'orden'] as $key) {
-            if (isset($_GET[$key]) && (string) $_GET[$key] !== '') {
-                $_GET[$key] = (string) $_GET[$key];
+            if (isset($original[$key]) && (string) $original[$key] !== '') {
+                $_GET[$key] = (string) $original[$key];
             }
+        }
+        if (isset($original['f']) && is_array($original['f']) && $original['f'] !== []) {
+            $_GET['f'] = $original['f'];
         }
 
         return $this->catalog();
@@ -273,10 +287,24 @@ final class StorefrontController extends Controller
             return $this->notFound();
         }
 
+        // La marca es el destino de la ruta, pero se conservan las facetas,
+        // el precio y el orden que ya venian (si no, ordenar o paginar en la
+        // pagina de una marca la dejaba sin marca).
+        $original = $_GET;
         $_GET = [
             'f'    => [Catalog::brandFacetKey() => [$id]],
-            'page' => max(1, (int) ($_GET['page'] ?? 1)),
+            'page' => max(1, (int) ($original['page'] ?? 1)),
         ];
+        foreach (['pmin', 'pmax', 'orden'] as $key) {
+            if (isset($original[$key]) && (string) $original[$key] !== '') {
+                $_GET[$key] = (string) $original[$key];
+            }
+        }
+        foreach ((array) ($original['f'] ?? []) as $key => $values) {
+            if ((string) $key !== Catalog::brandFacetKey()) {
+                $_GET['f'][$key] = $values;
+            }
+        }
 
         return $this->catalog();
     }

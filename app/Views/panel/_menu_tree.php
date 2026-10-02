@@ -178,6 +178,7 @@ $badgeChip = static function (?string $text, ?string $color): string {
                     <option value="subcategoria">Subcategoria del catalogo</option>
                     <option value="marca">Marca</option>
                     <option value="etiqueta">Etiqueta comercial</option>
+                    <option value="filtro">Filtro del catalogo</option>
                     <option value="url">Enlace libre</option>
                 </select>
             </label>
@@ -216,6 +217,24 @@ $badgeChip = static function (?string $text, ?string $color): string {
                 <input type="text" name="url" maxlength="500" placeholder="https://... o /ruta"
                        data-menu-field="url">
             </label>
+
+            <?php /* Solo para el tipo "Filtro del catalogo": dos ids numericos
+                     (filtro y subfiltro del mayorista). */ ?>
+            <label>Filtro (id)
+                <input type="number" name="filter_id" min="0" step="1" placeholder="164"
+                       list="mn-filter-presets" data-menu-field="filter_id">
+            </label>
+            <label>Subfiltro (id)
+                <input type="number" name="filter_extra" min="0" step="1" placeholder="1282"
+                       data-menu-field="filter_extra">
+            </label>
+            <?php if (!empty($destinos['filters'])): ?>
+                <datalist id="mn-filter-presets">
+                    <?php foreach ($destinos['filters'] as $fil): ?>
+                        <option value="<?= (int) $fil['id'] ?>" label="<?= e((string) $fil['label']) ?> (subfiltro <?= (int) $fil['extra'] ?>)"></option>
+                    <?php endforeach; ?>
+                </datalist>
+            <?php endif; ?>
 
             <label>Icono
                 <select name="icon" data-menu-field="icon">

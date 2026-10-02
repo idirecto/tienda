@@ -5,6 +5,73 @@ El detalle línea a línea está en `git log`.
 
 ---
 
+## 2026-10-02 · Los filtros de los listados (categorías y subcategorías)
+
+**Motivo:** «revisa los filtros en los listados, que funcione correctamente; puedes tomar
+de ejemplo los filtros que se usan en /var/www/html/idirecto o /var/www/html/puntobyze
+para las categorías y subcategorías».
+
+**Lo que estaba mal (reproducido con HTTP real).**
+1. **Los facetas no filtraban nada.** `Catalog::buildFilters()` llamaba a
+   `normalizeSelection($facetSelection)`, pero el listado le pasa el **mapa de términos**
+   (`['socket'=>['am5']]`), no la selección completa (`['terms'=>…]`). `normalizeSelection`
+   leía `$selection['terms']`, que no existía, así que devolvía vacío: **socket, gráfica,
+   memoria, formato, almacenamiento y marca se ignoraban**. Marcar una marca en `/ofertas`
+   dejaba el catálogo entero.
+2. **La faceta de marca fuera de una categoría generaba `/catalogo?marca=43&page=1`**: un
+   parámetro que no lee nadie (el listado usa `f[marca][]`), así que no filtraba nada.
+3. **La etiqueta comercial se perdía en todos los enlaces** (`/ofertas`, `/novedades`,
+   `/destacados`): paginación, orden, facetas y subcategorías devolvían al catálogo
+   completo porque `tag()` reescribía `$_GET` sin conservar `f[...]` y el constructor de
+   URLs no incluía `etiqueta`.
+4. **Los filtros reales del mayorista no existían en la tienda.** Las rutas
+   `/f/{id_filtro}-{id_subfiltro}` respondían 404 y las **14 categorías de filtro** que la
+   siembra del menú dejó desactivadas («Para un uso: GAMING», «Tipo gráfica: NVDIA»,
+   «Tipo memoria interna: DDR5»…) no se podían pintar.
+5. `Specs::highlightsFromPairs()` se caía con **TypeError** cuando una clave de
+   especificación era numérica («1440»): PHP la guarda como entero en el array y
+   `str_contains(int, string)` no lo admite. Rompía listados filtrados de monitores.
+
+**Cómo lo hacen las referencias (idirecto y puntobyze).** El mayorista clasifica sus
+productos en `rel_filtro_producto` (producto ↔ `subfiltros`) y declara en
+`rel_filtros_subcat` qué `filtros` aplican a cada subcategoría. En un listado de
+subcategoría se ofrecen esos grupos con el número de productos con stock y al aplicarlos
+se combinan **OR dentro del mismo filtro y AND entre filtros**.
+
+**Qué se hizo.**
+- `Catalog`: `structuredFilters()` carga los grupos de la subcategoría (contadores con
+  stock, cacheados 1 h y **cotejados contra el total real del listado**: 296 opciones
+  probadas, 0 desajustes); `filterSubcategory()` resuelve a qué subcategoría conviene
+  enlazar un filtro; `structuredChipLabel()` da la etiqueta del chip.
+- El WHERE del listado aplica los filtros estructurados como semijoin
+  (`p.id IN (SELECT … WHERE sf.id_filtro = N AND r.id_sub_filtro IN (…))`), con el id de
+  filtro incrustado para que desde la URL no cuele un subfiltro de otro grupo.
+- Se corrigió el envoltorio de `buildFilters()` (acepta el mapa de términos y la selección
+  completa) y los contadores de marca se calculan ahora **en el contexto del listado**
+  (etiqueta, búsqueda y resto de filtros), excluyendo la propia marca.
+- `CatalogUrl`: `/f/{filtro}-{subfiltro}` se construye y se parsea (sin 404), la etiqueta
+  sin jerarquía se emite como ruta propia (`/ofertas`) y la marca sin categoría viaja como
+  `f[marca][]` en vez del `marca=` muerto.
+- Vista del catálogo: bloque de filtros estructurados (con contador y «seleccionado
+  primero»), conservación de `etiqueta` en el formulario y en todos los enlaces generados.
+- `tag()` y `brand()` conservan facetas, precio y orden de la query original.
+- Menú: los nodos de tipo `filtro` se resuelven a la subcategoría con stock y se pintan;
+  `MenuAdmin` los valida (par filtro-subfiltro) y el editor permite crearlos con sus dos
+  ids. Migración **008** que activa los 14 destinos sembrados + menú republicado (359
+  destinos). El `Agenda` (filtro sin stock en todo el catálogo) se queda sin pintar en
+  lugar de enlazar a una lista vacía.
+- `Specs`: se convierte la clave a `string` antes de `str_contains`.
+
+**Verificación.** `php tools/verify.php` → **TODO OK (183)** (5 comprobaciones nuevas de
+filtros estructurados, facetas y URLs; 3 actualizadas porque ya no aplica el
+comportamiento viejo). HTTP real: subcategoría 181 → 110 productos, `…/f/28-210` → 81,
+`…/f/28-210/f/30-238` → 80 (AND), `/ofertas` + marca → filtrada, paginación de `/ofertas`
+y del orden conservan la etiqueta, `/marca/43?orden=precio-asc` conserva la marca, los 11
+enlaces de filtro del menú devuelven productos y `?pmin=500&pmax=900` acota a 24.
+`storage/cache` limpio; caches de filtros ~0,3-0,5 s en frío y ~3 ms en caliente.
+
+---
+
 ## 2026-10-02 · Parpadeo del Menú Compacto al pasar el ratón por una categoría
 
 **Motivo:** «cuando me posiciono sobre las clases `mn-bar-toggle` la pantalla empieza a

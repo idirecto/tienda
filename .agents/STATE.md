@@ -15,7 +15,7 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
 
 > ✅ **Entorno (2026-10-02).** `idirecto_db` está **completa** (239 tablas:
 > catálogo con 41.289 productos con stock, 33 categorías con stock, y las `mt_`),
-> la web responde 200 y `php tools/verify.php` da **TODO OK (176)**. El menú se
+> la web responde 200 y `php tools/verify.php` da **TODO OK (183)**. El menú se
 > verificó además **en navegador real** (Chrome headless por CDP): 22 comprobaciones
 > con el Menú Catálogo, 16 con el Menú Compacto y 20 del **editor del panel**
 > (drag & drop incluido), sin errores de JavaScript. El **parpadeo** del Menú Compacto
@@ -42,7 +42,8 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
 | Ficha de producto (galería + especificaciones) | ✅ Completo (colores ya tokenizados) |
 | **Sistema de diseño white-label (tokens, claro/oscuro, presets, previa en vivo)** | ✅ Completo |
 | **Portada (slider + accesos rápidos) y tarjetas con specs y stock** | ✅ Completo |
-| **Filtros avanzados (socket, gráfica, memoria, formato, almacenamiento, marca, precio)** | ✅ Completo |
+| **Filtros del mayorista por categoría/subcategoría (filtros/subfiltros)** | ✅ Completo (contadores con stock, OR en grupo y AND entre grupos, ruta SEO `/f/…`) |
+| **Filtros avanzados (socket, gráfica, memoria, formato, almacenamiento, marca, precio)** | ✅ Completo (**ahora sí filtran**; el WHERE los ignoraba) |
 | Panel de la tienda (diseño, banners, avisos, productos, dominios, ajustes) | ✅ Completo |
 | **Pedidos: listado por estados, ficha y envío por líneas a idirecto** | ✅ Completo |
 | Dominios propios + verificación DNS | ✅ Completo |
@@ -135,7 +136,18 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
   almacenamiento, marca (dinámica, cacheada) y precio, con chips de filtros
   activos, orden (incluido precio cuando el listado está acotado) y panel lateral
   en móvil. Los filtros son enlaces: funcionan sin JavaScript y cada combinación
-  tiene URL propia.
+  tiene URL propia. **Corregido (2026-10-02):** el WHERE del listado leía mal la
+  selección y los ignoraba; ahora filtran de verdad y los contadores de marca se
+  calculan en el contexto del listado (etiqueta, búsqueda y resto de filtros).
+- **Filtros reales del mayorista en cada subcategoría** (`filtros`/`subfiltros` +
+  `rel_filtros_subcat`/`rel_filtro_producto`, solo lectura): se pintan con el
+  número de productos con stock, **OR dentro del mismo filtro y AND entre
+  filtros**, ruta SEO `/categoria/subcategoria/f/{filtro}-{subfiltro}`, chips y
+  caché de 1 h. El mismo modelo que usan idirecto y puntobyze. Ejemplo:
+  `/componentes/tarjetas-graficas/f/28-210` (NVDIA) → 81 productos.
+- **La etiqueta y la marca ya no se pierden** en los enlaces: `/ofertas` pagina y
+  ordena sin volver al catálogo completo, y la página de una marca conserva
+  facetas, precio y orden.
 - Buscador, filtro por categoría y **subcategoría** (`?subcat`) y paginación,
   con **20 productos por página** (`CATALOG_PER_PAGE`; tope duro 60 en
   `Catalog::paginate`). Los **destacados de la portada** van aparte
@@ -194,9 +206,11 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
 - **Un solo árbol de categorías de 3 niveles** (`mt_menu_items`, migración `005`)
   que alimenta **los dos** estilos: primero se copia del menú de la web de
   referencia (PuntoByZE, solo nombres y orden, leyendo sus tablas sin tocarlas) y
-  luego se edita desde el panel. Hoy: **14 categorías / 83 grupos / 346 destinos**;
-  quedan **21 destinos pendientes** (14 filtros estructurados y 7 subcategorías que
-  no se reconocieron) guardados **desactivados** con su aviso, visibles en el panel.
+  luego se edita desde el panel. Hoy: **14 categorías / 83 grupos / 359 destinos**;
+  quedan **7 destinos pendientes** (subcategorías que no se reconocieron) guardados
+  **desactivados** con su aviso, visibles en el panel. Los **14 destinos de filtro**
+  («Para un uso: GAMING», «Tipo gráfica: NVDIA»…) ya se resuelven: migración `008`
+  los activó y el menú se republicó.
 - **Menú Catalogo** (por defecto): botón «Todas las categorías» → panel con fondo
   oscuro, categorías a la izquierda y grupos con el tercer nivel a la derecha.
 - **Menú Compacto**: barra horizontal bajo la cabecera con las 7 primeras
@@ -219,8 +233,9 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
 - **Rutas SEO** (`Core/CatalogUrl`): `/categoria`, `/categoria/subcategoria`,
   `/m/marca`, `/etiqueta/…`, `/orden/…`, `/page/n`, más `/marcas`, `/marca/{id}` y
   `/ofertas`, `/novedades`, `/destacados`. Las URLs con query string hacen **301** a
-  su ruta; `f/…` (filtros estructurados) todavía responde 404 a propósito en vez de
-  enseñar un listado equivocado. Las facetas y el rango de precio siguen en query.
+  su ruta; **`f/…` (filtros estructurados) ya se resuelve** hacia la misma
+  selección que `f[filtro][]=subfiltro` (antes respondía 404). Las facetas y el
+  rango de precio siguen en query.
 - Etiquetas de listado resueltas en SQL contra `ofertas` (218 productos),
   `fecha_alta` (90 días, 196) y `etiqueta = 1` (26.000), y **aviso «Oferta»** en las
   tarjetas (`Catalog::attachOffers`).
@@ -272,7 +287,8 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
   en **nginx + PHP-FPM** (`sudo bash deploy/setup-nginx-domain.sh valduran.com`).
 - La app detecta el servidor (`app/Core/Server.php`): ruta pública de `/public`,
   esquema real (incluido proxy) y host de las URLs canónicas.
-- `tools/verify.php`: 118 comprobaciones automáticas (diseño, facetas, catálogo,
+- `tools/verify.php`: 183 comprobaciones automáticas (diseño, facetas, filtros
+  estructurados del mayorista, catálogo,
   almacenamiento, DNS, servidor, registro de tiendas, pedidos y envío al mayorista).
 - Documentación interna en `.agents/`, blindada frente a la web.
 - Repositorio publicado en GitHub (`main`).

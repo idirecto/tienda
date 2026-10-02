@@ -711,10 +711,19 @@ final class Catalog
      * Definiciones de facet disponibles para el contexto actual, ya preparadas
      * para pintar (opciones, seleccion y, si toca, valores del rango de precio).
      *
+     * Los contadores de la marca se calculan en el contexto del listado (etiqueta,
+     * busqueda y resto de filtros activos), para que no ofrezcan marcas que no
+     * aparecen en la pagina.
+     *
      * @return array<int, array>
      */
-    public static function facets(?int $categoryId = null, ?int $subcategoryId = null, array $selection = []): array
-    {
+    public static function facets(
+        ?int $categoryId = null,
+        ?int $subcategoryId = null,
+        array $selection = [],
+        string $tag = 'todos',
+        ?string $q = null
+    ): array {
         if (!self::isAvailable()) {
             return [];
         }
@@ -746,7 +755,18 @@ final class Catalog
             }
 
             if ($type === 'brand') {
-                $options = self::brandOptions($categoryId, $subcategoryId, (int) ($def['limit'] ?? 12));
+                // Los contadores de marca se calculan con el resto de filtros
+                // activos (sin la propia marca, que es la que se esta eligiendo).
+                $otherTerms = (array) ($selection['terms'] ?? []);
+                unset($otherTerms[$key]);
+                $options = self::brandOptions(
+                    $categoryId,
+                    $subcategoryId,
+                    (int) ($def['limit'] ?? 12),
+                    $tag,
+                    $q,
+                    $otherTerms
+                );
                 if (count($options) < (int) ($def['min_items'] ?? 1)) {
                     continue;
                 }
@@ -808,6 +828,26 @@ final class Catalog
 
         foreach ((array) ($get['f'] ?? []) as $key => $values) {
             $key = (string) $key;
+
+            // Clave numerica: filtro estructurado del mayorista (f[164][]=1282).
+            if (self::isStructuredKey($key)) {
+                if (!self::filtersAvailable()) {
+                    continue;
+                }
+                $allowed = [];
+                foreach ((array) (is_array($values) ? $values : [$values]) as $value) {
+                    $id = (int) $value;
+                    if ($id > 0) {
+                        $allowed[] = (string) $id;
+                    }
+                }
+                $allowed = array_values(array_unique($allowed));
+                if ($allowed !== []) {
+                    $terms[$key] = $allowed;
+                }
+                continue;
+            }
+
             $def = $definitions[$key] ?? null;
             if ($def === null) {
                 continue;
@@ -843,6 +883,17 @@ final class Catalog
         // Chips de filtros activos, con su etiqueta legible (para la vista).
         $flat = [];
         foreach ($terms as $key => $values) {
+            if (self::isStructuredKey($key)) {
+                foreach ($values as $value) {
+                    $flat[] = [
+                        'key'   => (string) $key,
+                        'value' => (string) $value,
+                        'label' => self::structuredChipLabel((int) $key, (int) $value),
+                    ];
+                }
+                continue;
+            }
+
             $def = $definitions[$key] ?? [];
             foreach ($values as $value) {
                 $label = null;
@@ -910,30 +961,35 @@ final class Catalog
      * Marcas con mas productos con stock en el contexto actual (facet dinamico).
      * La consulta agrupa sobre el catalogo ya filtrado, asi que se cachea.
      *
+     * Cuenta en el contexto real del listado: categoria, subcategoria, etiqueta,
+     * busqueda y resto de filtros activos (los mismos que aplica el listado).
+     *
+     * @param array<string,array<int,string>> $facetTerms resto de filtros activos
      * @return array<int, array{value:string,label:string,count:int,selected:bool}>
      */
-    private static function brandOptions(?int $categoryId, ?int $subcategoryId, int $limit): array
-    {
+    private static function brandOptions(
+        ?int $categoryId,
+        ?int $subcategoryId,
+        int $limit,
+        string $tag = 'todos',
+        ?string $q = null,
+        array $facetTerms = []
+    ): array {
         $limit = max(1, min(30, $limit));
         $ttl = (int) Config::get('catalog.facets_ttl', 900);
-        $cacheKey = 'brands:' . ($categoryId ?? 0) . ':' . ($subcategoryId ?? 0) . ':' . $limit;
+        $tag = self::tagKey($tag);
+        $context = md5($tag . '|' . (string) $q . '|' . serialize($facetTerms));
+        $cacheKey = 'brands:' . ($categoryId ?? 0) . ':' . ($subcategoryId ?? 0) . ':' . $limit . ':' . $context;
 
-        $data = self::cached($cacheKey, $ttl, static function () use ($categoryId, $subcategoryId, $limit): array {
-            $where = self::baseConditions();
-            $params = [];
-            if ($categoryId !== null && $categoryId > 0) {
-                $where .= ' AND p.id_categoria = :cat';
-                $params['cat'] = $categoryId;
-            }
-            if ($subcategoryId !== null && $subcategoryId > 0) {
-                $where .= ' AND p.id_subcategoria = :subcat';
-                $params['subcat'] = $subcategoryId;
-            }
+        $data = self::cached($cacheKey, $ttl, static function () use ($categoryId, $subcategoryId, $limit, $tag, $q, $facetTerms): array {
+            // Mismo WHERE que el listado (menos la propia marca), para que los
+            // contadores no ofrezcan marcas que no aparecen en la pagina.
+            [$where, $params] = self::buildFilters($q, $categoryId, $subcategoryId, $facetTerms, null, null, $tag);
 
             $rows = Database::select(
                 "SELECT p.id_marca, COUNT(*) AS total
                  FROM productos p
-                 WHERE $where AND p.id_marca IS NOT NULL AND p.id_marca > 0
+                 $where AND p.id_marca IS NOT NULL AND p.id_marca > 0
                  GROUP BY p.id_marca
                  ORDER BY total DESC, p.id_marca ASC
                  LIMIT $limit",
@@ -991,6 +1047,213 @@ final class Catalog
         }
         $name = Database::scalar('SELECT marca FROM marcas WHERE id = :id', ['id' => $id]);
         return $name === null || trim((string) $name) === '' ? null : (string) $name;
+    }
+
+    // =====================================================================
+    // FILTROS ESTRUCTURADOS DEL MAYORISTA (filtros / subfiltros)
+    //
+    // El mayorista clasifica sus productos con `rel_filtro_producto`
+    // (producto <-> subfiltro) y declara que filtros aplican a cada
+    // subcategoria en `rel_filtros_subcat`. Es el mismo modelo que usan sus
+    // webs (idirecto y puntobyze): en una subcategoria se ofrecen sus filtros
+    // con el numero de productos con stock y, al aplicarlos, se combinan en
+    // AND entre filtros y OR dentro del mismo filtro.
+    //
+    // Solo se leen tablas del mayorista: nunca se escriben.
+    // =====================================================================
+
+    /** ¿Estan las tablas de filtros del mayorista disponibles? */
+    private static function filtersAvailable(): bool
+    {
+        foreach (['filtros', 'subfiltros', 'rel_filtros_subcat', 'rel_filtro_producto'] as $table) {
+            if (!Database::tableExists($table)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * En la seleccion de facetas, los ids de filtro del mayorista son claves
+     * numericas (`f[164][]=1282`) y los facetas de configuracion, nombres
+     * (`f[socket][]=am5`). Esto los distingue.
+     */
+    public static function isStructuredKey(string|int $key): bool
+    {
+        return ctype_digit((string) $key);
+    }
+
+    /**
+     * Grupos de filtros de una subcategoria con sus opciones y el numero de
+     * productos con stock de cada una (cacheados).
+     *
+     * @param array<string,array<int,string>> $selection seleccion activa
+     * @return array<int,array{id:int,key:string,label:string,options:array,selected:array}>
+     */
+    public static function structuredFilters(?int $subcategoryId, array $selection = []): array
+    {
+        if ($subcategoryId === null || $subcategoryId <= 0 || !self::isAvailable() || !self::filtersAvailable()) {
+            return [];
+        }
+        $subcategoryId = (int) $subcategoryId;
+        $ttl = max(1800, (int) Config::get('catalog.facets_ttl', 900) * 4);
+
+        $groups = self::cached('filters_sub_' . $subcategoryId, $ttl, static function () use ($subcategoryId): array {
+            // La subconsulta de productos con stock se materializa a proposito
+            // (STRAIGHT_JOIN + GROUP BY): si no, el optimizador recorre primero
+            // `rel_filtro_producto` y la consulta pasa de decimas a segundos en
+            // subcategorias con muchos productos sin stock.
+            $rows = Database::select(
+                'SELECT f.id AS id_filtro, f.filtro, sf.id AS id_subfiltro, sf.nombre, COUNT(DISTINCT r.id_producto) AS total
+                 FROM rel_filtro_producto r
+                 INNER JOIN subfiltros sf ON sf.id = r.id_sub_filtro
+                 INNER JOIN filtros f ON f.id = sf.id_filtro AND f.deleted = 0
+                 INNER JOIN rel_filtros_subcat rfs ON rfs.id_filtro = f.id AND rfs.id_subcategoria = :sub1
+                 WHERE r.id_producto IN (
+                     SELECT p.id
+                     FROM productos p
+                     STRAIGHT_JOIN stock sx ON sx.part_number = p.part_number
+                     STRAIGHT_JOIN almacenes ax ON ax.id = sx.id_almacen
+                     WHERE p.id_subcategoria = :sub2
+                       AND p.estado <> 4
+                       AND sx.stock > 0 AND sx.activo = 1 AND sx.costo > 0 AND ax.tipo <> 2
+                     GROUP BY p.id
+                 )
+                 GROUP BY f.id, f.filtro, sf.id, sf.nombre
+                 HAVING total > 0
+                 ORDER BY f.filtro ASC, total DESC, sf.nombre ASC',
+                ['sub1' => $subcategoryId, 'sub2' => $subcategoryId]
+            );
+
+            $out = [];
+            $index = [];
+            foreach ($rows as $row) {
+                $filterId = (int) $row['id_filtro'];
+                if (!isset($index[$filterId])) {
+                    $index[$filterId] = count($out);
+                    $out[] = [
+                        'id'       => $filterId,
+                        'key'      => (string) $filterId,
+                        'label'    => self::filterLabel((string) $row['filtro']),
+                        'options'  => [],
+                        'selected' => [],
+                    ];
+                }
+                $out[$index[$filterId]]['options'][] = [
+                    'value'    => (string) (int) $row['id_subfiltro'],
+                    'label'    => (string) $row['nombre'],
+                    'count'    => (int) $row['total'],
+                    'selected' => false,
+                ];
+            }
+
+            return $out;
+        });
+
+        // Marca los valores elegidos y los pone delante (como idirecto).
+        foreach ($groups as $i => $group) {
+            $picked = array_map('strval', (array) ($selection[(string) $group['id']] ?? []));
+            if ($picked === []) {
+                continue;
+            }
+            $elegidas = [];
+            $resto = [];
+            foreach ($group['options'] as $option) {
+                $option['selected'] = in_array((string) $option['value'], $picked, true);
+                if ($option['selected']) {
+                    $elegidas[] = $option;
+                } else {
+                    $resto[] = $option;
+                }
+            }
+            $groups[$i]['options'] = array_merge($elegidas, $resto);
+            $groups[$i]['selected'] = array_map(static fn (array $o): string => (string) $o['value'], $elegidas);
+        }
+
+        return array_values((array) $groups);
+    }
+
+    /**
+     * Subcategoria donde un filtro (y su subfiltro) tiene mas productos con
+     * stock. La usan los destinos de filtro del menu para enlazar a un listado
+     * con resultados en vez de al ancla del grupo, que puede estar vacia.
+     */
+    public static function filterSubcategory(int $filterId, int $subfilterId = 0): ?int
+    {
+        if ($filterId <= 0 || !self::isAvailable() || !self::filtersAvailable()) {
+            return null;
+        }
+        $subfilterId = max(0, $subfilterId);
+
+        $value = self::cached('filter_sub_' . $filterId . '_' . $subfilterId, 3600, static function () use ($filterId, $subfilterId): array {
+            if ($subfilterId > 0) {
+                $join = 'INNER JOIN rel_filtro_producto r ON r.id_sub_filtro = :subfilter';
+                $params = ['filter' => $filterId, 'subfilter' => $subfilterId];
+            } else {
+                // Sin subfiltro concreto: cualquier valor de ese filtro.
+                $join = 'INNER JOIN rel_filtro_producto r
+                            ON r.id_sub_filtro IN (SELECT sff.id FROM subfiltros sff WHERE sff.id_filtro = :filter2)';
+                $params = ['filter' => $filterId, 'filter2' => $filterId];
+            }
+
+            $row = Database::first(
+                'SELECT rfs.id_subcategoria AS subcategoria_id, COUNT(DISTINCT p.id) AS total
+                 FROM rel_filtros_subcat rfs
+                 ' . $join . '
+                 INNER JOIN productos p ON p.id = r.id_producto AND p.id_subcategoria = rfs.id_subcategoria
+                 WHERE rfs.id_filtro = :filter
+                   AND p.estado <> 4
+                   AND ' . self::stockExistsSql() . '
+                 GROUP BY rfs.id_subcategoria
+                 ORDER BY total DESC, rfs.id_subcategoria ASC
+                 LIMIT 1',
+                $params
+            );
+
+            return $row === null ? [] : ['id' => (int) $row['subcategoria_id']];
+        });
+
+        return isset($value['id']) ? (int) $value['id'] : null;
+    }
+
+    /** Etiqueta de un filtro activo ("Memoria Grafica: 8 GB") para los chips. */
+    public static function structuredChipLabel(int $filterId, int $subfilterId): string
+    {
+        $parts = self::filterLabels($filterId, $subfilterId);
+        if ($parts === []) {
+            return 'Filtro ' . $filterId . '-' . $subfilterId;
+        }
+
+        return self::filterLabel($parts['filter']) . ': ' . $parts['value'];
+    }
+
+    /** @return array{filter:string,value:string}|array{} */
+    private static function filterLabels(int $filterId, int $subfilterId): array
+    {
+        if ($filterId <= 0 || $subfilterId <= 0 || !Database::tableExists('filtros') || !Database::tableExists('subfiltros')) {
+            return [];
+        }
+
+        return (array) self::cached('filter_label_' . $filterId . '_' . $subfilterId, 86400, static function () use ($filterId, $subfilterId): array {
+            $row = Database::first(
+                'SELECT f.filtro, sf.nombre FROM subfiltros sf
+                 INNER JOIN filtros f ON f.id = sf.id_filtro
+                 WHERE sf.id = :sub AND f.id = :filter LIMIT 1',
+                ['sub' => $subfilterId, 'filter' => $filterId]
+            );
+
+            return $row === null ? [] : ['filter' => (string) $row['filtro'], 'value' => (string) $row['nombre']];
+        });
+    }
+
+    /** Limpia el nombre del filtro que trae el mayorista (espacios, dos puntos). */
+    private static function filterLabel(string $name): string
+    {
+        $name = trim((string) preg_replace('/\s+/u', ' ', $name));
+        $name = rtrim($name, " :");
+
+        return $name === '' ? 'Filtro' : $name;
     }
 
     // =====================================================================
@@ -1405,9 +1668,40 @@ final class Catalog
         }
 
         $definitions = (array) Config::get('catalog.facets', []);
+        // `$facetSelection` puede llegar como el mapa de terminos
+        // (`key => valores`, es lo que usa el listado) o como la seleccion
+        // completa (`['terms' => ...]`, lo usan los chequeos). Sin normalizarlo,
+        // TODOS los filtros se ignoraban en el primer caso.
+        if (!isset($facetSelection['terms']) || !is_array($facetSelection['terms'])) {
+            $facetSelection = ['terms' => $facetSelection];
+        }
         $selection = self::normalizeSelection($facetSelection);
 
         foreach ($selection['terms'] as $key => $values) {
+            // Filtro estructurado del mayorista: OR dentro del filtro, AND
+            // entre filtros. El `sf.id_filtro` evita que desde la URL cuele un
+            // subfiltro que no pertenece a ese grupo.
+            if (self::isStructuredKey($key)) {
+                $filterId = (int) $key;
+                $ors = [];
+                foreach ($values as $value) {
+                    $subfilterId = (int) $value;
+                    if ($subfilterId <= 0) {
+                        continue;
+                    }
+                    $ph = 'sf' . $counter++;
+                    $ors[] = ':' . $ph;
+                    $params[$ph] = $subfilterId;
+                }
+                if ($filterId > 0 && $ors !== []) {
+                    $where[] = 'p.id IN (SELECT r.id_producto FROM rel_filtro_producto r
+                                         INNER JOIN subfiltros sf ON sf.id = r.id_sub_filtro
+                                         WHERE sf.id_filtro = ' . $filterId . '
+                                           AND r.id_sub_filtro IN (' . implode(',', $ors) . '))';
+                }
+                continue;
+            }
+
             $def = $definitions[$key] ?? null;
             if ($def === null) {
                 continue;

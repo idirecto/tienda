@@ -21,6 +21,26 @@ _(vacío — sin petición pendiente)_
 
 Cada petición terminada se anota aquí con la fecha, qué se pidió y qué se hizo.
 
+### 2026-10-02 · Filtros de los listados por categoría y subcategoría (petición por chat)
+
+**Pedido:** «revisa los filtros en los listados, que funcione correctamente; puedes tomar
+de ejemplo los filtros que se usan en /var/www/html/idirecto o /var/www/html/puntobyze
+para las categorías y subcategorías».
+
+**Qué era:** los facetas no filtraban (el WHERE leía mal la selección y la ignoraba); la
+faceta de marca fuera de una categoría generaba un `marca=` que nadie lee; la etiqueta de
+`/ofertas`, `/novedades` y `/destacados` se perdía en todos los enlaces; los filtros
+reales del mayorista (`filtros`/`subfiltros` por subcategoría) no existían, la ruta
+`/f/…` daba 404 y los 14 destinos de filtro del menú seguían desactivados; además
+`Specs` se caía con claves de especificación numéricas.
+
+**Qué se hizo:** filtros estructurados del mayorista en `Catalog` (contadores con stock,
+OR en grupo y AND entre grupos), ruta SEO `/f/{filtro}-{subfiltro}`, bloque de filtros en
+la vista, corrección del WHERE de facetas y de los contadores de marca, etiqueta y marca
+conservadas en los enlaces, destinos `filtro` del menú resueltos + migración `008` y menú
+republicado, y arreglo de `Specs`. `verify.php` 176 → **183** (TODO OK). Detalle en
+`CHANGELOG.md`.
+
 ### 2026-10-02 · Parpadeo del Menú Compacto al pasar el ratón por una categoría (petición por chat)
 
 **Pedido:** «cuando me posiciono sobre las clases `mn-bar-toggle` la pantalla empieza a

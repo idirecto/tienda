@@ -20,7 +20,9 @@ use Tienda\Models\Catalog;
  * Los segmentos se resuelven contra `categorias` y `subcategorias` (solo
  * lectura) y se cachean por peticion. Los facetas que todavia no tienen un
  * segmento propio (socket, memoria...) y el rango de precio viajan como query
- * string sobre la ruta SEO: la ruta manda, la query solo afina.
+ * string sobre la ruta SEO: la ruta manda, la query solo afina. Los filtros
+ * estructurados del mayorista van como claves numericas dentro de `f`
+ * (`f[164][]=1282`) y, con jerarquia, como segmentos `/f/164-1282`.
  *
  * Nada de este fichero escribe en la base de datos.
  */
@@ -193,6 +195,35 @@ final class CatalogUrl
     {
         $catId = (int) ($state['cat'] ?? 0);
         $subId = (int) ($state['subcat'] ?? 0);
+        $tag = self::tagKey($state['etiqueta'] ?? null);
+        $orden = (string) ($state['orden'] ?? '');
+        $page = (int) ($state['page'] ?? 1);
+        $brandId = (int) ($state['marca'] ?? 0);
+
+        // Los filtros estructurados van como claves numericas dentro de `f`;
+        // los facetas de configuracion (socket, memoria...), con su nombre.
+        $facets = (array) ($state['f'] ?? []);
+        $structured = [];
+        foreach ($facets as $key => $values) {
+            if (ctype_digit((string) $key)) {
+                $ids = array_values(array_filter(array_map('intval', (array) $values), static fn (int $v): bool => $v > 0));
+                if ($ids !== []) {
+                    $structured[(int) $key] = $ids;
+                }
+                unset($facets[$key]);
+            }
+        }
+
+        // Lo que no cabe en la ruta y sobrevive en cualquier caso.
+        $query = [];
+        foreach (['q', 'pmin', 'pmax'] as $key) {
+            if (isset($state[$key]) && (string) $state[$key] !== '') {
+                $query[$key] = (string) $state[$key];
+            }
+        }
+        if ($facets !== []) {
+            $query['f'] = $facets;
+        }
 
         $path = null;
         if ($subId > 0) {
@@ -201,35 +232,49 @@ final class CatalogUrl
         if ($path === null && $catId > 0) {
             $path = self::categoryPath($catId);
         }
-        if ($path === null) {
-            // Sin categoria no hay ruta jerarquica: se queda en /catalogo.
-            return '/catalogo' . self::query(array_diff_key($state, ['cat' => 1, 'subcat' => 1]));
+
+        if ($path !== null) {
+            $extra = '';
+            if ($brandId > 0) {
+                $extra .= '/m/' . $brandId;
+            }
+            foreach ($structured as $filterId => $ids) {
+                foreach ($ids as $id) {
+                    $extra .= '/f/' . $filterId . '-' . $id;
+                }
+            }
+            if ($tag !== 'todos') {
+                $extra .= '/etiqueta/' . rawurlencode($tag);
+            }
+            if ($orden !== '' && $orden !== 'relevancia') {
+                $extra .= '/orden/' . rawurlencode($orden);
+            }
+            if ($page > 1) {
+                $extra .= '/page/' . $page;
+            }
+
+            return $path . $extra . self::query($query);
         }
 
-        $extra = '';
-        $brandId = (int) ($state['marca'] ?? 0);
+        // Sin jerarquia: la marca y los filtros estructurados solo caben en la
+        // query (`f[...]`), que es lo que lee el listado. La etiqueta tiene su
+        // propia ruta (/ofertas, /novedades, /destacados).
         if ($brandId > 0) {
-            $extra .= '/m/' . $brandId;
+            $query['f'] = (array) ($query['f'] ?? []);
+            $query['f'][self::brandFacetKey()] = [(string) $brandId];
         }
-
-        $tag = self::tagKey($state['etiqueta'] ?? null);
-        if ($tag !== 'todos') {
-            $extra .= '/etiqueta/' . rawurlencode($tag);
+        foreach ($structured as $filterId => $ids) {
+            $query['f'] = (array) ($query['f'] ?? []);
+            $query['f'][(string) $filterId] = array_map('strval', $ids);
         }
-
-        $orden = (string) ($state['orden'] ?? '');
         if ($orden !== '' && $orden !== 'relevancia') {
-            $extra .= '/orden/' . rawurlencode($orden);
+            $query['orden'] = $orden;
         }
-
-        $page = (int) ($state['page'] ?? 1);
         if ($page > 1) {
-            $extra .= '/page/' . $page;
+            $query['page'] = $page;
         }
 
-        return $path . $extra . self::query(array_diff_key($state, [
-            'cat' => 1, 'subcat' => 1, 'marca' => 1, 'etiqueta' => 1, 'orden' => 1, 'page' => 1,
-        ]));
+        return ($tag !== 'todos' ? '/' . $tag : '/catalogo') . self::query($query);
     }
 
     /** Ruta SEO equivalente al estado de una query string de listado. */
@@ -369,10 +414,18 @@ final class CatalogUrl
                     break;
 
                 case 'f':
-                    // Los filtros estructurados (rel_filtro_producto) todavia no
-                    // estan implementados: se rechaza la ruta en vez de mostrar un
-                    // listado que no corresponde.
-                    return null;
+                    // Filtro estructurado del mayorista: /f/{id_filtro}-{id_subfiltro}.
+                    // Varios segmentos del mismo filtro se acumulan (OR).
+                    if (preg_match('/^(\d+)-(\d+)$/', $value, $m) !== 1) {
+                        return null;
+                    }
+                    $filterId = (int) $m[1];
+                    $subfilterId = (int) $m[2];
+                    if ($filterId <= 0 || $subfilterId <= 0) {
+                        return null;
+                    }
+                    $state['f'][(string) $filterId][] = (string) $subfilterId;
+                    break;
 
                 default:
                     return null;

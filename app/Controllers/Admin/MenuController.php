@@ -242,13 +242,25 @@ final class MenuController extends Controller
     /** Datos del formulario de un nodo (nada de store_id: sale de la sesion). */
     private function nodeInput(): array
     {
+        $type = strtolower(trim((string) $this->input('target_type', 'subcategoria')));
+        $targetId = $this->input('target_id', 0);
+        $targetExtra = $this->input('target_extra', 0);
+
+        // Los filtros del catalogo usan dos ids (filtro y subfiltro) que no
+        // caben en el selector de destinos: el formulario los manda aparte.
+        if ($type === 'filtro') {
+            $targetId = $this->input('filter_id', 0);
+            $targetExtra = $this->input('filter_extra', 0);
+        }
+
         return [
             'parent_id'          => $this->input('parent_id'),
             'label'              => $this->input('label', ''),
             'slug'               => $this->input('slug', ''),
             'icon'               => $this->input('icon', ''),
             'target_type'        => $this->input('target_type', 'subcategoria'),
-            'target_id'          => $this->input('target_id', 0),
+            'target_id'          => $targetId,
+            'target_extra'       => $targetExtra,
             'target_key'         => $this->input('target_key', ''),
             'url'                => $this->input('url', ''),
             'badge'              => $this->input('badge', ''),
