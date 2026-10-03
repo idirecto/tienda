@@ -329,6 +329,33 @@ if (Catalog::isAvailable()) {
             is_array($estadoFiltro) && ($estadoFiltro['f'][$grupo['key']][0] ?? '') === (string) $opcion['value'],
             'parsear ruta SEO del filtro'
         );
+
+        // Filtrado progresivo por marca: los contadores de los filtros se
+        // recalculan en el contexto y cuadran con el listado.
+        $marcaFacet = null;
+        foreach (Catalog::facets(null, $subFiltro) as $facetCtx) {
+            if (($facetCtx['type'] ?? '') === 'brand' && !empty($facetCtx['options'])) {
+                $marcaFacet = $facetCtx;
+                break;
+            }
+        }
+        if ($marcaFacet !== null) {
+            $marcaCtx = (string) $marcaFacet['options'][0]['value'];
+            $gruposCtx = Catalog::structuredFilters($subFiltro, ['terms' => [Catalog::brandFacetKey() => [$marcaCtx]]]);
+            $cuadra = $gruposCtx !== [];
+            foreach ($gruposCtx as $grupoCtx) {
+                $optCtx = $grupoCtx['options'][0];
+                $totalCtx = Catalog::paginate(1, 1, null, null, $subFiltro, [
+                    Catalog::brandFacetKey() => [$marcaCtx],
+                    $grupoCtx['key']         => [$optCtx['value']],
+                ])['total'];
+                if ($totalCtx !== (int) $optCtx['count']) {
+                    $cuadra = false;
+                    break;
+                }
+            }
+            check($cuadra, 'contadores de filtros con marca (filtrado progresivo)');
+        }
     }
 
     // Los facetas de configuracion (marca, socket...) tienen que filtrar de
@@ -446,6 +473,19 @@ if (Catalog::isAvailable()) {
     $facets = Catalog::facets(9, 102);
     $claves = array_column($facets, 'key');
     check(in_array('socket', $claves, true) && in_array('precio', $claves, true), 'facets del contexto: ' . implode(', ', $claves));
+
+    // Los filtros con `when` son por subcategoria: no deben "escaparse" a
+    // cualquier subcategoria de su categoria (antes Socket salia tambien en
+    // Tarjetas Graficas porque la categoria coincidia).
+    $clavesTarjetas = array_column(Catalog::facets(9, 181), 'key');
+    check(!in_array('socket', $clavesTarjetas, true), 'los filtros de configuracion no se escapan de su subcategoria');
+    $clavesCategoria = array_column(Catalog::facets(9, null), 'key');
+    check(
+        !in_array('socket', $clavesCategoria, true)
+            && in_array('marca', $clavesCategoria, true)
+            && in_array('precio', $clavesCategoria, true),
+        'sin subcategoria solo hay facetas globales (marca y precio)'
+    );
 
     $precio = Catalog::priceBounds();
     check($precio['max'] > $precio['min'] && $precio['max'] > 0, 'rango de precios del catalogo (' . $precio['min'] . ' - ' . $precio['max'] . ')');

@@ -21,6 +21,27 @@ _(vacío — sin petición pendiente)_
 
 Cada petición terminada se anota aquí con la fecha, qué se pidió y qué se hizo.
 
+### 2026-10-03 · Los filtros, por subcategoría y con contexto (petición por chat)
+
+**Pedido:** «va mal; revisa cómo se filtran los filtros en puntobyze, en los listados los
+filtros son por subcategorías; revisa bien la base de datos de dónde los obtiene y cuáles
+mostrar por categoría o subcategoría y marca para poder ir filtrando de forma correcta».
+
+**Qué era:** las facetas de configuración con `when` se escapaban de su subcategoría
+(«Socket» salía en Tarjetas Gráficas o Memoria PC por coincidir la categoría) y en el
+listado de categoría aparecían filtros que no tocaban; además, al elegir una marca o un
+filtro las opciones y los contadores no se recalculaban, así que se podía pinchar una
+opción y quedarse en 0 productos.
+
+**Qué se hizo:** en PuntoByZE los filtros salen de `rel_filtros_subcat` (filtro ↦
+subcategoría) y las marcas de `rel_marcas`, siempre dentro de una subcategoría; idirecto
+recalcula las opciones con la marca/filtros ya elegidos. Se corrigió `facetVisible()` para
+que `subcats` mande y sin subcategoría solo queden marca y precio, y
+`structuredFilters()` ahora recibe el contexto (marca, filtros, precio, búsqueda, etiqueta)
+y recalcula contadores en una consulta cacheada: oculta las opciones que darían 0 y
+conserva las de los grupos ya elegidos. `verify.php` 183 → **186** (TODO OK). Detalle en
+`CHANGELOG.md`.
+
 ### 2026-10-02 · Filtros de los listados por categoría y subcategoría (petición por chat)
 
 **Pedido:** «revisa los filtros en los listados, que funcione correctamente; puedes tomar

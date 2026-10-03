@@ -287,7 +287,7 @@ $priceMax = $selection['price_max'];
                         <?php foreach ($facet['options'] as $option): ?>
                             <?php
                             $isActive = !empty($option['selected']);
-                            $count = isset($option['count'])
+                            $count = isset($option['count']) && (int) $option['count'] > 0
                                 ? ' <small>(' . number_format((int) $option['count'], 0, ',', '.') . ')</small>'
                                 : '';
                             ?>

@@ -152,7 +152,7 @@ final class StorefrontController extends Controller
             'tags'          => Catalog::tags(),
             'brandId'       => $this->selectedBrandId($selection),
             'facets'        => Catalog::facets($category, $subcategory, $selection, $tag, $q),
-            'structuredFacets' => Catalog::structuredFilters($subcategory, $selection['terms']),
+            'structuredFacets' => Catalog::structuredFilters($subcategory, $selection, $tag, $q),
             'selection'     => $selection,
             'activeFilters' => $selection['flat'],
             'sorts'         => Catalog::sorts($narrowed),

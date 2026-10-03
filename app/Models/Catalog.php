@@ -941,19 +941,36 @@ final class Catalog
         ];
     }
 
-    /** El filtro se muestra solo en las categorias/subcategorias indicadas. */
+    /**
+     * El filtro se muestra solo donde corresponde.
+     *
+     * Los filtros del mayorista vienen de `rel_filtros_subcat`, es decir, son
+     * POR SUBCATEGORIA: un filtro que declara subcategorias no debe aparecer en
+     * cualquier subcategoria de su categoria (antes "Socket" salia tambien en
+     * Tarjetas Graficas porque la categoria coincide). Sin subcategoria (listado
+     * de categoria o catalogo entero) solo se muestran los filtros globales.
+     */
     private static function facetVisible(array $def, ?int $categoryId, ?int $subcategoryId): bool
     {
         $when = (array) ($def['when'] ?? []);
         $cats = array_map('intval', (array) ($when['cats'] ?? []));
         $subs = array_map('intval', (array) ($when['subcats'] ?? []));
 
+        // Sin restriccion: vale en todo el catalogo.
         if ($cats === [] && $subs === []) {
             return true;
         }
-        if ($subcategoryId !== null && in_array($subcategoryId, $subs, true)) {
-            return true;
+
+        // Con restriccion, solo tiene sentido dentro de una subcategoria.
+        if ($subcategoryId === null) {
+            return false;
         }
+
+        // La lista de subcategorias manda; `cats` solo se usa si no la hay.
+        if ($subs !== []) {
+            return in_array($subcategoryId, $subs, true);
+        }
+
         return $categoryId !== null && in_array($categoryId, $cats, true);
     }
 
@@ -1086,20 +1103,30 @@ final class Catalog
 
     /**
      * Grupos de filtros de una subcategoria con sus opciones y el numero de
-     * productos con stock de cada una (cacheados).
+     * productos con stock de cada una.
      *
-     * @param array<string,array<int,string>> $selection seleccion activa
+     * Si hay contexto activo (marca, otros filtros, precio o busqueda), las
+     * opciones se recalculan en ese contexto como en idirecto: los grupos que ya
+     * tienen una seleccion conservan todas sus opciones (para poder cambiarlas)
+     * y los demas solo muestran las que dejan resultados. Es lo que permite ir
+     * filtrando paso a paso sin callejones sin salida.
+     *
+     * @param array $selection seleccion completa (terms + price_min/price_max)
      * @return array<int,array{id:int,key:string,label:string,options:array,selected:array}>
      */
-    public static function structuredFilters(?int $subcategoryId, array $selection = []): array
-    {
+    public static function structuredFilters(
+        ?int $subcategoryId,
+        array $selection = [],
+        string $tag = 'todos',
+        ?string $q = null
+    ): array {
         if ($subcategoryId === null || $subcategoryId <= 0 || !self::isAvailable() || !self::filtersAvailable()) {
             return [];
         }
         $subcategoryId = (int) $subcategoryId;
         $ttl = max(1800, (int) Config::get('catalog.facets_ttl', 900) * 4);
 
-        $groups = self::cached('filters_sub_' . $subcategoryId, $ttl, static function () use ($subcategoryId): array {
+        $groups = (array) self::cached('filters_sub_' . $subcategoryId, $ttl, static function () use ($subcategoryId): array {
             // La subconsulta de productos con stock se materializa a proposito
             // (STRAIGHT_JOIN + GROUP BY): si no, el optimizador recorre primero
             // `rel_filtro_producto` y la consulta pasa de decimas a segundos en
@@ -1151,27 +1178,146 @@ final class Catalog
             return $out;
         });
 
-        // Marca los valores elegidos y los pone delante (como idirecto).
-        foreach ($groups as $i => $group) {
-            $picked = array_map('strval', (array) ($selection[(string) $group['id']] ?? []));
-            if ($picked === []) {
-                continue;
+        if ($groups === []) {
+            return []; // La subcategoria no tiene filtros del mayorista.
+        }
+
+        // Seleccion activa: las claves numericas son filtros del mayorista; el
+        // resto (marca, socket...) son facetas de configuracion.
+        $terms = (array) ($selection['terms'] ?? []);
+        $structured = [];
+        $otherTerms = [];
+        foreach ($terms as $termKey => $values) {
+            if (self::isStructuredKey($termKey)) {
+                $ids = array_values(array_filter(array_map('intval', (array) $values), static fn (int $v): bool => $v > 0));
+                if ($ids !== []) {
+                    $structured[(int) $termKey] = $ids;
+                }
+            } else {
+                $otherTerms[(string) $termKey] = $values;
             }
+        }
+
+        $priceMin = isset($selection['price_min']) ? (float) $selection['price_min'] : null;
+        $priceMax = isset($selection['price_max']) ? (float) $selection['price_max'] : null;
+        $tag = self::tagKey($tag);
+        $hasContext = $structured !== [] || $otherTerms !== []
+            || ($priceMin !== null && $priceMin > 0)
+            || ($priceMax !== null && $priceMax > 0)
+            || ($q !== null && trim($q) !== '')
+            || $tag !== 'todos';
+
+        // Contadores en contexto (una consulta): marca, facetas, precio,
+        // busqueda y los filtros estructurados activos.
+        $counts = [];
+        if ($hasContext) {
+            [$whereSql, $params] = self::buildFilters(
+                $q,
+                null,
+                $subcategoryId,
+                $otherTerms,
+                $priceMin !== null && $priceMin > 0 ? $priceMin : null,
+                $priceMax !== null && $priceMax > 0 ? $priceMax : null,
+                $tag
+            );
+
+            $counter = 0;
+            foreach ($structured as $filterId => $ids) {
+                $ors = [];
+                foreach ($ids as $id) {
+                    $ph = 'cx' . $counter++;
+                    $ors[] = ':' . $ph;
+                    $params[$ph] = $id;
+                }
+                if ($ors !== []) {
+                    $whereSql .= ' AND p.id IN (SELECT rc.id_producto FROM rel_filtro_producto rc
+                                     INNER JOIN subfiltros sfc ON sfc.id = rc.id_sub_filtro
+                                     WHERE sfc.id_filtro = ' . (int) $filterId . '
+                                       AND rc.id_sub_filtro IN (' . implode(',', $ors) . '))';
+                }
+            }
+
+            $counts = (array) self::cached(
+                'filters_ctx_' . $subcategoryId . '_' . md5($whereSql . serialize($params)),
+                600,
+                static function () use ($whereSql, $params): array {
+                    $rows = Database::select(
+                        'SELECT f.id AS id_filtro, sf.id AS id_subfiltro, COUNT(DISTINCT r.id_producto) AS total
+                         FROM rel_filtro_producto r
+                         INNER JOIN subfiltros sf ON sf.id = r.id_sub_filtro
+                         INNER JOIN filtros f ON f.id = sf.id_filtro AND f.deleted = 0
+                         WHERE r.id_producto IN (SELECT p.id FROM productos p ' . $whereSql . ')
+                         GROUP BY f.id, sf.id
+                         HAVING total > 0',
+                        $params
+                    );
+
+                    $map = [];
+                    foreach ($rows as $row) {
+                        $map[(int) $row['id_subfiltro']] = (int) $row['total'];
+                    }
+
+                    return $map;
+                }
+            );
+        }
+
+        // Aplica el contexto y deja delante los valores elegidos (como idirecto):
+        //   - grupos con seleccion: conservan todas sus opciones (para cambiarlas);
+        //   - grupos sin seleccion: solo las opciones que dejan resultados.
+        $out = [];
+        foreach ($groups as $group) {
+            $filterId = (int) $group['id'];
+            $picked = array_map('strval', (array) ($structured[$filterId] ?? []));
+            $selectedGroup = $picked !== [];
+
             $elegidas = [];
             $resto = [];
             foreach ($group['options'] as $option) {
-                $option['selected'] = in_array((string) $option['value'], $picked, true);
-                if ($option['selected']) {
+                $value = (string) $option['value'];
+                $isSelected = in_array($value, $picked, true);
+
+                if ($hasContext) {
+                    if ($selectedGroup && !$isSelected) {
+                        // El grupo ya tiene seleccion: se conservan todas sus
+                        // opciones (con su cuenta base) para poder cambiarla.
+                        $option['selected'] = false;
+                    } else {
+                        // Resto de grupos (o el propio valor elegido): solo las
+                        // opciones que dejan resultados en el contexto actual.
+                        $contextCount = (int) ($counts[(int) $value] ?? 0);
+                        if ($contextCount <= 0 && !$isSelected) {
+                            continue;
+                        }
+                        $option['count'] = $contextCount;
+                        $option['selected'] = $isSelected;
+                    }
+                } else {
+                    $option['selected'] = $isSelected;
+                }
+
+                if ($isSelected) {
                     $elegidas[] = $option;
                 } else {
                     $resto[] = $option;
                 }
             }
-            $groups[$i]['options'] = array_merge($elegidas, $resto);
-            $groups[$i]['selected'] = array_map(static fn (array $o): string => (string) $o['value'], $elegidas);
+
+            // Un grupo sin seleccion que se queda sin opciones no se pinta.
+            if ($elegidas === [] && $resto === []) {
+                continue;
+            }
+
+            $out[] = [
+                'id'       => $filterId,
+                'key'      => (string) $group['key'],
+                'label'    => (string) $group['label'],
+                'options'  => array_merge($elegidas, $resto),
+                'selected' => array_map(static fn (array $o): string => (string) $o['value'], $elegidas),
+            ];
         }
 
-        return array_values((array) $groups);
+        return $out;
     }
 
     /**

@@ -1,7 +1,7 @@
 # STATE — Estado del proyecto
 
 > **El agente actualiza este fichero al terminar cada sesión.**
-> Última actualización: **2026-10-02**
+> Última actualización: **2026-10-03**
 
 ---
 
@@ -15,7 +15,7 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
 
 > ✅ **Entorno (2026-10-02).** `idirecto_db` está **completa** (239 tablas:
 > catálogo con 41.289 productos con stock, 33 categorías con stock, y las `mt_`),
-> la web responde 200 y `php tools/verify.php` da **TODO OK (183)**. El menú se
+> la web responde 200 y `php tools/verify.php` da **TODO OK (186)**. El menú se
 > verificó además **en navegador real** (Chrome headless por CDP): 22 comprobaciones
 > con el Menú Catálogo, 16 con el Menú Compacto y 20 del **editor del panel**
 > (drag & drop incluido), sin errores de JavaScript. El **parpadeo** del Menú Compacto
@@ -145,6 +145,14 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
   filtros**, ruta SEO `/categoria/subcategoria/f/{filtro}-{subfiltro}`, chips y
   caché de 1 h. El mismo modelo que usan idirecto y puntobyze. Ejemplo:
   `/componentes/tarjetas-graficas/f/28-210` (NVDIA) → 81 productos.
+- **Alcance por subcategoría (corregido 2026-10-03)**: las facetas con `when`
+  solo salen dentro de su subcategoría (`subcats` manda sobre `cats`); sin
+  subcategoría quedan solo marca y precio (como puntobyze). Antes «Socket»
+  aparecía en Tarjetas Gráficas o Memoria PC por coincidir la categoría.
+- **Filtrado progresivo (corregido 2026-10-03)**: al elegir marca/filtro/precio,
+  los grupos sin selección ocultan las opciones que darían 0 productos y
+  recalculan sus contadores en contexto; los grupos ya elegidos conservan todas
+  sus opciones. Una sola consulta cacheada 600 s.
 - **La etiqueta y la marca ya no se pierden** en los enlaces: `/ofertas` pagina y
   ordena sin volver al catálogo completo, y la página de una marca conserva
   facetas, precio y orden.
@@ -287,7 +295,7 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
   en **nginx + PHP-FPM** (`sudo bash deploy/setup-nginx-domain.sh valduran.com`).
 - La app detecta el servidor (`app/Core/Server.php`): ruta pública de `/public`,
   esquema real (incluido proxy) y host de las URLs canónicas.
-- `tools/verify.php`: 183 comprobaciones automáticas (diseño, facetas, filtros
+- `tools/verify.php`: 186 comprobaciones automáticas (diseño, facetas, filtros
   estructurados del mayorista, catálogo,
   almacenamiento, DNS, servidor, registro de tiendas, pedidos y envío al mayorista).
 - Documentación interna en `.agents/`, blindada frente a la web.

@@ -5,6 +5,65 @@ El detalle línea a línea está en `git log`.
 
 ---
 
+## 2026-10-03 · Filtros por subcategoría: alcance correcto y filtrado progresivo
+
+**Motivo:** «va mal; revisa cómo se filtran los filtros en puntobyze, en los listados los
+filtros son por subcategorías; revisa bien la base de datos de dónde los obtiene y cuáles
+mostrar por categoría o subcategoría y marca para poder ir filtrando de forma correcta».
+
+**Qué pasaba.**
+1. **Los facetas de configuración se escapaban de su subcategoría.** `facetVisible()`
+   devolvía `true` si coincidía la **categoría** *o* la subcategoría: como `socket`
+   declara `cats=[9]`, aparecía en **todas** las subcategorías de COMPONENTES, incluidas
+   Tarjetas Gráficas o Memoria PC. Y en el listado de categoría (sin subcategoría) salían
+   socket/memoria/almacenamiento, que ahí no pintan nada.
+2. **Los filtros no se adaptaban al contexto.** Al elegir una marca (o un filtro), los
+   grupos del mayorista seguían mostrando todas sus opciones y con los contadores de la
+   subcategoría completa: se podía pinchar una opción y quedarse en **0 productos**.
+
+**Cómo lo hace la referencia (PuntoByZE), revisado en su código y su base de datos.**
+Los filtros no son de la categoría ni globales: salen de `rel_filtros_subcat`
+(**filtro ↦ subcategoría**) y sus valores de `subfiltros`, contando productos con stock
+vía `rel_filtro_producto`. Las marcas también son por subcategoría (`rel_marcas`). La
+subcategoría es, por tanto, el eje: en el listado de categoría no hay filtros laterales
+(hay rejilla de subcategorías), y dentro de una subcategoría se muestran sus marcas y sus
+filtros. Al aplicar: **OR dentro del mismo filtro, AND entre filtros**; idirecto, además,
+recalcula las opciones en el contexto de la marca/filtros ya elegidos
+(`getFiltrosNuevo`).
+
+**Qué se hizo.**
+- `Catalog::facetVisible()`: un faceta con `when` **solo** se muestra dentro de una
+  subcategoría, y si declara `subcats` manda esa lista (la categoría solo se usa como
+  respaldo). Sin subcategoría quedan solo las facetas globales (marca y precio), como en
+  la referencia. Resultado: `/componentes/tarjetas-graficas` ya no ofrece «Socket»;
+  `/componentes/placas-base` sí ofrece socket + memoria + factor.
+- `Catalog::structuredFilters()` pasa a recibir la **selección completa** y el contexto
+  (etiqueta, búsqueda, marca, facetas, precio) y recalcula los contadores con una sola
+  consulta cacheada (600 s):
+  - grupos **sin** selección: solo las opciones que dejan resultados, con su contador en
+    contexto;
+  - grupos **con** selección: conservan todas sus opciones para poder cambiarlas.
+  Así se filtra «paso a paso» sin callejones sin salida.
+- El controlador le pasa la selección completa, la etiqueta y `q`; la vista deja de pintar
+  el contador «(0)» de una opción elegida sin resultados.
+- `verify.php`: 3 comprobaciones nuevas (alcance de facetas por subcategoría y contadores
+  progresivos cotejados con el listado). Total **186**.
+
+**Verificación (HTTP real).**
+- `/componentes` → solo marca + subcategorías (sin filtros laterales).
+- `/componentes/tarjetas-graficas` → gpu, marca, subcategorías y los 6 filtros del
+  mayorista (Conexión gráfica, Conexiones externas, Diseño Color, Memoria Gráfica,
+  Modelo gráfica, Tipo gráfica); **ni socket ni memoria**.
+- `/componentes/memoria-pc` → memoria (config) + los 6 filtros reales (incluido «Tipo
+  memoria interna»: DDR5, DDR4…).
+- Con marca **GIGABYTE** en Tarjetas Gráficas, «Tipo gráfica» queda en NVDIA (26), AMD (6)
+  y GT para Multimedia (1): cuadra exactamente con el listado de cada combinación
+  (probado también marca + filtro: 26 productos). Con **HP** solo quedan las opciones que
+  HP tiene. Los enlaces conservan la marca al tocar un filtro y viceversa.
+- Tiempos: subcategoría ~0,11-0,14 s; contexto con marca ~0,09-0,12 s en caliente.
+
+---
+
 ## 2026-10-02 · Los filtros de los listados (categorías y subcategorías)
 
 **Motivo:** «revisa los filtros en los listados, que funcione correctamente; puedes tomar
