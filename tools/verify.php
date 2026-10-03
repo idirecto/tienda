@@ -49,6 +49,7 @@ use Tienda\Models\Customer;
 use Tienda\Models\CustomerAddress;
 use Tienda\Models\Order;
 use Tienda\Models\OrderItem;
+use Tienda\Models\OwnProduct;
 use Tienda\Models\Plan;
 use Tienda\Models\Store;
 use Tienda\Models\StoreUser;
@@ -1486,6 +1487,24 @@ if (!$editorStore) {
             + (int) Database::scalar('SELECT COUNT(*) FROM mt_menu_items WHERE parent_id = :p', ['p' => (int) $nivel2['id']]);
         check($borrado['ok'] && $hijosAntes > 0 && $hijosDespues === 0,
             'borrar un nodo se lleva su rama por delante');
+
+        // --- Buscador: el alcance sigue al menu visible ---
+        // La categoria 46 (Ocio) no esta en el menu sembrado: solo entra en el
+        // alcance del buscador si la tienda la muestra con un nodo propio.
+        $sinNodo = Menu::searchScope($editorStore);
+        $nodoOcio = MenuAdmin::create($editorStore, false, [
+            'parent_id' => null, 'label' => 'Ocio propio', 'slug' => 'ocio-propio',
+            'target_type' => 'categoria', 'target_id' => 46, 'active' => 1,
+        ]);
+        Menu::invalidate($editorStore);
+        $conNodo = Menu::searchScope($editorStore);
+        MenuAdmin::setOverride((int) ($nodoOcio['id'] ?? 0), $editorStore, 'oculto', '');
+        Menu::invalidate($editorStore);
+        $conOculto = Menu::searchScope($editorStore);
+        check(!in_array(46, $sinNodo['categories'], true)
+            && in_array(46, $conNodo['categories'], true)
+            && !in_array(46, $conOculto['categories'], true),
+            'el alcance del buscador sigue las categorias que muestra el menu (visible/oculta)');
     } catch (\Throwable $e) {
         check(false, 'el editor del menu no lanza excepciones (' . $e->getMessage() . ' en ' . $e->getFile() . ':' . $e->getLine() . ')');
     }
@@ -1493,6 +1512,100 @@ if (!$editorStore) {
     $pdo->rollBack();
     check(true, 'la prueba del editor deshace sus datos de prueba (transaccion)');
 }
+
+// ---------------------------------------------------------------------------
+echo "\n== Buscador: alcance del menu, catalogo y productos propios ==\n";
+// ---------------------------------------------------------------------------
+// El buscador del storefront (accion `searchLive`) devuelve solo lo que la
+// tienda muestra en su menu, mas sus productos propios. Aqui se comprueba el
+// modelo (menu -> alcance -> consultas) sin depender de la UI.
+try {
+    $searchStoreId = (int) (Database::scalar('SELECT id FROM mt_stores ORDER BY id ASC LIMIT 1') ?? 0);
+    $searchScope = Menu::searchScope($searchStoreId);
+    check($searchScope['restricted'] && $searchScope['categories'] !== [] && $searchScope['subcategories'] !== [],
+        sprintf('el alcance del buscador sale del menu visible (%d categorias, %d subcategorias)',
+            count($searchScope['categories']), count($searchScope['subcategories'])));
+
+    $allowedSubs = array_flip(array_map('intval', $searchScope['subcategories']));
+    $allowedCats = array_flip(array_map('intval', $searchScope['categories']));
+
+    $scoped = Catalog::paginate(1, 20, null, null, null, [], null, null, 'relevancia', 'todos', $searchScope);
+    $enAlcance = $scoped['items'] !== [];
+    foreach ($scoped['items'] as $item) {
+        if (!isset($allowedSubs[(int) $item['id_subcategoria']])
+            && !isset($allowedCats[(int) $item['id_categoria']])) {
+            $enAlcance = false;
+            break;
+        }
+    }
+    check($scoped['total'] > 0 && $enAlcance,
+        'el listado del buscador solo trae productos visibles en el menu (' . (int) $scoped['total'] . ')');
+
+    // El alcance recorta de verdad (no es el catalogo entero).
+    $sinAlcance = Catalog::paginate(1, 1, null, null, null, [], null, null, 'relevancia', 'todos');
+    check((int) $scoped['total'] > 0 && (int) $scoped['total'] < (int) $sinAlcance['total'],
+        'el alcance recorta el catalogo (' . (int) $scoped['total'] . ' < ' . (int) $sinAlcance['total'] . ')');
+
+    // Facetas del buscador: subcategorias y marcas dentro del alcance.
+    $searchFacets = Catalog::searchFacets('ssd', $searchScope, [], 20, 12);
+    $facetsOk = $searchFacets['subcategories'] !== [] && $searchFacets['marcas'] !== [];
+    foreach ($searchFacets['subcategories'] as $sub) {
+        if (!isset($allowedSubs[(int) $sub['id']])) {
+            $facetsOk = false;
+        }
+    }
+    check($facetsOk, 'las facetas del buscador (subcategorias y marcas) salen del alcance');
+
+    // El alcance tambien limita el listado con texto: la busqueda no filtra
+    // productos de categorias ocultas.
+    $conTexto = Catalog::paginate(1, 5, 'ssd', null, null, [], null, null, 'relevancia', 'todos', $searchScope);
+    $textoOk = $conTexto['total'] > 0;
+    foreach ($conTexto['items'] as $item) {
+        if (!isset($allowedSubs[(int) $item['id_subcategoria']])
+            && !isset($allowedCats[(int) $item['id_categoria']])) {
+            $textoOk = false;
+            break;
+        }
+    }
+    check($textoOk, 'la busqueda por texto respeta el alcance del menu (' . (int) $conTexto['total'] . ' para «ssd»)');
+
+    // Accion y piezas de la UI.
+    check(method_exists(\Tienda\Controllers\StorefrontController::class, 'searchLive'),
+        'existe la accion searchLive del buscador en vivo');
+    $layoutShop = (string) file_get_contents(TIENDA_BASE . '/app/Views/layouts/shop.php');
+    check(str_contains($layoutShop, 'id="shop-search"') && str_contains($layoutShop, '/buscar/live'),
+        'el layout pinta el panel del buscador y apunta a /buscar/live');
+    $shopJs = (string) file_get_contents(TIENDA_BASE . '/public/assets/js/shop.js');
+    check(str_contains($shopJs, 'initLiveSearch') && str_contains($shopJs, 'shop-search-chip'),
+        'el JS del buscador en vivo (panel, facetas y fichas) esta presente');
+} catch (\Throwable $e) {
+    check(false, 'el buscador del storefront no lanza excepciones (' . $e->getMessage() . ' en ' . $e->getFile() . ':' . $e->getLine() . ')');
+}
+
+// Aislamiento de los productos propios: cada tienda busca solo los suyos.
+$pdoPropios = Database::pdo();
+$pdoPropios->beginTransaction();
+try {
+    $tUno = (int) Database::insert('mt_stores', ['slug' => 'propios-uno-' . substr((string) time(), -5), 'name' => 'Tienda propios 1', 'status' => 1]);
+    $tDos = (int) Database::insert('mt_stores', ['slug' => 'propios-dos-' . substr((string) time(), -6), 'name' => 'Tienda propios 2', 'status' => 1]);
+    Database::insert('mt_own_products', ['store_id' => $tUno, 'sku' => 'Z-' . $tUno, 'name' => 'Producto exclusivo ZETA', 'price' => 10, 'stock' => 1, 'status' => 1]);
+    Database::insert('mt_own_products', ['store_id' => $tDos, 'sku' => 'Z-' . $tDos, 'name' => 'Producto exclusivo ZETA', 'price' => 10, 'stock' => 1, 'status' => 1]);
+    Database::insert('mt_own_products', ['store_id' => $tUno, 'sku' => 'Z-OCULTO', 'name' => 'Producto exclusivo ZETA oculto', 'price' => 10, 'stock' => 1, 'status' => 0]);
+
+    $uno = OwnProduct::searchPublished($tUno, 'ZETA');
+    $dos = OwnProduct::searchPublished($tDos, 'ZETA');
+    check(count($uno) === 1 && (int) $uno[0]['store_id'] === $tUno,
+        'la busqueda de productos propios se limita a la tienda que se ve');
+    check(count($dos) === 1 && (int) $dos[0]['store_id'] === $tDos && (int) $uno[0]['id'] !== (int) $dos[0]['id'],
+        'dos tiendas con el mismo nombre de producto no se mezclan');
+    check((int) Database::scalar('SELECT COUNT(*) FROM mt_own_products WHERE store_id = :s AND status = 0', ['s' => $tUno]) === 1
+        && count(OwnProduct::searchPublished($tUno, 'ZETA oculto')) === 0,
+        'los productos propios en borrador u ocultos no salen en el buscador');
+} catch (\Throwable $e) {
+    check(false, 'la busqueda de productos propios no lanza excepciones (' . $e->getMessage() . ')');
+}
+$pdoPropios->rollBack();
+check(true, 'la prueba del buscador de propios deshace sus datos (transaccion)');
 
 echo "\n==============================================================\n";
 if ($fail === 0) {

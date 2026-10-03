@@ -21,6 +21,25 @@ _(vacío — sin petición pendiente)_
 
 Cada petición terminada se anota aquí con la fecha, qué se pidió y qué se hizo.
 
+### 2026-10-03 · Buscador en vivo como PuntoByZE, con el menú y los propios (petición por chat)
+
+**Pedido:** «revisa el buscador de `/var/www/html/puntobyze`; haz que el buscador en este
+proyecto funcione de manera similar, solo habría que agregar el caso de que tenga
+productos agregados por la tienda, pero solo los productos de la tienda que está viendo
+el cliente y por supuesto los productos en general, teniendo en cuenta las categorías y
+subcategorías que tenga la tienda visible, que eso se selecciona en la configuración del
+menú a mostrar».
+
+**Decisión confirmada:** el menú manda siempre (el buscador solo ve el catálogo que la
+tienda muestra en su menú, en modo completo o elegido, y sus propios productos).
+
+**Qué se hizo:** `Menu::searchScope()` (árbol visible → categorías/subcategorías del
+catálogo), alcance en `Catalog` (listados y facetas de la búsqueda), `searchFacets()`
+(subcategorías y marcas), `OwnProduct::searchPublished()` (aislado por tienda), endpoint
+`GET /buscar/live` con las tarjetas del tema y panel en vivo en el storefront (JS + CSS
+por tokens), y 13 comprobaciones nuevas en `verify.php` (200 → **213**, TODO OK). Detalle
+en `.agents/CHANGELOG.md` y `STATE.md`.
+
 ### 2026-10-03 · Elegir qué categorías se ven y crear categorías propias (petición por chat)
 
 **Pedido:** «en el panel de la tienda se puede mostrar el menú completo o dar a elegir

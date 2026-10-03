@@ -90,6 +90,14 @@ final class StorefrontController extends Controller
 
         $menu = Catalog::menuTree();
 
+        // Alcance del buscador: en las BUSQUEDAS la tienda solo ve las
+        // categorias/subcategorias que aparecen en su menu (Menu::searchScope).
+        // La navegacion normal del catalogo no se toca: sin `q` el alcance va
+        // vacio y el listado se comporta como siempre.
+        $scope = ($q !== null && $q !== '')
+            ? Menu::searchScope($this->tenant->id())
+            : [];
+
         // La subcategoria manda: fija tambien su categoria para que filtros,
         // titulo y migas de pan queden coherentes entre si. Si llegan las dos y
         // no concuerdan (p. ej. al cambiar la categoria en el formulario sin
@@ -115,7 +123,8 @@ final class StorefrontController extends Controller
             $selection['price_min'],
             $selection['price_max'],
             $sort,
-            $tag
+            $tag,
+            $scope
         );
 
         // Categoria activa: nombre y subcategorias (menu lateral del catalogo).
@@ -151,13 +160,15 @@ final class StorefrontController extends Controller
             'tag'           => $tag,
             'tags'          => Catalog::tags(),
             'brandId'       => $this->selectedBrandId($selection),
-            'facets'        => Catalog::facets($category, $subcategory, $selection, $tag, $q),
-            'structuredFacets' => Catalog::structuredFilters($subcategory, $selection, $tag, $q),
+            'facets'        => Catalog::facets($category, $subcategory, $selection, $tag, $q, $scope),
+            'structuredFacets' => Catalog::structuredFilters($subcategory, $selection, $tag, $q, $scope),
             'selection'     => $selection,
             'activeFilters' => $selection['flat'],
             'sorts'         => Catalog::sorts($narrowed),
             'sort'          => $sort,
-            'ownProducts'   => OwnProduct::publishedForStore($this->tenant->id()),
+            'ownProducts'   => ($q !== null && $q !== '')
+                ? OwnProduct::searchPublished($this->tenant->id(), $q, 20)
+                : OwnProduct::publishedForStore($this->tenant->id()),
             'catalogReady'  => Catalog::isAvailable(),
             'pageTitle'     => $title . ' - ' . $this->tenant->name(),
         ], 'shop');
@@ -332,6 +343,153 @@ final class StorefrontController extends Controller
         }
 
         return $this->catalog();
+    }
+
+    /**
+     * Datos del buscador en vivo (JSON).
+     *
+     * Reemplaza al autocompletado de PuntoByZE: devuelve los resultados ya
+     * pintados con las tarjetas del tema activo (catalogo y productos propios),
+     * las facetas (subcategorias y marcas) y los enlaces para seguir filtrando.
+     *
+     * El catalogo central se limita al menu visible de la tienda
+     * (`Menu::searchScope`) y los productos propios son SIEMPRE los de la tienda
+     * que se esta viendo: nada de una tienda se filtra a otra.
+     *
+     * Parametros (GET): q, s[] (subcategorias), m[] (marcas), pmin, pmax.
+     */
+    public function searchLive(array $params = []): string
+    {
+        $storeId = $this->tenant->id();
+        $base = View::basePath();
+        $q = trim((string) ($_GET['q'] ?? ''));
+        $minChars = 2;
+
+        $empty = [
+            'q'             => $q,
+            'total'         => 0,
+            'catalogo'      => 0,
+            'propios'       => 0,
+            'html'          => '',
+            'subcategorias' => [],
+            'marcas'        => [],
+            'filtros'       => ['s' => [], 'm' => []],
+            'verTodos'      => '',
+        ];
+
+        if (mb_strlen($q) < $minChars) {
+            return $this->json($empty);
+        }
+
+        $scope = Menu::searchScope($storeId);
+        $allowedSubs = $this->intList($scope['subcategories'] ?? []);
+        $chosenSubs = $this->intList($_GET['s'] ?? null);
+        $brands = $this->intList($_GET['m'] ?? null);
+        $priceMin = $this->floatParam($_GET['pmin'] ?? null);
+        $priceMax = $this->floatParam($_GET['pmax'] ?? null);
+
+        // Alcance efectivo del listado. Sin alcance de menu, cualquier
+        // subcategoria elegida vale; con alcance, la eleccion se recorta a lo
+        // que el menu deja ver.
+        if (empty($scope['restricted'])) {
+            $effectiveSubs = $chosenSubs;
+            $restricted = $chosenSubs !== [];
+        } else {
+            $effectiveSubs = $chosenSubs === []
+                ? $allowedSubs
+                : array_values(array_intersect($chosenSubs, $allowedSubs));
+            $restricted = true;
+        }
+
+        $brandKey = Catalog::brandFacetKey();
+        $terms = $brands === [] ? [] : [$brandKey => array_map('strval', $brands)];
+        $listScope = [
+            'restricted'    => $restricted,
+            'categories'    => $this->intList($scope['categories'] ?? []),
+            'subcategories' => $effectiveSubs,
+        ];
+
+        $perPage = max(1, min(24, (int) Config::get('catalog.search_per_page', 12)));
+        $result = Catalog::paginate(1, $perPage, $q, null, null, $terms, $priceMin, $priceMax, 'relevancia', 'todos', $listScope);
+
+        // Los productos propios solo entran sin filtros de catalogo: son ajenos
+        // a las categorias, marcas y precios del catalogo central.
+        $noFilters = $chosenSubs === [] && $brands === [] && $priceMin === null && $priceMax === null;
+        $own = $noFilters ? OwnProduct::searchPublished($storeId, $q, 4) : [];
+
+        $html = '';
+        if ($own !== []) {
+            $html .= '<p class="shop-search-group">Productos de la tienda</p>';
+            foreach ($own as $item) {
+                $html .= View::render($this->themeView('_card_own'), [
+                    'p' => $item, 'tenant' => $this->tenant, 'base' => $base,
+                ]);
+            }
+        }
+        foreach ($result['items'] as $item) {
+            $html .= View::render($this->themeView('_card'), [
+                'p' => $item, 'tenant' => $this->tenant, 'base' => $base,
+            ]);
+        }
+
+        $facets = Catalog::searchFacets($q, $scope, ['terms' => $terms], 20, 12);
+        $subcategories = [];
+        foreach ((array) ($facets['subcategories'] ?? []) as $sub) {
+            $sub['selected'] = in_array((int) $sub['id'], $chosenSubs, true);
+            $subcategories[] = $sub;
+        }
+        $marcas = [];
+        foreach ((array) ($facets['marcas'] ?? []) as $brand) {
+            $brand['selected'] = in_array((int) $brand['value'], $brands, true);
+            $marcas[] = $brand;
+        }
+
+        $page = [];
+        foreach (['q' => $q, 'subcat' => $chosenSubs[0] ?? 0, 'pmin' => $priceMin, 'pmax' => $priceMax] as $key => $value) {
+            if ($value !== null && $value !== '' && $value !== 0 && $value !== []) {
+                $page[$key] = $key === 'pmin' || $key === 'pmax' ? (string) (int) round((float) $value) : $value;
+            }
+        }
+        if ($brands !== []) {
+            $page['f'] = [$brandKey => array_map('strval', $brands)];
+        }
+
+        return $this->json([
+            'q'             => $q,
+            'total'         => (int) $result['total'] + count($own),
+            'catalogo'      => (int) $result['total'],
+            'propios'       => count($own),
+            'html'          => $html,
+            'subcategorias' => $subcategories,
+            'marcas'        => $marcas,
+            'filtros'       => ['s' => $chosenSubs, 'm' => $brands],
+            'verTodos'      => $this->url(ltrim(CatalogUrl::fromQuery($page), '/')),
+        ]);
+    }
+
+    /** Lista de enteros positivos (admite un escalar o un array). */
+    private function intList(mixed $value): array
+    {
+        $out = [];
+        foreach ((array) $value as $item) {
+            $id = (int) $item;
+            if ($id > 0) {
+                $out[$id] = true;
+            }
+        }
+
+        return array_keys($out);
+    }
+
+    /** Numero decimal de la query string o null (admite coma decimal). */
+    private function floatParam(mixed $value): ?float
+    {
+        if ($value === null || $value === '' || is_array($value)) {
+            return null;
+        }
+        $value = str_replace(',', '.', trim((string) $value));
+
+        return is_numeric($value) ? (float) $value : null;
     }
 
     /** 404 del storefront. */

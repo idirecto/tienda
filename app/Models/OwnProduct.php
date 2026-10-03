@@ -43,6 +43,33 @@ final class OwnProduct extends Model
     }
 
     /**
+     * Productos propios publicados que casan con un texto (nombre o referencia).
+     *
+     * Devuelve la fila completa (la pinta `_card_own.php`), no la proyeccion
+     * reducida del selector del panel. Solo publicados: los borradores y los
+     * ocultos no salen en la web.
+     *
+     * @return array<int,array>
+     */
+    public static function searchPublished(int $storeId, string $q, int $limit = 20): array
+    {
+        $q = trim($q);
+        if ($q === '') {
+            return [];
+        }
+        $limit = max(1, min(60, $limit));
+        $like = '%' . str_replace(['%', '_'], ['\\%', '\\_'], $q) . '%';
+
+        return \Tienda\Core\Database::select(
+            "SELECT * FROM mt_own_products
+             WHERE store_id = :store_id AND status = 1 AND (name LIKE :q1 OR sku LIKE :q2)
+             ORDER BY id DESC
+             LIMIT $limit",
+            ['store_id' => $storeId, 'q1' => $like, 'q2' => $like]
+        );
+    }
+
+    /**
      * Busqueda publicada para el selector de productos del panel (pedidos).
      * Solo productos propios publicados; los ocultos o en borrador no entran.
      */

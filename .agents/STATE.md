@@ -15,11 +15,14 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
 
 > ✅ **Entorno (2026-10-03).** `idirecto_db` está **completa** (239 tablas:
 > catálogo con 41.289 productos con stock, 33 categorías con stock, y las `mt_`),
-> la web responde 200 y `php tools/verify.php` da **TODO OK (200)**. El menú se
+> la web responde 200 y `php tools/verify.php` da **TODO OK (213)**. El menú se
 > verificó además **en navegador real** (Chrome headless por CDP): 22 comprobaciones
 > con el Menú Catálogo, 16 con el Menú Compacto y 20 del **editor del panel**
 > (drag & drop incluido), sin errores de JavaScript. El **parpadeo** del Menú Compacto
 > al pasar el ratón por una categoría se reprodujo y se corrigió (ver más abajo).
+> El **buscador en vivo** también se probó en navegador real: teclear en la cabecera
+> abre el panel, filtra por subcategoría/marca, cierra con Escape/clic fuera y no
+> genera errores de JavaScript.
 >
 > ⚠️ **Si vuelve a salir un 500 con «Error interno»**: casi siempre es que el
 > usuario del servidor web (`www-data`) **no puede leer `.env`**, no un fallo de
@@ -45,6 +48,7 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
 | **Portada (slider + accesos rápidos) y tarjetas con specs y stock** | ✅ Completo |
 | **Filtros del mayorista por categoría/subcategoría (filtros/subfiltros)** | ✅ Completo (contadores con stock, OR en grupo y AND entre grupos, ruta SEO `/f/…`) |
 | **Filtros avanzados (socket, gráfica, memoria, formato, almacenamiento, marca, precio)** | ✅ Completo (**ahora sí filtran**; el WHERE los ignoraba) |
+| **Buscador del catálogo (en vivo, estilo PuntoByZE)** | ✅ Completo (solo el catálogo visible en el menú de la tienda + sus productos propios; `/buscar/live`) |
 | Panel de la tienda (diseño, banners, avisos, productos, dominios, ajustes) | ✅ Completo |
 | **Pedidos: listado por estados, ficha y envío por líneas a idirecto** | ✅ Completo |
 | Dominios propios + verificación DNS | ✅ Completo |
@@ -270,6 +274,27 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
 - **`publish()` aplica lo mismo**, así que el snapshot publicado ya sale filtrado; la
   caché se invalida al publicar. Las instantáneas publicadas antes de este cambio
   siguen funcionando (sin `panel_id` se usa el id del nodo para el bloque promocional).
+
+### Buscador del catálogo en vivo (2026-10-03)
+- **`/buscar/live`** (JSON) imita el buscador de PuntoByZE: al enfocar o teclear en el
+  campo de la cabecera se abre un panel con resultados (tarjetas del tema, pintadas en
+  el servidor), **subcategorías y marcas** con contadores y «Ver todos los resultados».
+  Sin JavaScript el formulario sigue navegando a `/catalogo?q=` como siempre.
+- **El menú manda**: `Menu::searchScope($storeId)` traduce el árbol **visible** de la
+  tienda (modo completo/elegido, anulaciones, visibilidad de plataforma, nivel de
+  cliente) a las categorías y subcategorías del catálogo que se pueden devolver. El
+  catálogo central se consulta siempre con ese alcance (subcategoría primero; si el
+  menú no aporta ninguna, por categoría); sin nodos en `mt_menu_items` no se limita.
+  La navegación normal de `/catalogo` (sin `q`) no cambia: el alcance solo se aplica a
+  las **búsquedas**.
+- **Productos propios**: `OwnProduct::searchPublished()` busca por nombre o referencia
+  solo los publicados de **la tienda que se está viendo** (aislamiento por `store_id`).
+  Salen los primeros («Productos de la tienda»), y con filtros de catálogo activos no
+  entran (son ajenos a categorías, marcas y precios centrales).
+- **Rendimiento**: las facetas del buscador (`Catalog::searchFacets`) no calculan el
+  rango de precio — en un texto amplio obligaba a evaluar la tarifa producto a producto
+  y la respuesta subía a 3-4 s. Ahora ~1-2 s en frío y ~50 ms en caliente; el listado
+  completo ya ofrece sus campos de precio mínimo/máximo.
 
 ### Pedidos y envío al mayorista (2026-10-01)
 - Tablas propias `mt_orders` (pedido) y `mt_order_items` (líneas) con **envío por

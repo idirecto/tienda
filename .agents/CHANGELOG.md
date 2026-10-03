@@ -5,6 +5,52 @@ El detalle línea a línea está en `git log`.
 
 ---
 
+## 2026-10-03 · Buscador en vivo como PuntoByZE, con el menú de la tienda y sus productos propios
+
+**Motivo:** «revisa el buscador de `/var/www/html/puntobyze`; haz que el buscador en este
+proyecto funcione de manera similar, solo habría que agregar el caso de que tenga
+productos agregados por la tienda, pero solo los productos de la tienda que está viendo
+el cliente y por supuesto los productos en general, teniendo en cuenta las categorías y
+subcategorías que tenga la tienda visible, que eso se selecciona en la configuración del
+menú a mostrar».
+
+**Decisión del dueño:** **el menú manda siempre**. El buscador solo devuelve productos del
+catálogo central cuya categoría/subcategoría forma parte del menú visible de la tienda
+(en «completo» = todo el menú menos lo oculto; en «elegido» = solo lo marcado). Además
+incluye los productos propios de esa tienda.
+
+**Qué había:** el buscador era el formulario de la cabecera que hacía `GET /catalogo?q=`
+(el listado de siempre): sin resultados en vivo, sin facetas propias de la búsqueda, sin
+productos propios y **sin mirar el menú**, de modo que una tienda podía encontrar por
+búsqueda productos de categorías que no mostraba.
+
+**Qué se hizo**
+- **`Menu::searchScope($storeId)`**: traduce el árbol ya resuelto (`visibleRows`: modo
+  completo/elegido, anulaciones, visibilidad de plataforma y nivel de cliente) a los ids
+  de categoría y subcategoría del catálogo que la tienda puede mostrar. Sin nodos en
+  `mt_menu_items` no limita (una tienda sin menú no se queda sin buscador).
+- **`Catalog`**: parámetro `$scope` en `buildFilters`/`paginate`/`facets`/`brandOptions`/
+  `structuredFilters` (la subcategoría manda; si no hay ninguna, la categoría; si está
+  restringido y no hay nada visible, `1 = 0`). Las claves de caché incluyen el alcance.
+  Nuevo `searchFacets()` (subcategorías y marcas con contadores en contexto **sin** el
+  rango de precio, que multiplicaba por 3-4 la latencia de la búsqueda en vivo).
+- **`OwnProduct::searchPublished()`**: fila completa de los propios publicados que casan
+  por nombre o referencia; `searchLive` los devuelve solo para el `store_id` de la tienda
+  que se está viendo.
+- **`StorefrontController::searchLive()`** + ruta **`GET /buscar/live`**: JSON con el HTML
+  de las tarjetas (mismo tema, sin duplicar maquetación), las facetas y el enlace «Ver
+  todos» (`/catalogo?q=…`). En las búsquedas, `catalog()` aplica el mismo alcance y filtra
+  los productos propios por `q`; la navegación normal (`/catalogo` sin `q`) no cambia.
+- **Interfaz**: panel a pantalla completa en `layouts/shop.php` (campo, filtros por
+  subcategoría y marca, contador, cerrar/Escape/clic fuera) + módulo JS propio en
+  `shop.js` (con `AbortController` para descartar respuestas viejas) + CSS en `shop.css`
+  **solo con tokens**. Si el JS no carga, el formulario de la cabecera funciona igual.
+- **`verify.php` 200 → 213**: alcance que sigue al menú (incluye ocultar una categoría),
+  listados y búsqueda por texto dentro del alcance, facetas acotadas, acción/UI presentes
+  y aislamiento de los productos propios entre dos tiendas (transacción que se deshace).
+
+---
+
 ## 2026-10-03 · La tienda elige qué categorías se ven y puede crear las suyas
 
 **Motivo:** «en el panel de la tienda se puede mostrar el menú completo o dar a elegir

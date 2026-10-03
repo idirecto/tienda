@@ -142,6 +142,61 @@ final class Menu
         return self::scope($row ?? []);
     }
 
+    /**
+     * Alcance de catalogo del buscador: que categorias y subcategorias del
+     * catalogo central puede devolver segun el menu VISIBLE de la tienda.
+     *
+     * El menu es la fuente de verdad (decision del dueño: «el menu manda
+     * siempre»): se parte del arbol ya resuelto por `visibleRows()`, que aplica
+     * visibilidad de plataforma, nivel de cliente, nodos propios y la decision de
+     * la tienda (modo completo/elegido + anulaciones + version publicada).
+     *
+     * De ese arbol se extraen los destinos reales:
+     *   - `categoria`    -> se admite esa categoria del catalogo
+     *   - `subcategoria` -> se admite esa subcategoria (en cualquier nivel)
+     *
+     * Si la tienda todavia no tiene nodos en `mt_menu_items` no se limita nada
+     * (una tienda sin menu no debe quedarse sin buscador). Un menu resuelto sin
+     * ninguna categoria ni subcategoria (p. ej. modo «elegido» sin marcar nada)
+     * si limita: devuelve el conjunto vacio y el catalogo no aporta resultados.
+     *
+     * @return array{restricted:bool,categories:array<int,int>,subcategories:array<int,int>}
+     */
+    public static function searchScope(int $storeId): array
+    {
+        $open = ['restricted' => false, 'categories' => [], 'subcategories' => []];
+
+        if ($storeId <= 0 || !Database::tableExists('mt_menu_items')) {
+            return $open;
+        }
+        if ((int) Database::scalar('SELECT COUNT(*) FROM mt_menu_items') === 0) {
+            return $open;
+        }
+
+        $categories = [];
+        $subcategories = [];
+        foreach (self::visibleRows($storeId) as $row) {
+            $target = (int) ($row['target_id'] ?? 0);
+            if ($target <= 0) {
+                continue;
+            }
+            switch ((string) ($row['target_type'] ?? '')) {
+                case 'categoria':
+                    $categories[$target] = true;
+                    break;
+                case 'subcategoria':
+                    $subcategories[$target] = true;
+                    break;
+            }
+        }
+
+        return [
+            'restricted'    => true,
+            'categories'    => array_keys($categories),
+            'subcategories' => array_keys($subcategories),
+        ];
+    }
+
     // =====================================================================
     // ARBOL
     // =====================================================================

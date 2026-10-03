@@ -555,6 +555,7 @@ tienda/
 |---|---|
 | `/` | Portada: banner, avisos, destacados y productos propios |
 | `/catalogo` | Catálogo con buscador, filtro por categoría y paginación |
+| `/buscar/live` | Buscador en vivo (JSON): catálogo visible en el menú de la tienda + sus productos propios, con facetas de subcategoría y marca |
 | `/producto/{slug}/{id}` | Ficha de producto central (URL SEO, ver más abajo) |
 | `/producto/{id}` | Redirige 301 a la URL canónica con slug |
 | `/contacto` | Datos de contacto de la tienda |

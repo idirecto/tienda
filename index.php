@@ -82,6 +82,10 @@ foreach (['ofertas', 'novedades', 'destacados'] as $tagRoute) {
 }
 $router->get('/menu/panel/{id}',       [StorefrontController::class, 'menuPanel']);
 
+// Buscador en vivo (JSON): resultados del catalogo visible de la tienda y de
+// sus productos propios. La ruta fija va antes del catch-all SEO.
+$router->get('/buscar/live',           [StorefrontController::class, 'searchLive']);
+
 // -----------------------------------------------------------------------------
 // COMPRA DEL CLIENTE (carrito, su cuenta y cierre del pedido)
 // -----------------------------------------------------------------------------

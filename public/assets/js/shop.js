@@ -993,4 +993,262 @@
             closePanel(false);
         }
     });
+
+    /* =====================================================================
+       BUSCADOR EN VIVO
+       ---------------------------------------------------------------------
+       Mismo comportamiento que el buscador de PuntoByZE: al enfocar o teclear
+       se abre un panel con resultados, filtros por subcategoria y marca y un
+       enlace a la busqueda completa. Los resultados los pinta el SERVIDOR
+       (tarjetas del tema) para no duplicar maquetacion ni colores: aqui solo
+       se inserta el HTML y se gestionan las facetas.
+       Sin JavaScript el formulario de la cabecera sigue funcionando: envia a
+       /catalogo?q= como siempre.
+       ===================================================================== */
+    var searchRoot = document.getElementById('shop-search');
+    var searchPageInput = document.getElementById('search-q');
+    if (searchRoot && searchPageInput) {
+        initLiveSearch(searchRoot, searchPageInput);
+    }
+
+    function initLiveSearch(root, pageInput) {
+        var endpoint = root.dataset.searchEndpoint || '';
+        var pageUrl = root.dataset.searchPage || '';
+        var els = {
+            input: root.querySelector('#shop-search-input'),
+            clear: root.querySelector('#shop-search-clear'),
+            close: root.querySelector('#shop-search-close'),
+            count: root.querySelector('#shop-search-count'),
+            filters: root.querySelector('#shop-search-filters'),
+            results: root.querySelector('#shop-search-results'),
+            foot: root.querySelector('#shop-search-foot'),
+            all: root.querySelector('#shop-search-all')
+        };
+        if (!endpoint || !els.input || !els.results) { return; }
+
+        var MIN_CHARS = 2;
+        var state = {
+            query: '',
+            subs: [],
+            brands: [],
+            timer: null,
+            controller: null,
+            ignoreUntil: 0,
+            open: false,
+            last: null
+        };
+
+        function escapeHtml(value) {
+            return String(value == null ? '' : value)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        function sync(value) {
+            state.query = value;
+            if (pageInput.value !== value) { pageInput.value = value; }
+            if (els.input.value !== value) { els.input.value = value; }
+            if (els.clear) { els.clear.hidden = value.length === 0; }
+        }
+
+        function showIdle() {
+            els.results.innerHTML = '<p class="shop-search-hint">Escribe al menos ' + MIN_CHARS + ' caracteres para buscar</p>';
+            if (els.filters) { els.filters.innerHTML = '<p class="shop-search-hint">Busca por nombre, marca, referencia o EAN</p>'; }
+            if (els.count) { els.count.textContent = ''; }
+            if (els.foot) { els.foot.hidden = true; }
+        }
+
+        function openPanel() {
+            if (state.open) { return; }
+            state.open = true;
+            state.ignoreUntil = Date.now() + 400;
+            root.hidden = false;
+            root.setAttribute('aria-hidden', 'false');
+            root.classList.add('is-open');
+            document.body.classList.add('shop-search-open');
+            sync(pageInput.value);
+            els.input.focus();
+            if (state.query.trim().length >= MIN_CHARS) { schedule(); } else { showIdle(); }
+        }
+
+        function closePanel(returnFocus) {
+            if (!state.open) { return; }
+            state.open = false;
+            root.classList.remove('is-open');
+            root.hidden = true;
+            root.setAttribute('aria-hidden', 'true');
+            document.body.classList.remove('shop-search-open');
+            if (returnFocus) { pageInput.focus(); }
+        }
+
+        function buildUrl() {
+            var url = endpoint + '?q=' + encodeURIComponent(state.query.trim());
+            state.subs.forEach(function (id) { url += '&s[]=' + encodeURIComponent(id); });
+            state.brands.forEach(function (id) { url += '&m[]=' + encodeURIComponent(id); });
+            return url;
+        }
+
+        function chip(type, id, label, count, selected) {
+            return '<button type="button" class="shop-search-chip' + (selected ? ' is-active' : '') + '"' +
+                ' data-type="' + type + '" data-id="' + escapeHtml(id) + '" aria-pressed="' + (selected ? 'true' : 'false') + '">' +
+                escapeHtml(label) +
+                (count ? ' <span>' + count + '</span>' : '') +
+                '</button>';
+        }
+
+        function renderFilters(data) {
+            if (!els.filters) { return; }
+            var subs = data.subcategorias || [];
+            var brands = data.marcas || [];
+            if (!subs.length && !brands.length) {
+                els.filters.innerHTML = '<p class="shop-search-hint">Sin filtros para esta busqueda</p>';
+                return;
+            }
+            var html = '';
+            if (subs.length) {
+                html += '<div class="shop-search-facet"><h3>Subcategorias</h3><div class="shop-search-chips">';
+                subs.forEach(function (s) { html += chip('s', s.id, s.label, s.count, s.selected); });
+                html += '</div></div>';
+            }
+            if (brands.length) {
+                html += '<div class="shop-search-facet"><h3>Marcas</h3><div class="shop-search-chips">';
+                brands.forEach(function (b) { html += chip('m', b.value, b.label, b.count, b.selected); });
+                html += '</div></div>';
+            }
+            els.filters.innerHTML = html;
+        }
+
+        function render(data) {
+            state.last = data;
+            if (els.count) {
+                els.count.textContent = data.total
+                    ? data.total + (data.total === 1 ? ' resultado' : ' resultados')
+                    : '';
+            }
+            els.results.innerHTML = data.html
+                ? data.html
+                : '<p class="shop-search-empty">No encontramos productos para esa busqueda.</p>';
+            renderFilters(data);
+
+            if (els.foot) {
+                els.foot.hidden = !data.verTodos || !data.total;
+            }
+            if (els.all) {
+                els.all.href = data.verTodos || pageUrl;
+            }
+        }
+
+        function fetchResults() {
+            var query = state.query.trim();
+            if (query.length < MIN_CHARS) { showIdle(); return; }
+
+            if (state.controller) { state.controller.abort(); }
+            state.controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+
+            els.results.innerHTML = '<p class="shop-search-hint">Buscando productos...</p>';
+
+            var options = { headers: { 'X-Requested-With': 'fetch' }, credentials: 'same-origin' };
+            if (state.controller) { options.signal = state.controller.signal; }
+
+            window.fetch(buildUrl(), options).then(function (response) {
+                return response.json();
+            }).then(function (data) {
+                if (data && typeof data.total !== 'undefined') { render(data); }
+            }).catch(function (error) {
+                if (error && error.name === 'AbortError') { return; }
+                els.results.innerHTML = '<p class="shop-search-empty">No se pudo buscar. Intentalo de nuevo.</p>';
+            });
+        }
+
+        function schedule() {
+            clearTimeout(state.timer);
+            state.timer = setTimeout(fetchResults, 260);
+        }
+
+        function toggle(type, id) {
+            var list = type === 's' ? state.subs : state.brands;
+            var key = String(id);
+            var index = list.indexOf(key);
+            if (index === -1) { list.push(key); } else { list.splice(index, 1); }
+            fetchResults();
+        }
+
+        function pageLink() {
+            var url = pageUrl + '?q=' + encodeURIComponent(state.query.trim());
+            if (state.subs.length) { url += '&subcat=' + encodeURIComponent(state.subs[0]); }
+            return url;
+        }
+
+        pageInput.addEventListener('focus', openPanel);
+        pageInput.addEventListener('click', openPanel);
+        // Si el navegador deja el foco puesto al cargar (o el usuario escribe
+        // sin haber hecho clic), teclear abre el panel y sigue la busqueda.
+        pageInput.addEventListener('input', function () {
+            openPanel();
+            if (els.input.value !== pageInput.value) {
+                if (pageInput.value.trim() !== state.query.trim()) {
+                    state.subs = [];
+                    state.brands = [];
+                }
+                sync(pageInput.value);
+            }
+            schedule();
+        });
+
+        els.input.addEventListener('input', function () {
+            if (els.input.value.trim() !== state.query.trim()) {
+                state.subs = [];
+                state.brands = [];
+            }
+            sync(els.input.value);
+            schedule();
+        });
+
+        els.input.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                closePanel(true);
+                return;
+            }
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                window.location.href = (state.last && state.last.verTodos) ? state.last.verTodos : pageLink();
+            }
+        });
+
+        if (els.clear) {
+            els.clear.addEventListener('click', function () {
+                sync('');
+                state.subs = [];
+                state.brands = [];
+                showIdle();
+                els.input.focus();
+            });
+        }
+
+        if (els.close) {
+            els.close.addEventListener('click', function () { closePanel(true); });
+        }
+
+        if (els.filters) {
+            els.filters.addEventListener('click', function (e) {
+                var button = e.target.closest ? e.target.closest('.shop-search-chip') : null;
+                if (!button) { return; }
+                e.preventDefault();
+                toggle(button.dataset.type, button.dataset.id);
+            });
+        }
+
+        document.addEventListener('mousedown', function (e) {
+            if (!state.open || Date.now() < state.ignoreUntil) { return; }
+            if (root.contains(e.target)) { return; }
+            if (e.target === pageInput || pageInput.contains(e.target)) { return; }
+            if (e.target.closest && e.target.closest('.search')) { return; }
+            closePanel(false);
+        });
+
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && state.open) { closePanel(true); }
+        });
+    }
 })();

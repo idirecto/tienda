@@ -1352,3 +1352,109 @@ body.mn-panel-open { overflow: hidden; }
 @media (min-width: 1024px) {
     body.mn-panel-open:has(.mn--compacto) { overflow: visible; }
 }
+
+/* =============================================================================
+   BUSCADOR EN VIVO
+   -----------------------------------------------------------------------------
+   Panel con resultados (tarjetas del tema) y filtros por subcategoria y marca.
+   Todos los colores salen de los tokens --c-: ninguno de marca esta escrito.
+   Se abre desde el campo del buscador de la cabecera; si el JS no carga, el
+   formulario sigue navegando a /catalogo?q=.
+   ============================================================================= */
+.shop-search[hidden] { display: none; }
+.shop-search {
+    position: fixed; inset: 0; z-index: 120;
+    display: none;
+    background: rgb(9 12 18 / 72%);
+    overflow: hidden;
+}
+.shop-search.is-open { display: block; }
+body.shop-search-open { overflow: hidden; }
+
+.shop-search-panel {
+    display: flex; flex-direction: column;
+    width: 100%; max-width: var(--c-container-max);
+    height: 100%; margin: 0 auto;
+    background: var(--c-bg);
+}
+@media (min-width: 900px) {
+    .shop-search { padding: 3vh 1rem; }
+    .shop-search-panel {
+        height: auto; max-height: 94vh; margin: 0 auto;
+        border-radius: var(--c-radius-xl); overflow: hidden;
+        box-shadow: var(--c-shadow-lg);
+    }
+}
+
+.shop-search-head {
+    display: flex; align-items: center; gap: .6rem;
+    padding: .85rem 1rem;
+    background: var(--c-surface); border-bottom: 1px solid var(--c-border);
+}
+.shop-search-icon { display: grid; place-items: center; width: 34px; height: 34px; color: var(--c-muted); }
+.shop-search-icon svg { width: 20px; height: 20px; }
+.shop-search-input {
+    flex: 1; min-width: 0; padding: .4rem 0;
+    border: 0; background: transparent; color: var(--c-text); font-size: 1.05rem;
+}
+.shop-search-input:focus { outline: none; }
+.shop-search-clear,
+.shop-search-close {
+    display: inline-grid; place-items: center; width: 40px; height: 40px;
+    border: 0; border-radius: var(--c-radius-md);
+    background: transparent; color: var(--c-muted); cursor: pointer;
+    transition: background .15s ease, color .15s ease;
+}
+.shop-search-clear:hover,
+.shop-search-close:hover { background: var(--c-surface-2); color: var(--c-primary); }
+.shop-search-clear svg,
+.shop-search-close svg { width: 18px; height: 18px; }
+
+.shop-search-meta { min-height: 1.1rem; padding: 0 1rem .4rem; font-size: .82rem; color: var(--c-muted); }
+
+.shop-search-body { display: grid; grid-template-columns: minmax(0, 1fr); flex: 1; min-height: 0; overflow: hidden; }
+@media (min-width: 900px) { .shop-search-body { grid-template-columns: 240px minmax(0, 1fr); } }
+
+.shop-search-filters {
+    padding: 1rem; overflow-y: auto;
+    background: var(--c-surface); border-bottom: 1px solid var(--c-border);
+}
+@media (min-width: 900px) {
+    .shop-search-filters { border-bottom: 0; border-right: 1px solid var(--c-border); }
+}
+
+.shop-search-results { min-height: 0; padding: 1rem; overflow-y: auto; }
+.shop-search-results .grid-products { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); align-items: start; }
+
+.shop-search-hint { margin: .3rem 0; color: var(--c-muted); font-size: .88rem; }
+.shop-search-empty { padding: 2rem 0; color: var(--c-muted); text-align: center; }
+.shop-search-group {
+    margin: 0 0 .6rem; font-size: .78rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .05em; color: var(--c-muted);
+}
+.shop-search-group:not(:first-child) { margin-top: 1.5rem; }
+
+.shop-search-facet { margin-bottom: 1.1rem; }
+.shop-search-facet h3 {
+    margin: 0 0 .5rem; font-size: .8rem; text-transform: uppercase;
+    letter-spacing: .05em; color: var(--c-heading);
+}
+.shop-search-chips { display: flex; flex-wrap: wrap; gap: .35rem; }
+.shop-search-chip {
+    display: inline-flex; align-items: center; gap: .3rem;
+    padding: .3rem .6rem; cursor: pointer;
+    border: 1px solid var(--c-border); border-radius: var(--c-radius-pill);
+    background: var(--c-surface); color: var(--c-text);
+    font-size: .78rem; font-weight: 600;
+    transition: background .15s ease, color .15s ease, border-color .15s ease;
+}
+.shop-search-chip span { color: var(--c-muted); font-weight: 500; }
+.shop-search-chip:hover { border-color: var(--c-primary); color: var(--c-primary); }
+.shop-search-chip.is-active { background: var(--c-primary); border-color: var(--c-primary); color: var(--c-primary-contrast); }
+.shop-search-chip.is-active span { color: color-mix(in srgb, var(--c-primary-contrast) 75%, transparent); }
+
+.shop-search-foot {
+    padding: .8rem 1rem; text-align: center;
+    background: var(--c-surface); border-top: 1px solid var(--c-border);
+}
+

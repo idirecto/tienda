@@ -88,6 +88,40 @@ $headerStyle = preg_replace('/[^a-z0-9_\-]/i', '', $tenant->headerStyle()) ?: 'c
 
 <a class="skip-link" href="#contenido">Saltar al contenido principal</a>
 
+<?php /* Buscador en vivo (mismo comportamiento que PuntoByZE): panel con
+         resultados y filtros por subcategoria y marca. Los resultados se piden
+         a /buscar/live, que aplica el menu visible de la tienda y suma sus
+         productos propios. Sin JS, el formulario de la cabecera navega a
+         /catalogo?q= como siempre. */ ?>
+<div class="shop-search" id="shop-search" aria-hidden="true" hidden
+     data-search-endpoint="<?= e($base) ?>/buscar/live"
+     data-search-page="<?= e($base) ?>/catalogo">
+    <div class="shop-search-panel" role="dialog" aria-modal="true" aria-label="Buscador de productos">
+        <div class="shop-search-head">
+            <span class="shop-search-icon" aria-hidden="true"><?= icon_svg('search') ?></span>
+            <label class="sr-only" for="shop-search-input">Buscar productos</label>
+            <input type="search" id="shop-search-input" class="shop-search-input" autocomplete="off"
+                   placeholder="Buscar productos, marcas, referencia...">
+            <button type="button" class="shop-search-clear" id="shop-search-clear"
+                    aria-label="Borrar busqueda" hidden><?= icon_svg('close') ?></button>
+            <button type="button" class="shop-search-close" id="shop-search-close"
+                    aria-label="Cerrar buscador"><?= icon_svg('close') ?></button>
+        </div>
+        <div class="shop-search-meta" id="shop-search-count" role="status" aria-live="polite"></div>
+        <div class="shop-search-body">
+            <aside class="shop-search-filters" id="shop-search-filters" aria-label="Filtros de la busqueda">
+                <p class="shop-search-hint">Busca por nombre, marca, referencia o EAN</p>
+            </aside>
+            <div class="shop-search-results" id="shop-search-results">
+                <p class="shop-search-hint">Escribe al menos 2 caracteres para buscar</p>
+            </div>
+        </div>
+        <div class="shop-search-foot" id="shop-search-foot" hidden>
+            <a class="btn btn-primary" id="shop-search-all" href="<?= e($base) ?>/catalogo">Ver todos los resultados</a>
+        </div>
+    </div>
+</div>
+
 <header class="shop-header">
     <div class="topbar">
         <div class="container topbar-inner">

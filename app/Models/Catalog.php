@@ -309,7 +309,8 @@ final class Catalog
         ?float $priceMin = null,
         ?float $priceMax = null,
         string $sort = 'relevance',
-        string $tag = 'todos'
+        string $tag = 'todos',
+        array $scope = []
     ): array {
         $perPage = $perPage ?? (int) Config::get('catalog.per_page', 12);
         $perPage = max(1, min(60, $perPage));
@@ -319,7 +320,7 @@ final class Catalog
             return ['items' => [], 'total' => 0, 'page' => $page, 'per_page' => $perPage, 'pages' => 0];
         }
 
-        [$whereSql, $params] = self::buildFilters($q, $categoryId, $subcategoryId, $facetSelection, $priceMin, $priceMax, $tag);
+        [$whereSql, $params] = self::buildFilters($q, $categoryId, $subcategoryId, $facetSelection, $priceMin, $priceMax, $tag, $scope);
         $orderSql = self::orderSql($sort);
 
         $total = self::cachedCount(
@@ -722,7 +723,8 @@ final class Catalog
         ?int $subcategoryId = null,
         array $selection = [],
         string $tag = 'todos',
-        ?string $q = null
+        ?string $q = null,
+        array $scope = []
     ): array {
         if (!self::isAvailable()) {
             return [];
@@ -765,7 +767,8 @@ final class Catalog
                     (int) ($def['limit'] ?? 12),
                     $tag,
                     $q,
-                    $otherTerms
+                    $otherTerms,
+                    $scope
                 );
                 if (count($options) < (int) ($def['min_items'] ?? 1)) {
                     continue;
@@ -990,18 +993,22 @@ final class Catalog
         int $limit,
         string $tag = 'todos',
         ?string $q = null,
-        array $facetTerms = []
+        array $facetTerms = [],
+        array $scope = []
     ): array {
         $limit = max(1, min(30, $limit));
         $ttl = (int) Config::get('catalog.facets_ttl', 900);
         $tag = self::tagKey($tag);
-        $context = md5($tag . '|' . (string) $q . '|' . serialize($facetTerms));
+        $scopeKey = empty($scope['restricted'])
+            ? 'all'
+            : md5(serialize([$scope['categories'] ?? [], $scope['subcategories'] ?? []]));
+        $context = md5($tag . '|' . (string) $q . '|' . serialize($facetTerms) . '|' . $scopeKey);
         $cacheKey = 'brands:' . ($categoryId ?? 0) . ':' . ($subcategoryId ?? 0) . ':' . $limit . ':' . $context;
 
-        $data = self::cached($cacheKey, $ttl, static function () use ($categoryId, $subcategoryId, $limit, $tag, $q, $facetTerms): array {
+        $data = self::cached($cacheKey, $ttl, static function () use ($categoryId, $subcategoryId, $limit, $tag, $q, $facetTerms, $scope): array {
             // Mismo WHERE que el listado (menos la propia marca), para que los
             // contadores no ofrezcan marcas que no aparecen en la pagina.
-            [$where, $params] = self::buildFilters($q, $categoryId, $subcategoryId, $facetTerms, null, null, $tag);
+            [$where, $params] = self::buildFilters($q, $categoryId, $subcategoryId, $facetTerms, null, null, $tag, $scope);
 
             $rows = Database::select(
                 "SELECT p.id_marca, COUNT(*) AS total
@@ -1048,6 +1055,92 @@ final class Catalog
         });
 
         return (array) $data;
+    }
+
+    /**
+     * Facetas del buscador en vivo: subcategorias y marcas con resultados para
+     * el texto buscado, siempre dentro del alcance del menu de la tienda.
+     *
+     * Los contadores se recalculan en contexto (como en el catalogo):
+     *   - la subcategoria elegida NO reduce la lista de subcategorias (asi se
+     *     pueden cambiar unas por otras);
+     *   - la marca elegida sale del contexto de marcas, pero si filtra las
+     *     subcategorias.
+     *
+     * @param array{restricted?:bool,categories?:array,subcategories?:array} $scope
+     *        Alcance completo permitido por el menu (no la seleccion activa).
+     * @param array{terms?:array,subcategories?:array} $selection
+     * @return array{subcategories:array<int,array>,marcas:array<int,array>}
+     */
+    public static function searchFacets(
+        string $q,
+        array $scope = [],
+        array $selection = [],
+        int $subLimit = 20,
+        int $brandLimit = 12
+    ): array {
+        $empty = ['subcategories' => [], 'marcas' => []];
+        $q = trim($q);
+        if ($q === '' || !self::isAvailable()) {
+            return $empty;
+        }
+
+        $terms = isset($selection['terms']) && is_array($selection['terms']) ? $selection['terms'] : [];
+        $subLimit = max(1, min(40, $subLimit));
+        $brandLimit = max(1, min(30, $brandLimit));
+        $ttl = (int) Config::get('catalog.facets_ttl', 900);
+
+        $allowed = [
+            'restricted'    => !empty($scope['restricted']),
+            'categories'    => $scope['categories'] ?? [],
+            'subcategories' => $scope['subcategories'] ?? [],
+        ];
+        $contextKey = md5($q . '|' . serialize($terms) . '|' . serialize($allowed));
+
+        // --- Subcategorias: contexto = texto + marcas + alcance del menu.
+        $subcategories = [];
+        if (Database::tableExists('subcategorias')) {
+            $subcategories = (array) self::cached(
+                'search_subs:' . $contextKey . ':' . $subLimit,
+                $ttl,
+                static function () use ($q, $terms, $allowed, $subLimit): array {
+                    [$where, $params] = self::buildFilters($q, null, null, $terms, null, null, 'todos', $allowed);
+                    $rows = Database::select(
+                        "SELECT p.id_subcategoria AS id, COUNT(*) AS total, s.subcategoria AS label
+                         FROM productos p
+                         LEFT JOIN subcategorias s ON s.id = p.id_subcategoria
+                         $where
+                         GROUP BY p.id_subcategoria, s.subcategoria
+                         ORDER BY total DESC, p.id_subcategoria ASC
+                         LIMIT $subLimit",
+                        $params
+                    );
+
+                    $out = [];
+                    foreach ($rows as $row) {
+                        $id = (int) $row['id'];
+                        $label = trim((string) ($row['label'] ?? ''));
+                        if ($id <= 0 || $label === '') {
+                            continue;
+                        }
+                        $out[] = ['id' => $id, 'label' => $label, 'count' => (int) $row['total']];
+                    }
+                    return $out;
+                }
+            );
+        }
+
+        // --- Marcas: fuera la propia marca del contexto (para poder cambiarla).
+        $brandKey = self::brandFacetKey();
+        $otherTerms = $terms;
+        unset($otherTerms[$brandKey]);
+        $marcas = self::brandOptions(null, null, $brandLimit, 'todos', $q, $otherTerms, $allowed);
+
+        // El precio NO se calcula aqui a proposito: en un texto amplio obliga a
+        // evaluar la tarifa producto a producto y la busqueda en vivo se iba a
+        // 3-4 s. El panel no tiene deslizador de precio; el listado completo
+        // (/catalogo?q=) ya ofrece sus campos de precio minimo y maximo.
+        return ['subcategories' => $subcategories, 'marcas' => $marcas];
     }
 
     /** Nombre de una marca por id (para los chips de filtros activos). */
@@ -1118,7 +1211,8 @@ final class Catalog
         ?int $subcategoryId,
         array $selection = [],
         string $tag = 'todos',
-        ?string $q = null
+        ?string $q = null,
+        array $scope = []
     ): array {
         if ($subcategoryId === null || $subcategoryId <= 0 || !self::isAvailable() || !self::filtersAvailable()) {
             return [];
@@ -1218,7 +1312,8 @@ final class Catalog
                 $otherTerms,
                 $priceMin !== null && $priceMin > 0 ? $priceMin : null,
                 $priceMax !== null && $priceMax > 0 ? $priceMax : null,
-                $tag
+                $tag,
+                $scope
             );
 
             $counter = 0;
@@ -1772,7 +1867,8 @@ final class Catalog
         array $facetSelection = [],
         ?float $priceMin = null,
         ?float $priceMax = null,
-        string $tag = 'todos'
+        string $tag = 'todos',
+        array $scope = []
     ): array {
         $where = [self::baseConditions()];
         $params = [];
@@ -1811,6 +1907,14 @@ final class Catalog
         if ($subcategoryId !== null && $subcategoryId > 0) {
             $where[] = 'p.id_subcategoria = :subcat';
             $params['subcat'] = $subcategoryId;
+        }
+
+        // Alcance del buscador: la tienda solo ve las categorias/subcategorias
+        // que aparecen en su menu (ver Menu::searchScope). Los ids ya vienen
+        // saneados como enteros, asi que se pueden interpolar sin riesgo.
+        $scopeSql = self::catalogScopeSql($scope);
+        if ($scopeSql !== null) {
+            $where[] = $scopeSql;
         }
 
         $definitions = (array) Config::get('catalog.facets', []);
@@ -1931,6 +2035,47 @@ final class Catalog
     private static function escapeLike(string $value): string
     {
         return str_replace(['\\', '%', '_'], ['\\\\', '\%', '\_'], $value);
+    }
+
+    /**
+     * SQL del alcance de catalogo de una tienda (buscador).
+     *
+     * La subcategoria manda: si el menu deja ver subcategorias concretas, un
+     * producto entra solo si su subcategoria esta entre ellas. Solo cuando el
+     * menu no aporta ninguna subcategoria (p. ej. una categoria suelta) se cae al
+     * filtro por categoria. Si esta restringido y no hay nada visible, no entra
+     * ningun producto del catalogo central (`1 = 0`).
+     *
+     * @param array{restricted?:bool,categories?:array,subcategories?:array} $scope
+     */
+    private static function catalogScopeSql(array $scope): ?string
+    {
+        if (empty($scope['restricted'])) {
+            return null;
+        }
+
+        $ints = static function (mixed $values): array {
+            $out = [];
+            foreach ((array) $values as $value) {
+                $id = (int) $value;
+                if ($id > 0) {
+                    $out[$id] = true;
+                }
+            }
+            return array_keys($out);
+        };
+
+        $subcategories = $ints($scope['subcategories'] ?? []);
+        if ($subcategories !== []) {
+            return 'p.id_subcategoria IN (' . implode(',', $subcategories) . ')';
+        }
+
+        $categories = $ints($scope['categories'] ?? []);
+        if ($categories !== []) {
+            return 'p.id_categoria IN (' . implode(',', $categories) . ')';
+        }
+
+        return '1 = 0';
     }
 
     /** Lee un numero de la query string (admite coma decimal). */

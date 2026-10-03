@@ -281,6 +281,7 @@ las que dan 404, y reutiliza la imagen grande si solo falta la miniatura.
 |---|---|
 | `/` | Portada: slider de banners, franja de garantías, accesos rápidos a categorías, destacados, productos propios |
 | `/catalogo` | Catálogo con buscador (`?q`), categoría (`?cat`), subcategoría (`?subcat`), **facetas** (`?f[clave][]=valor`), **precio** (`?pmin`/`?pmax`), orden (`?orden`) y paginación |
+| `/buscar/live` | **Buscador en vivo** (JSON): resultados del catálogo visible de la tienda + sus productos propios, con facetas de subcategoría y marca. Parámetros `q`, `s[]`, `m[]`, `pmin`, `pmax`. El panel lo pinta `shop.js` desde el campo de la cabecera |
 | `/producto/{slug}/{id}` | Ficha (**URL SEO**); `/producto/{id}` redirige 301 |
 | `/contacto`, `/pagina/{slug}` | Contacto y páginas de contenido |
 | `/registro` | **Alta de una tienda nueva** con la cuenta de idirecto (ver más abajo) |
