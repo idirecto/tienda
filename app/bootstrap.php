@@ -133,6 +133,26 @@ function product_url(array $product): string
 }
 
 /**
+ * URL de un destino del menu.
+ *
+ * Un destino del menu puede ser una ruta propia (`/propios`, `/pagina/x`) o un
+ * enlace libre que ya venga con esquema (`https://...`). Solo se antepone la
+ * base de la tienda cuando la ruta es relativa.
+ */
+function menu_href(string $base, string $path): string
+{
+    $path = trim($path);
+    if ($path === '') {
+        return $base . '/';
+    }
+    if (preg_match('#^(https?:)?//#i', $path) === 1) {
+        return $path;
+    }
+
+    return $base . '/' . ltrim($path, '/');
+}
+
+/**
  * Convierte una ruta relativa en URL absoluta (para <link rel="canonical">).
  * Usa el esquema y el host reales de la peticion, tambien detras de un
  * proxy/CDN (X-Forwarded-Proto / X-Forwarded-Host).

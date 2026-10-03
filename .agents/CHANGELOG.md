@@ -5,6 +5,71 @@ El detalle línea a línea está en `git log`.
 
 ---
 
+## 2026-10-03 · La tienda elige qué categorías se ven y puede crear las suyas
+
+**Motivo:** «en el panel de la tienda se puede mostrar el menú completo o dar a elegir
+qué categorías se mostrarán […] si la tienda decide no mostrar una subcategoría o
+categoría eso se debe guardar en algún lado; además, dar la posibilidad de que agreguen
+una categoría y subcategoría, por ejemplo “productos propios” o “Servicio”, que ellos
+quieran agregar, y que solo esos valores se muestren en su web».
+
+**Auditoría previa (reutilizar antes de crear).** El catálogo de categorías y
+subcategorías es el **compartido** (`categorias`, `subcategorias`, `productos` de la
+misma base que usan idirecto y PuntoByZE): solo lectura. Ya existían el árbol editable
+(`mt_menu_items`), los nodos propios (`store_id` = tienda), el activo/desactivado, el
+borrador + publicación y los productos propios (`mt_own_products`) y las páginas de
+contenido (`mt_content_blocks`). Lo que faltaba, comprobado contra la base de datos:
+la tienda no podía ocultar ni renombrar un nodo que no fuera suyo, una categoría propia
+con destino propio acababa en `/catalogo` (el nivel 1 ignoraba su destino y se
+descartaba sin grupos), no existía `/propios` y no se podía colgar un nodo propio dentro
+de una categoría del catálogo. Propuesta en `.agents/MENU-TIENDA-2026-10-03.md`.
+
+**Decisiones del dueño:** modo «completo» / «elegido» con interruptor por nodo;
+las categorías propias pueden colgar también dentro de categorías del catálogo; destinos
+«productos propios», página de la tienda y enlace libre; de los nodos compartidos se
+puede **ocultar/mostrar y renombrar**, no reordenar.
+
+**Estructuras nuevas (aditivas y reversibles)**
+- `009_menu_tienda.sql`: `mt_stores.menu_scope` (`completo|elegido`, por defecto
+  `completo`) y `mt_menu_item_overrides` (`store_id`, `item_id`, `state`
+  `visible|oculto`, `label` NULL, único por tienda+nodo, claves foráneas en cascada).
+  No se duplican nodos: se guarda solo lo que cambia, así el árbol puede ser compartido.
+
+**Cómo funciona**
+- `Menu::scopeForStore()` decide entre mostrar todo (menos lo oculto) o solo lo marcado;
+  en «elegido» se incluyen además la rama y el camino del nodo marcado, y un `oculto`
+  explícito se lleva su rama. `Menu::visibleRows()` aplica primero los filtros que ya
+  existían (activo, visibilidad de plataforma, nivel de cliente) y después la decisión
+  de la tienda; `publish()` usa lo mismo, así que el snapshot publicado sale filtrado.
+- `MenuAdmin::setOverride()` / `clearOverride()` guardan la anulación **sin tocar la
+  fila del nodo** (que puede ser compartida); el `store_id` sale siempre de la sesión.
+  Un nodo creado por la tienda nace marcado como visible para que se vea en modo
+  «elegido».
+- Destinos nuevos `propios` (`/propios`, listado de los productos propios de la tienda,
+  ruta y vista nuevas) y `pagina` (`/pagina/{slug}` de una página de contenido). El
+  nivel 1 y el 2 ya respetan su destino: una categoría o un grupo propio se pinta aunque
+  no tenga hijos, y las categorías del catálogo conservan su ruta y su panel promocional.
+- La tienda puede colgar sus nodos dentro de una categoría compartida (se levantó la
+  prohibición de `validate()` y `move()`), y `menu_href()` deja de romper los enlaces
+  absolutos (`https://…` se convertía en `https://local.tiendahttps://…`).
+
+**Panel de la tienda**
+- Tarjeta **«Qué categorías se ven»**: modo, interruptor Mostrar/Ocultar y nombre propio
+  por categoría y subcategoría, y «Volver al árbol». Botones «+ Productos propios» y
+  «+ Página de la tienda». El editor rellena el destino al editar (antes se perdía al
+  guardar) y solo muestra los campos del tipo elegido; los nodos compartidos ya no
+  ofrecen botones que el servidor rechazaba.
+
+**Verificación:** `php tools/verify.php` → **TODO OK (200)**, con 14 comprobaciones
+nuevas (migración `009`, los dos modos, la anulación por tienda, la rama oculta, el
+aislamiento con dos tiendas, los destinos propios y el nodo bajo categoría compartida).
+En navegador real (Chrome por CDP): la tarjeta con 14 categorías y 84 subcategorías,
+ocultar/mostrar y «Volver al árbol», el editor con el destino precargado y los presets,
+sin errores de JavaScript; y en HTTP real la categoría «Productos propios» enlazando a
+`/propios` (200) y el menú Compacto y Catálogo sin regresiones.
+
+---
+
 ## 2026-10-03 · Filtros por subcategoría: alcance correcto y filtrado progresivo
 
 **Motivo:** «va mal; revisa cómo se filtran los filtros en puntobyze, en los listados los

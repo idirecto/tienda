@@ -147,6 +147,23 @@ final class CatalogUrl
         return $sub === null ? null : '/' . $sub['category_slug'] . '/' . $sub['slug'];
     }
 
+    /**
+     * Ruta del listado de productos propios de la tienda.
+     *
+     * Es un destino de menu de primera clase (`target_type = 'propios'`): la
+     * tienda puede crear una categoria «Productos propios» que solo ve su web.
+     */
+    public static function ownProductsPath(): string
+    {
+        return '/propios';
+    }
+
+    /** Ruta de una pagina de contenido de la tienda (`/pagina/{slug}`). */
+    public static function pagePath(string $slug): string
+    {
+        return '/pagina/' . rawurlencode(trim($slug));
+    }
+
     /** Id de categoria a partir de su slug. */
     public static function categoryIdBySlug(string $slug): ?int
     {

@@ -71,10 +71,12 @@ $router->get('/pagina/{slug}',         [StorefrontController::class, 'page']);
 //   /marcas           directorio de marcas con stock
 //   /marca/{id}       listado de una marca
 //   /ofertas /novedades /destacados   listados por etiqueta
+//   /propios          productos propios de la tienda (destino de menu)
 //   /menu/panel/{id}  contenido del panel de una categoria (JSON)
 // -----------------------------------------------------------------------------
 $router->get('/marcas',                [StorefrontController::class, 'brands']);
 $router->get('/marca/{id}',            [StorefrontController::class, 'brand']);
+$router->get('/propios',               [StorefrontController::class, 'ownProducts']);
 foreach (['ofertas', 'novedades', 'destacados'] as $tagRoute) {
     $router->get('/' . $tagRoute, [StorefrontController::class, 'tag']);
 }
@@ -142,6 +144,10 @@ $router->post('/panel/menu/nodo',              [MenuController::class, 'nodeCrea
 $router->post('/panel/menu/nodo/{id}',         [MenuController::class, 'nodeUpdate']);
 $router->post('/panel/menu/nodo/{id}/borrar',  [MenuController::class, 'nodeDelete']);
 $router->post('/panel/menu/nodo/{id}/activar', [MenuController::class, 'nodeToggle']);
+// Modo del menu (completo|elegido) y anulaciones por tienda (mostrar/ocultar y renombrar).
+$router->post('/panel/menu/alcance',                [MenuController::class, 'saveScope']);
+$router->post('/panel/menu/nodo/{id}/anular',       [MenuController::class, 'nodeOverride']);
+$router->post('/panel/menu/nodo/{id}/anular/quitar', [MenuController::class, 'nodeOverrideClear']);
 
 // Menu de la PLATAFORMA: arbol compartido, visibilidad por tienda y por nivel.
 $router->get('/panel/plataforma/menu',           [PlatformMenuController::class, 'index']);

@@ -46,18 +46,22 @@ $isCatalogo = $style === 'catalogo';
                 <ul class="mn-bar-list">
                     <?php foreach ($visible as $i => $cat): ?>
                         <li class="mn-bar-item">
-                            <a class="mn-bar-link" href="<?= e($base . $cat['path']) ?>"
+                            <a class="mn-bar-link" href="<?= e(menu_href($base, (string) $cat['path'])) ?>"
                                data-mn-cat="<?= $i ?>" aria-current="false">
                                 <?= e($cat['label']) ?>
                                 <?php if (!empty($cat['badge'])): ?>
                                     <span class="mn-badge"><?= e($cat['badge']) ?></span>
                                 <?php endif; ?>
                             </a>
-                            <button type="button" class="mn-bar-toggle" data-mn-open="<?= $i ?>"
-                                    aria-expanded="false" aria-controls="mn-panel"
-                                    aria-label="Abrir <?= e($cat['label']) ?>">
-                                <span class="mn-caret" aria-hidden="true"></span>
-                            </button>
+                            <?php if (!empty($cat['groups'])): ?>
+                                <?php /* Sin grupos (categoria propia que apunta a una pagina) el
+                                         enlace navega directo y no hace falta el desplegable. */ ?>
+                                <button type="button" class="mn-bar-toggle" data-mn-open="<?= $i ?>"
+                                        aria-expanded="false" aria-controls="mn-panel"
+                                        aria-label="Abrir <?= e($cat['label']) ?>">
+                                    <span class="mn-caret" aria-hidden="true"></span>
+                                </button>
+                            <?php endif; ?>
                         </li>
                     <?php endforeach; ?>
                 </ul>
@@ -72,7 +76,7 @@ $isCatalogo = $style === 'catalogo';
                             <ul>
                                 <?php foreach ($extra as $cat): ?>
                                     <li>
-                                        <a href="<?= e($base . $cat['path']) ?>"><?= e($cat['label']) ?></a>
+                                        <a href="<?= e(menu_href($base, (string) $cat['path'])) ?>"><?= e($cat['label']) ?></a>
                                         <?php if (!empty($cat['groups'])): ?>
                                             <span class="mn-more-groups">
                                                 <?php
@@ -91,7 +95,7 @@ $isCatalogo = $style === 'catalogo';
                 <ul class="mn-quick">
                     <?php foreach ($menuQuick as $quick): ?>
                         <li>
-                            <a href="<?= e($base . $quick['path']) ?>" class="mn-quick-link">
+                            <a href="<?= e(menu_href($base, (string) $quick['path'])) ?>" class="mn-quick-link">
                                 <?= icon_svg((string) $quick['icon'], 'mn-quick-icon') ?>
                                 <span><?= e($quick['label']) ?></span>
                             </a>
@@ -115,7 +119,7 @@ $isCatalogo = $style === 'catalogo';
                 <ul class="mn-quick mn-quick--inline">
                     <?php foreach ($menuQuick as $quick): ?>
                         <li>
-                            <a href="<?= e($base . $quick['path']) ?>" class="mn-quick-link">
+                            <a href="<?= e(menu_href($base, (string) $quick['path'])) ?>" class="mn-quick-link">
                                 <?= icon_svg((string) $quick['icon'], 'mn-quick-icon') ?>
                                 <span><?= e($quick['label']) ?></span>
                             </a>
@@ -197,7 +201,7 @@ $isCatalogo = $style === 'catalogo';
                                         <small><?= (int) $cat['total'] ?> productos</small>
                                     <?php endif; ?>
                                 </h3>
-                                <a class="mn-pane-all" href="<?= e($base . $cat['path']) ?>">
+                                <a class="mn-pane-all" href="<?= e(menu_href($base, (string) $cat['path'])) ?>">
                                     Ver todo <?= e(mb_strtolower($cat['label'])) ?> &rarr;
                                 </a>
                             </div>
@@ -206,12 +210,12 @@ $isCatalogo = $style === 'catalogo';
                                 <?php foreach ($cat['groups'] as $group): ?>
                                     <section class="mn-col">
                                         <h4 class="mn-col-title">
-                                            <a href="<?= e($base . $group['path']) ?>"><?= e($group['label']) ?></a>
+                                            <a href="<?= e(menu_href($base, (string) $group['path'])) ?>"><?= e($group['label']) ?></a>
                                         </h4>
                                         <ul class="mn-links">
                                             <?php foreach ($group['links'] as $link): ?>
                                                 <li>
-                                                    <a href="<?= e($base . $link['path']) ?>">
+                                                    <a href="<?= e(menu_href($base, (string) $link['path'])) ?>">
                                                         <?= e($link['label']) ?>
                                                         <?php if (!empty($link['badge'])): ?>
                                                             <span class="mn-badge"><?= e($link['badge']) ?></span>
@@ -225,9 +229,15 @@ $isCatalogo = $style === 'catalogo';
                             </div>
 
                             <?php /* Banner, destacados y marcas: se cargan al abrir el panel
-                                     para no castigar la primera carga de la pagina. */ ?>
-                            <div class="mn-promo" data-menu-panel="<?= (int) $cat['id'] ?>"
-                                 data-menu-panel-url="<?= e($base) ?>/menu/panel/<?= (int) $cat['id'] ?>"></div>
+                                     para no castigar la primera carga de la pagina. Solo las
+                                     categorias del catalogo tienen panel promocional; en las
+                                     instantaneas publicadas antes de `panel_id` se usa el id
+                                     del nodo, que para una categoria es el de la categoria. */ ?>
+                            <?php $panelId = (int) ($cat['panel_id'] ?? $cat['id'] ?? 0); ?>
+                            <?php if ($panelId > 0): ?>
+                                <div class="mn-promo" data-menu-panel="<?= $panelId ?>"
+                                     data-menu-panel-url="<?= e($base) ?>/menu/panel/<?= $panelId ?>"></div>
+                            <?php endif; ?>
                         </section>
                     <?php endforeach; ?>
                 </div>

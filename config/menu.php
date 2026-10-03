@@ -30,6 +30,23 @@ return [
     // Estilo que se usa si la tienda trae un valor que no esta en la lista.
     'fallback_style' => 'catalogo',
 
+    // -------------------------------------------------------------------------
+    // ALCANCE DEL MENU: la tienda decide que categorias se ven en su web.
+    //
+    //   completo -> se ve todo el menu del catalogo menos lo que la tienda oculte
+    //   elegido  -> se ve SOLO lo que la tienda marque como visible (+ su rama)
+    //
+    // La eleccion vive en `mt_stores.menu_scope` y las anulaciones por nodo en
+    // `mt_menu_item_overrides` (mostrar/ocultar y renombrar).
+    // -------------------------------------------------------------------------
+    'scopes' => [
+        'completo' => 'Menu completo (todo el catalogo)',
+        'elegido'  => 'Solo las categorias que yo elija',
+    ],
+
+    // Modo con el que nace una tienda nueva.
+    'fallback_scope' => 'completo',
+
     // Menu Compacto: cuantas categorias de primer nivel caben en la barra. El
     // resto se agrupa en «Mas categorias» (nunca se pierde ninguna).
     'compact_max' => Env::int('MENU_COMPACT_MAX', 7),

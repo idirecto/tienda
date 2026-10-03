@@ -1015,6 +1015,13 @@ check((bool) Database::scalar(
      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'mt_stores' AND COLUMN_NAME = 'menu_style'"
 ), 'columna mt_stores.menu_style creada');
 
+// Destinos propios del menu: /propios, /pagina/{slug} y el enlace de cada nodo.
+check(CatalogUrl::ownProductsPath() === '/propios' && CatalogUrl::pagePath('aviso legal') === '/pagina/aviso%20legal',
+    'rutas de los destinos propios del menu (/propios y /pagina/{slug})');
+check(menu_href('/tienda', '/propios') === '/tienda/propios'
+    && menu_href('/tienda', 'https://ejemplo.test/x') === 'https://ejemplo.test/x',
+    'menu_href antepone la base a las rutas y respeta los enlaces absolutos');
+
 // Arbol comun: los dos menus pintan lo mismo.
 $demoStoreId = (int) (Database::scalar('SELECT id FROM mt_stores ORDER BY id ASC LIMIT 1') ?? 0);
 $menuTree = Menu::forStore($demoStoreId);
@@ -1325,6 +1332,123 @@ if (!$editorStore) {
         check($nivelado['ok'] && $nivelId > 0 && !in_array($nivelId, $idsEditor, true),
             'un nodo con nivel minimo no se muestra a una tienda sin nivel asignado');
         check(Menu::storeLevelOrder($editorStore) === null, 'una tienda sin cuenta del mayorista no tiene nivel');
+
+        // --- Que categorias se ven: modo completo/elegido y anulaciones ---
+        check((bool) Database::scalar(
+            "SELECT COUNT(*) FROM information_schema.COLUMNS
+              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'mt_stores' AND COLUMN_NAME = 'menu_scope'"
+        ) && Database::tableExists('mt_menu_item_overrides'),
+            'migracion 009: modo de menu y anulaciones por tienda');
+        check(count(Menu::scopes()) === 2 && isset(Menu::scopes()['completo'], Menu::scopes()['elegido'])
+            && Menu::scope(['menu_scope' => 'inventado']) === (string) config('menu.fallback_scope', 'completo'),
+            'solo existen dos modos de menu (completo/elegido) y se sanean');
+
+        // Un nodo de la siembra (visible en modo completo y sin anulacion previa)
+        // para probar el modo «elegido».
+        $idsCompleto = array_map('intval', array_column(Menu::visibleRows($editorStore), 'id'));
+        $overridesPrevias = Menu::overridesFor($editorStore);
+        $seedId = 0;
+        foreach ($idsCompleto as $candidato) {
+            if (isset($overridesPrevias[$candidato])) {
+                continue;
+            }
+            $esCategoria = (int) Database::scalar(
+                'SELECT COUNT(*) FROM mt_menu_items WHERE id = :id AND level = 1',
+                ['id' => $candidato]
+            );
+            if ($esCategoria === 1) {
+                $seedId = $candidato;
+                break;
+            }
+        }
+
+        Database::update('mt_stores', $editorStore, ['menu_scope' => 'elegido']);
+        Menu::invalidate($editorStore);
+        $idsElegido = array_map('intval', array_column(Menu::visibleRows($editorStore), 'id'));
+        Database::update('mt_stores', $editorStore, ['menu_scope' => 'completo']);
+        Menu::invalidate($editorStore);
+        check($seedId > 0 && in_array($seedId, $idsElegido, true) === false,
+            'en modo «elegido» un nodo sin marcar deja de verse');
+
+        $marca = MenuAdmin::setOverride($seedId, $editorStore, 'visible', 'Nombre propio');
+        Menu::invalidate($editorStore);
+        $porItem = [];
+        foreach (Menu::draftTree($editorStore)['categories'] as $c) {
+            $porItem[(int) $c['item_id']] = $c;
+        }
+        check($marca['ok'] && isset($porItem[$seedId]) && $porItem[$seedId]['label'] === 'Nombre propio',
+            'marcar una categoria la muestra con el nombre propio de la tienda');
+        check((string) Database::scalar('SELECT label FROM mt_menu_items WHERE id = :id', ['id' => $seedId])
+            !== 'Nombre propio',
+            'la anulacion no toca el nombre del nodo del arbol');
+
+        MenuAdmin::setOverride($seedId, $editorStore, 'oculto', '');
+        Menu::invalidate($editorStore);
+        $ocultos = array_map('intval', array_column(Menu::visibleRows($editorStore), 'id'));
+        check(!in_array($seedId, $ocultos, true), 'ocultar una categoria la quita de la web');
+
+        // Ocultar una categoria se lleva su rama entera.
+        MenuAdmin::setOverride($catId, $editorStore, 'oculto', '');
+        Menu::invalidate($editorStore);
+        $idsConRama = array_map('intval', array_column(Menu::visibleRows($editorStore), 'id'));
+        check(!in_array($catId, $idsConRama, true) && !in_array((int) $nivel2['id'], $idsConRama, true),
+            'ocultar una categoria se lleva su rama por delante');
+        MenuAdmin::clearOverride($catId, $editorStore);
+        MenuAdmin::clearOverride($seedId, $editorStore);
+        Menu::invalidate($editorStore);
+
+        // --- Aislamiento de las anulaciones ---
+        $roboAnulacion = MenuAdmin::setOverride($catId, $otraStore, 'oculto', '');
+        check($roboAnulacion['ok'] === false && (Menu::overridesFor($otraStore)[$catId] ?? null) === null,
+            'una tienda no puede anular un nodo de otra');
+
+        // --- Destinos propios: /propios, pagina de la tienda y nodo bajo compartido ---
+        $propia = MenuAdmin::create($editorStore, false, [
+            'parent_id' => null, 'label' => 'Productos propios', 'slug' => 'productos-propios',
+            'target_type' => 'propios', 'active' => 1,
+        ]);
+        $propiaId = (int) ($propia['id'] ?? 0);
+        $enArbol = null;
+        foreach (Menu::draftTree($editorStore)['categories'] as $c) {
+            if ((int) $c['item_id'] === $propiaId) {
+                $enArbol = $c;
+            }
+        }
+        check($propia['ok'] && $enArbol !== null && $enArbol['path'] === '/propios' && $enArbol['groups'] === [],
+            'una categoria propia sin grupos se pinta con su destino (/propios)');
+
+        $slugPagina = 'pagina-prueba-' . substr((string) time(), -5);
+        Database::insert('mt_content_blocks', [
+            'store_id' => $editorStore, 'slug' => $slugPagina, 'title' => 'Pagina de prueba', 'active' => 1,
+        ]);
+        $pagina = MenuAdmin::create($editorStore, false, [
+            'parent_id' => null, 'label' => 'Servicio', 'slug' => 'servicio',
+            'target_type' => 'pagina', 'target_key' => $slugPagina, 'active' => 1,
+        ]);
+        $malPagina = MenuAdmin::create($editorStore, false, [
+            'parent_id' => null, 'label' => 'Pagina rota', 'target_type' => 'pagina',
+            'target_key' => 'no-existe-jamas', 'active' => 1,
+        ]);
+        check($pagina['ok'] && $malPagina['ok'] === false,
+            'el destino «pagina de la tienda» exige una pagina que exista');
+
+        $dentroCompartida = MenuAdmin::create($editorStore, false, [
+            'parent_id' => $compId, 'label' => 'Servicio dentro de compartida',
+            'target_type' => 'url', 'url' => '/contacto', 'active' => 1,
+        ]);
+        $filaDentro = MenuAdmin::node((int) ($dentroCompartida['id'] ?? 0), $editorStore, false);
+        check($dentroCompartida['ok'] && (int) ($filaDentro['level'] ?? 0) === 2
+            && (int) ($filaDentro['store_id'] ?? 0) === $editorStore,
+            'la tienda puede colgar un nodo propio dentro de una categoria compartida');
+        $compartidaEnArbol = null;
+        foreach (Menu::draftTree($editorStore)['categories'] as $c) {
+            if ((int) $c['item_id'] === $compId) {
+                $compartidaEnArbol = $c;
+            }
+        }
+        $gruposCompartida = array_column((array) ($compartidaEnArbol['groups'] ?? []), 'label');
+        check(in_array('Servicio dentro de compartida', $gruposCompartida, true),
+            'ese nodo propio se pinta dentro del grupo del nodo compartido');
 
         // --- Publicacion (y cache) ---
         $versionAntes = Menu::publishedVersion($editorStore);

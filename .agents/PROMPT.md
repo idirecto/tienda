@@ -21,6 +21,36 @@ _(vacío — sin petición pendiente)_
 
 Cada petición terminada se anota aquí con la fecha, qué se pidió y qué se hizo.
 
+### 2026-10-03 · Elegir qué categorías se ven y crear categorías propias (petición por chat)
+
+**Pedido:** «en el panel de la tienda se puede mostrar el menú completo o dar a elegir
+qué categorías se mostrarán […] si la tienda decide no mostrar una subcategoría o
+categoría eso se debe guardar en algún lado; además, dar la posibilidad de que agreguen
+una categoría y subcategoría, por ejemplo “productos propios” o “Servicio”, que ellos
+quieran agregar, y que solo esos valores se muestren en su web».
+
+**Qué había:** el catálogo de categorías y subcategorías es el compartido con idirecto y
+PuntoByZE (solo lectura) y ya existía el árbol editable con borrador/publicación, los
+nodos propios y el activo/desactivado. Faltaba lo importante: la tienda no podía ocultar
+ni renombrar un nodo que no fuera suyo, una categoría propia con destino propio acababa
+en `/catalogo`, no existía `/propios` y no se podía colgar un nodo propio dentro de una
+categoría del catálogo.
+
+**Decisiones confirmadas:** modo «completo»/«elegido» con interruptor por categoría;
+las categorías propias pueden colgar también dentro de categorías del catálogo; destinos
+«productos propios» (`/propios`), página de la tienda y enlace libre; de los nodos
+compartidos se puede ocultar/mostrar y renombrar (no reordenar).
+
+**Qué se hizo:** migración `009` (`mt_stores.menu_scope` + `mt_menu_item_overrides`, la
+anulación por tienda sin tocar el nodo), el modo y las anulaciones en `Menu::visibleRows`
+(rama y camino incluidos), destinos `propios`/`pagina` en los tres niveles, `/propios`
+con los productos propios, la posibilidad de colgar nodos propios de categorías
+compartidas, y en el panel la tarjeta «Qué categorías se ven» con Mostrar/Ocultar,
+renombrar y «Volver al árbol», más «+ Productos propios» y «+ Página de la tienda».
+Además se arregló que el editor perdía el destino al editar y que los enlaces absolutos
+del menú se rompían. `verify.php` 186 → **200** (TODO OK); probado en navegador real y
+en HTTP real. Detalle en `.agents/MENU-TIENDA-2026-10-03.md` y `CHANGELOG.md`.
+
 ### 2026-10-03 · Los filtros, por subcategoría y con contexto (petición por chat)
 
 **Pedido:** «va mal; revisa cómo se filtran los filtros en puntobyze, en los listados los

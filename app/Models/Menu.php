@@ -38,7 +38,7 @@ final class Menu
      * estructura que devuelve `forStore()`, para que la cache antigua no se
      * reutilice con el formato viejo.
      */
-    private const CACHE_VERSION = 2;
+    private const CACHE_VERSION = 3;
 
     /**
      * Slugs de categoria del menu de referencia que no coinciden con
@@ -100,6 +100,46 @@ final class Menu
 
         $fallback = (string) Config::get('menu.fallback_style', 'catalogo');
         return isset($styles[$fallback]) ? $fallback : 'catalogo';
+    }
+
+    // =====================================================================
+    // ALCANCE DEL MENU (completo | elegido)
+    // =====================================================================
+
+    /** Los dos modos de menu que puede elegir la tienda. */
+    public static function scopes(): array
+    {
+        return (array) Config::get('menu.scopes', [
+            'completo' => 'Menu completo (todo el catalogo)',
+            'elegido'  => 'Solo las categorias que yo elija',
+        ]);
+    }
+
+    /** Modo elegido por la tienda, saneado contra la lista de modos. */
+    public static function scope(array $store): string
+    {
+        $scope = strtolower(trim((string) ($store['menu_scope'] ?? '')));
+        $scopes = self::scopes();
+
+        if ($scope !== '' && isset($scopes[$scope])) {
+            return $scope;
+        }
+
+        $fallback = (string) Config::get('menu.fallback_scope', 'completo');
+
+        return isset($scopes[$fallback]) ? $fallback : 'completo';
+    }
+
+    /** Modo de una tienda por su id (el escaparate no trae la fila). */
+    public static function scopeForStore(int $storeId): string
+    {
+        if ($storeId <= 0 || !Database::tableExists('mt_stores')) {
+            return 'completo';
+        }
+
+        $row = Database::first('SELECT menu_scope FROM mt_stores WHERE id = :id LIMIT 1', ['id' => $storeId]);
+
+        return self::scope($row ?? []);
     }
 
     // =====================================================================
@@ -183,10 +223,10 @@ final class Menu
         $scoped = Database::tableExists('mt_menu_item_stores') ? self::storeScopeIndex() : [];
         $level = self::storeLevelOrder($storeId);
 
-        $out = [];
+        $base = [];
         foreach ($rows as $row) {
             if ((int) ($row['store_id'] ?? 0) === $storeId) {
-                $out[] = $row; // Nodo propio de la tienda: siempre visible aqui.
+                $base[(int) $row['id']] = $row; // Nodo propio de la tienda.
                 continue;
             }
             if (!self::matchesVisibility($row, $storeId, $scoped)) {
@@ -195,10 +235,262 @@ final class Menu
             if (!self::matchesCustomerLevel($row, $level)) {
                 continue;
             }
-            $out[] = $row;
+            $base[(int) $row['id']] = $row;
+        }
+
+        // Ahora manda la decision de la tienda: su modo (completo|elegido) y sus
+        // anulaciones (mostrar/ocultar y renombrar) sobre cualquier nodo.
+        return self::applyStoreChoice($storeId, $base);
+    }
+
+    /**
+     * Aplica a las filas la decision de la tienda: renombrado, ocultado y el
+     * modo de menu.
+     *
+     *   completo -> se ve todo menos lo que la tienda haya ocultado
+     *   elegido  -> se ve solo lo marcado como visible, mas su rama y su camino
+     *
+     * El ocultado explicito manda: si una categoria esta oculta, su rama entera
+     * deja de pintarse aunque tenga nodos marcados dentro.
+     *
+     * @param array<int,array> $base filas ya filtradas por plataforma/nivel/propiedad
+     * @return array<int,array>
+     */
+    private static function applyStoreChoice(int $storeId, array $base): array
+    {
+        if ($base === []) {
+            return [];
+        }
+
+        $overrides = self::overridesFor($storeId);
+
+        $hidden = [];
+        $marked = [];
+        foreach ($base as $id => $row) {
+            $override = $overrides[$id] ?? null;
+            if ($override === null) {
+                continue;
+            }
+
+            // Nombre propio de la tienda (el nodo compartido no se toca).
+            $label = trim((string) ($override['label'] ?? ''));
+            if ($label !== '') {
+                $base[$id]['label'] = $label;
+            }
+
+            $state = strtolower(trim((string) ($override['state'] ?? '')));
+            if ($state === 'oculto') {
+                $hidden[$id] = true;
+            } elseif ($state === 'visible') {
+                $marked[$id] = true;
+            }
+        }
+
+        if (self::scopeForStore($storeId) === 'elegido') {
+            $included = self::selectedIds($base, $marked);
+            foreach (array_keys($base) as $id) {
+                if (!isset($included[$id]) || self::hiddenByTree($id, $base, $hidden)) {
+                    unset($base[$id]);
+                }
+            }
+
+            return array_values($base);
+        }
+
+        foreach (array_keys($base) as $id) {
+            if (self::hiddenByTree($id, $base, $hidden)) {
+                unset($base[$id]);
+            }
+        }
+
+        return array_values($base);
+    }
+
+    /**
+     * Ids que se pintan en el modo «elegido»: lo marcado, su rama completa
+     * (descendientes) y su camino hasta la raiz (ancestros), para que nada
+     * quede colgando.
+     *
+     * @param array<int,array> $base
+     * @param array<int,bool> $marked
+     * @return array<int,bool>
+     */
+    private static function selectedIds(array $base, array $marked): array
+    {
+        $children = [];
+        foreach ($base as $id => $row) {
+            $parent = $row['parent_id'] === null ? null : (int) $row['parent_id'];
+            if ($parent !== null) {
+                $children[$parent][] = $id;
+            }
+        }
+
+        $included = $marked;
+        $stack = array_keys($marked);
+        while ($stack !== []) {
+            $id = array_pop($stack);
+            foreach ($children[$id] ?? [] as $child) {
+                if (!isset($included[$child])) {
+                    $included[$child] = true;
+                    $stack[] = $child;
+                }
+            }
+        }
+
+        foreach (array_keys($included) as $id) {
+            $parent = $base[$id]['parent_id'] ?? null;
+            while ($parent !== null && isset($base[$parent]) && !isset($included[$parent])) {
+                $included[$parent] = true;
+                $parent = $base[$parent]['parent_id'];
+            }
+        }
+
+        return $included;
+    }
+
+    /** ¿Este nodo (o algun ancestro suyo) esta oculto por la tienda? */
+    private static function hiddenByTree(int $id, array $base, array $hidden): bool
+    {
+        $current = $id;
+        $guard = 0;
+        while ($current !== null && $guard < 10) {
+            if (isset($hidden[$current])) {
+                return true;
+            }
+            $current = isset($base[$current]) && $base[$current]['parent_id'] !== null
+                ? (int) $base[$current]['parent_id']
+                : null;
+            $guard++;
+        }
+
+        return false;
+    }
+
+    /**
+     * Anulaciones de una tienda: item_id => ['state' => ..., 'label' => ...].
+     *
+     * @return array<int,array{state:string,label:?string}>
+     */
+    public static function overridesFor(int $storeId): array
+    {
+        if ($storeId <= 0 || !Database::tableExists('mt_menu_item_overrides')) {
+            return [];
+        }
+
+        $out = [];
+        foreach (Database::select(
+            'SELECT item_id, state, label FROM mt_menu_item_overrides WHERE store_id = :store_id',
+            ['store_id' => $storeId]
+        ) as $row) {
+            $out[(int) $row['item_id']] = [
+                'state' => (string) $row['state'],
+                'label' => $row['label'] === null ? null : (string) $row['label'],
+            ];
         }
 
         return $out;
+    }
+
+    /**
+     * Lista de categorias y grupos con la decision de la tienda, para el panel.
+     *
+     * Solo niveles 1 y 2 (lo que el tendero reconoce como «categorias y
+     * subcategorias»). Aplica los filtros de la plataforma (visibilidad y nivel
+     * de cliente) para no ofrecer lo que la tienda no puede ver, pero **no** el
+     * modo de menu: asi el panel siempre puede volver a marcar lo oculto.
+     *
+     * @return array<int,array{id:int,label:string,original:string,own:bool,active:bool,state:string,shown:bool,children:array<int,array>}>
+     */
+    public static function choiceList(int $storeId): array
+    {
+        if ($storeId <= 0 || !Database::tableExists('mt_menu_items')) {
+            return [];
+        }
+
+        $rows = Database::select(
+            'SELECT id, store_id, parent_id, level, label, visibility, min_customer_level, active
+               FROM mt_menu_items
+              WHERE level <= 2 AND (store_id IS NULL OR store_id = :store_id)
+              ORDER BY level ASC, sort ASC, id ASC',
+            ['store_id' => $storeId]
+        );
+        if ($rows === []) {
+            return [];
+        }
+
+        $scoped = Database::tableExists('mt_menu_item_stores') ? self::storeScopeIndex() : [];
+        $level = self::storeLevelOrder($storeId);
+        $overrides = self::overridesFor($storeId);
+        $scope = self::scopeForStore($storeId);
+
+        $cats = [];
+        foreach ($rows as $row) {
+            $id = (int) $row['id'];
+            $own = (int) ($row['store_id'] ?? 0) === $storeId;
+            if (!$own) {
+                if (!self::matchesVisibility($row, $storeId, $scoped)) {
+                    continue;
+                }
+                if (!self::matchesCustomerLevel($row, $level)) {
+                    continue;
+                }
+            }
+
+            $override = $overrides[$id] ?? null;
+            $state = strtolower(trim((string) ($override['state'] ?? '')));
+            $label = trim((string) ($override['label'] ?? ''));
+
+            $item = [
+                'id'       => $id,
+                'label'    => $label !== '' ? $label : (string) $row['label'],
+                'original' => (string) $row['label'],
+                'own'      => $own,
+                'active'   => (int) $row['active'] === 1,
+                'state'    => $state,
+                'shown'    => false,
+                'children' => [],
+            ];
+
+            if ((int) $row['level'] === 1) {
+                $cats[$id] = $item;
+            } elseif (isset($cats[(int) $row['parent_id']])) {
+                $cats[(int) $row['parent_id']]['children'][] = $item;
+            }
+        }
+
+        // Estado efectivo: manda `active`, luego el ocultado propio y, en modo
+        // «elegido», hace falta estar marcado (o que lo este la categoria padre,
+        // que es lo que hace que se vea su rama).
+        foreach ($cats as $catId => $cat) {
+            $catShown = self::itemShown($cat, $scope, null);
+            $cats[$catId]['shown'] = $catShown;
+            foreach ((array) $cat['children'] as $index => $child) {
+                $cats[$catId]['children'][$index]['shown'] = self::itemShown($child, $scope, $cat);
+            }
+        }
+
+        return array_values($cats);
+    }
+
+    /**
+     * ¿Este nodo se pinta en la web de la tienda? (para el panel)
+     *
+     * @param array $item  nodo de `choiceList()`
+     * @param array|null $parent categoria padre, si es un grupo
+     */
+    private static function itemShown(array $item, string $scope, ?array $parent): bool
+    {
+        if (!$item['active'] || $item['state'] === 'oculto') {
+            return false;
+        }
+        if ($scope !== 'elegido') {
+            return true;
+        }
+        if ($item['state'] === 'visible') {
+            return true;
+        }
+        // En modo «elegido», la rama de una categoria marcada se ve entera.
+        return $parent !== null && ($parent['state'] ?? '') === 'visible';
     }
 
     /** item_id => [store_id, ...] de la tabla de visibilidad (una sola consulta). */
@@ -522,11 +814,15 @@ final class Menu
             }
 
             $catId = (int) ($root['target_id'] ?? 0);
-            $path = CatalogUrl::categoryPath($catId) ?? '/catalogo';
+            $isCatalogCat = (string) $root['target_type'] === 'categoria';
+            // El nivel 1 puede apuntar a una categoria del catalogo o a un destino
+            // propio de la tienda (enlace libre, /propios o una pagina suya).
+            $ownTarget = self::isOwnDestination($root);
+            $path = self::nodeDestination($root) ?? (CatalogUrl::categoryPath($catId) ?? '/catalogo');
 
             // Configuracion de categorias vacias: el nodo no se pinta si no
-            // tiene productos con stock.
-            if ((int) ($root['hide_empty'] ?? 0) === 1 && ($stock[$catId] ?? 0) === 0) {
+            // tiene productos con stock (solo aplica a categorias del catalogo).
+            if ($isCatalogCat && (int) ($root['hide_empty'] ?? 0) === 1 && ($stock[$catId] ?? 0) === 0) {
                 continue;
             }
 
@@ -537,9 +833,11 @@ final class Menu
                     continue;
                 }
                 $anchorSub = (int) ($group['target_id'] ?? 0);
-                $groupPath = $anchorSub > 0 && $anchorSub !== $catId
-                    ? (CatalogUrl::subPath($anchorSub) ?? $path)
-                    : $path;
+                $ownGroup = self::isOwnDestination($group);
+                $groupPath = self::nodeDestination($group)
+                    ?? ($anchorSub > 0 && $anchorSub !== $catId
+                        ? (CatalogUrl::subPath($anchorSub) ?? $path)
+                        : $path);
 
                 $linksOut = [];
                 foreach ($group['children'] as $linkId) {
@@ -559,7 +857,7 @@ final class Menu
                     $linksOut[] = $resolved;
                 }
 
-                if ($linksOut === []) {
+                if ($linksOut === [] && !$ownGroup) {
                     continue; // Grupo sin destinos: no se pinta una columna vacia.
                 }
 
@@ -569,13 +867,16 @@ final class Menu
                     'path'   => $groupPath,
                     'icon'   => self::icon($group),
                     'badge'  => self::badge($group),
+                    'own'    => $ownGroup,
                     'links'  => $linksOut,
                 ];
                 $groups++;
                 $links += count($linksOut);
             }
 
-            if ($groupsOut === []) {
+            // Una categoria propia puede no tener grupos: se pinta igual porque
+            // su destino (p. ej. /propios) ya es una pagina.
+            if ($groupsOut === [] && !$ownTarget) {
                 continue;
             }
 
@@ -591,13 +892,57 @@ final class Menu
                 'badge'       => self::badge($root),
                 'badge_color' => self::badgeColor($root),
                 'banner'      => self::banner($root),
-                'total'       => $stock[$catId] ?? 0,
+                // Id de categoria del catalogo para el bloque promocional: 0 en
+                // una categoria propia (no hay destacados ni marcas que pedir).
+                'panel_id'    => $isCatalogCat ? $catId : 0,
+                'own'         => $ownTarget,
+                'total'       => $isCatalogCat ? ($stock[$catId] ?? 0) : 0,
                 'groups'      => $groupsOut,
             ];
         }
 
         return ['categories' => $categories, 'groups' => $groups, 'links' => $links];
     }
+
+    /**
+     * Ruta del destino de un nodo de nivel 1 o 2, o null si no se puede resolver.
+     *
+     * Los niveles 1 y 2 aceptan tanto categorias/subcategorias del catalogo como
+     * destinos propios de la tienda: enlace libre, listado de productos propios
+     * (`propios`) o una pagina de contenido (`pagina`).
+     */
+    private static function nodeDestination(array $row): ?string
+    {
+        switch ((string) $row['target_type']) {
+            case 'categoria':
+                return CatalogUrl::categoryPath((int) ($row['target_id'] ?? 0));
+
+            case 'subcategoria':
+                return CatalogUrl::subPath((int) ($row['target_id'] ?? 0));
+
+            case 'url':
+                $url = trim((string) ($row['url'] ?? ''));
+
+                return $url !== '' ? $url : null;
+
+            case 'propios':
+                return CatalogUrl::ownProductsPath();
+
+            case 'pagina':
+                $slug = trim((string) ($row['target_key'] ?? ''));
+
+                return $slug !== '' ? CatalogUrl::pagePath($slug) : null;
+        }
+
+        return null;
+    }
+
+    /** ¿El destino del nodo es propio de la tienda (no del catalogo)? */
+    private static function isOwnDestination(array $row): bool
+    {
+        return in_array((string) $row['target_type'], ['url', 'propios', 'pagina'], true);
+    }
+
 
     /** Icono del nodo (clave del juego propio) o null. */
     private static function icon(array $row): ?string
@@ -686,6 +1031,17 @@ final class Menu
             case 'url':
                 $url = trim((string) ($link['url'] ?? ''));
                 $path = $url !== '' ? $url : null;
+                break;
+
+            case 'propios':
+                // Listado de productos propios de la tienda.
+                $path = CatalogUrl::ownProductsPath();
+                break;
+
+            case 'pagina':
+                // Pagina de contenido de la tienda (/pagina/{slug}).
+                $slug = trim((string) ($link['target_key'] ?? ''));
+                $path = $slug !== '' ? CatalogUrl::pagePath($slug) : null;
                 break;
 
             case 'filtro':

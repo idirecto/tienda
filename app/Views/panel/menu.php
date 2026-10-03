@@ -116,6 +116,11 @@ use Tienda\Core\Csrf;
 </section>
 
 <?php
+// Que categorias se ven (modo + interruptor por categoria, guardado por tienda).
+require __DIR__ . '/_menu_choice.php';
+?>
+
+<?php
 $storeId = 0;
 $visibility = [];
 $stores = [];

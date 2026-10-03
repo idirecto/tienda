@@ -205,8 +205,11 @@ Todo lo demás se reutiliza: `mt_stores.menu_style`, `mt_banners` (banner del no
 ### 7.6 Lo que queda para más adelante
 
 1. **Filtros estructurados** (`f/…`) sobre `rel_filtro_producto` para activar los 14
-   destinos pendientes y sacar las facetas de la query string.
+   destinos pendientes y sacar las facetas de la query string. *(Hecho el 2026-10-03:
+   migración `008_menu_filtros.sql`.)*
 2. **Anulaciones por tienda**: hoy la tienda ve el árbol de la plataforma y sus propios
    nodos, pero no puede renombrar ni ocultar un nodo compartido solo para ella.
+   *(Hecho el 2026-10-03: migración `009` + `mt_menu_item_overrides`; ver
+   `.agents/MENU-TIENDA-2026-10-03.md`.)*
 3. **Editor de banners** dentro del propio nodo (hoy se elige uno ya subido).
 4. **Sitemap** que recoja las rutas SEO del menú publicado.

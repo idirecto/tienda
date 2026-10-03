@@ -13,9 +13,9 @@ al mayorista**. Falta el ciclo de compra en la tienda (carrito y pago) para que
 los pedidos entren solos: hoy se dan de alta a mano o los meterá el futuro
 checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
 
-> ✅ **Entorno (2026-10-02).** `idirecto_db` está **completa** (239 tablas:
+> ✅ **Entorno (2026-10-03).** `idirecto_db` está **completa** (239 tablas:
 > catálogo con 41.289 productos con stock, 33 categorías con stock, y las `mt_`),
-> la web responde 200 y `php tools/verify.php` da **TODO OK (186)**. El menú se
+> la web responde 200 y `php tools/verify.php` da **TODO OK (200)**. El menú se
 > verificó además **en navegador real** (Chrome headless por CDP): 22 comprobaciones
 > con el Menú Catálogo, 16 con el Menú Compacto y 20 del **editor del panel**
 > (drag & drop incluido), sin errores de JavaScript. El **parpadeo** del Menú Compacto
@@ -37,6 +37,7 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
 | Catálogo central (stock, búsqueda, paginación) | ✅ Completo (**listados en ~20 ms**, ver notas) |
 | **Navegación: Menú Compacto y Menú Catalogo (un solo árbol de 3 niveles)** | ✅ Completo (14 categorías / 83 grupos / 346 destinos) |
 | **Menú administrable: editor, borrador/publicación, visibilidad por tienda y nivel de cliente** | ✅ Completo (panel de tienda + panel de plataforma con rol `platform`) |
+| **La tienda elige qué categorías se ven (modo completo/elegido), las oculta o renombra, y crea categorías propias (`/propios`, páginas, enlace libre)** | ✅ Completo |
 | **Rutas SEO de catálogo (`/categoria/subcategoria/m/marca/orden/…`)** | ✅ Completo (301 desde las URLs con query string) |
 | **Etiquetas de listado (Ofertas, Novedades, Destacados) y directorio de marcas** | ✅ Completo |
 | Ficha de producto (galería + especificaciones) | ✅ Completo (colores ya tokenizados) |
@@ -247,6 +248,28 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
 - Etiquetas de listado resueltas en SQL contra `ofertas` (218 productos),
   `fecha_alta` (90 días, 196) y `etiqueta = 1` (26.000), y **aviso «Oferta»** en las
   tarjetas (`Catalog::attachOffers`).
+
+### Elegir categorías y crear las propias (2026-10-03)
+- **Migración `009`**: `mt_stores.menu_scope` (`completo|elegido`, por defecto
+  `completo`) y `mt_menu_item_overrides` (por tienda y nodo: `state` `visible|oculto`
+  y `label` para el nombre propio). No se duplica ningún nodo: el árbol puede ser
+  compartido y la tienda solo guarda su decisión.
+- **Modo «completo»**: se ve todo el menú del catálogo menos lo que la tienda oculte.
+  **Modo «elegido»**: se ve solo lo marcado, más su rama y su camino. Un `oculto`
+  explícito se lleva su rama. Los nodos creados por la tienda nacen marcados.
+- **El catálogo es compartido y de solo lectura**: la tienda decide qué se ve y cómo se
+  llama, pero no modifica `categorias` ni `subcategorias` (ni afecta a otras tiendas).
+- **Categorías propias**: destinos `propios` (`/propios`, listado nuevo con los
+  productos propios de la tienda), `pagina` (`/pagina/{slug}` de sus páginas de
+  contenido) y enlace libre. El nivel 1 y 2 respetan su destino y se pintan aunque no
+  tengan hijos. La tienda puede colgar además nodos suyos **dentro de una categoría
+  compartida** (p. ej. «Servicio» dentro de «Componentes»).
+- **Panel**: tarjeta «Qué categorías se ven» (modo, Mostrar/Ocultar, nombre propio y
+  «Volver al árbol»), botones «+ Productos propios» y «+ Página de la tienda», y el
+  editor rellena el destino al editar (antes se perdía al guardar).
+- **`publish()` aplica lo mismo**, así que el snapshot publicado ya sale filtrado; la
+  caché se invalida al publicar. Las instantáneas publicadas antes de este cambio
+  siguen funcionando (sin `panel_id` se usa el id del nodo para el bloque promocional).
 
 ### Pedidos y envío al mayorista (2026-10-01)
 - Tablas propias `mt_orders` (pedido) y `mt_order_items` (líneas) con **envío por

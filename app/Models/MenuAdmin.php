@@ -22,8 +22,13 @@ use Tienda\Core\Str;
  */
 final class MenuAdmin
 {
-    /** Tipos de destino admitidos en un nodo. */
-    private const TARGET_TYPES = ['categoria', 'subcategoria', 'marca', 'etiqueta', 'url', 'filtro'];
+    /**
+     * Tipos de destino admitidos en un nodo.
+     *
+     *   del catalogo  categoria | subcategoria | marca | etiqueta | filtro
+     *   propios       url (enlace libre) | propios (/propios) | pagina (pagina de la tienda)
+     */
+    private const TARGET_TYPES = ['categoria', 'subcategoria', 'marca', 'etiqueta', 'url', 'filtro', 'propios', 'pagina'];
 
     // =====================================================================
     // CONSULTAS
@@ -168,9 +173,10 @@ final class MenuAdmin
                 if ($level > 3) {
                     $errors[] = 'El menu tiene tres niveles: ese padre ya esta en el tercero.';
                 }
-                if (!$platform && (int) ($parent['store_id'] ?? 0) !== $storeId) {
-                    $errors[] = 'No puedes colgar nodos de una categoria de la plataforma.';
-                }
+                // La tienda SI puede colgar nodos suyos dentro de una categoria
+                // del catalogo (p. ej. «Servicio» dentro de «Componentes»): el
+                // nodo nuevo es suyo y solo lo ve ella. El nodo compartido no se
+                // toca (solo se lee).
             }
         }
 
@@ -206,6 +212,16 @@ final class MenuAdmin
             $targetKey = Catalog::tagKey($targetKey);
             if ($targetKey === 'todos') {
                 $errors[] = 'Elige una etiqueta (Ofertas, Novedades o Destacados).';
+            }
+        }
+        if ($type === 'pagina') {
+            // Una pagina de contenido de la tienda: `target_key` guarda su slug.
+            $targetKey = Str::slugify($targetKey);
+            if ($targetKey === '') {
+                $errors[] = 'Elige la pagina de la tienda a la que enlaza.';
+            } elseif ($storeId > 0 && !self::pageExists($storeId, $targetKey)) {
+                $errors[] = 'Esa pagina no existe en esta tienda.';
+                $targetKey = '';
             }
         }
         $targetExtra = (int) ($input['target_extra'] ?? 0);
@@ -285,7 +301,7 @@ final class MenuAdmin
                 'target_type'        => $type,
                 'target_id'          => in_array($type, ['categoria', 'subcategoria', 'marca', 'filtro'], true) ? $targetId : null,
                 'target_extra'       => $type === 'filtro' && $targetExtra > 0 ? $targetExtra : null,
-                'target_key'         => $type === 'etiqueta' ? $targetKey : null,
+                'target_key'         => in_array($type, ['etiqueta', 'pagina'], true) ? $targetKey : null,
                 'url'                => $type === 'url' ? $url : null,
                 'badge'              => $badge !== '' ? $badge : null,
                 'badge_color'        => $badgeColor !== '' ? $badgeColor : null,
@@ -344,6 +360,17 @@ final class MenuAdmin
         }
 
         self::normalizeSiblings($parentId);
+
+        // Un nodo recien creado nace marcado como visible para su tienda: en el
+        // modo «elegido» (solo lo que yo elija) debe verse sin marcarlo a mano.
+        if ($owner !== null && Database::tableExists('mt_menu_item_overrides')) {
+            Database::execute(
+                'INSERT IGNORE INTO mt_menu_item_overrides (store_id, item_id, state, label)
+                 VALUES (:store_id, :item_id, :state, NULL)',
+                ['store_id' => $owner, 'item_id' => $id, 'state' => 'visible']
+            );
+        }
+
         Menu::invalidate($storeId);
         if ($owner === null) {
             Menu::invalidateAll();
@@ -483,9 +510,8 @@ final class MenuAdmin
             if ($parent === null) {
                 return ['ok' => false, 'message' => 'La categoria destino no existe.'];
             }
-            if (!$platform && (int) ($parent['store_id'] ?? 0) !== $storeId) {
-                return ['ok' => false, 'message' => 'No puedes mover nodos dentro de una categoria de la plataforma.'];
-            }
+            // La tienda puede mover sus nodos dentro de una categoria compartida
+            // (sus nodos siguen siendo suyos); el nodo compartido no se toca.
             if (self::isDescendant($parentId, $id)) {
                 return ['ok' => false, 'message' => 'No puedes mover una categoria dentro de si misma.'];
             }
@@ -749,9 +775,9 @@ final class MenuAdmin
      * algun nodo del menu (los filtros del mayorista son miles: no tiene
      * sentido volcarlos todos). Las marcas se buscan aparte.
      *
-     * @return array{categories:array,subcategories:array,tags:array,filters:array}
+     * @return array{categories:array,subcategories:array,tags:array,filters:array,pages:array}
      */
-    public static function destinations(): array
+    public static function destinations(int $storeId = 0): array
     {
         $categories = [];
         foreach (Database::select('SELECT id, categoria FROM categorias ORDER BY orden ASC, categoria ASC') as $row) {
@@ -806,7 +832,28 @@ final class MenuAdmin
             }
         }
 
-        return ['categories' => $categories, 'subcategories' => $subcategories, 'tags' => $tags, 'filters' => $filters];
+        // Paginas de contenido de la tienda: destino de un nodo propio
+        // (`target_type = 'pagina'`, con el slug en `target_key`).
+        $pages = [];
+        if ($storeId > 0 && Database::tableExists('mt_content_blocks')) {
+            foreach (Database::select(
+                'SELECT slug, title FROM mt_content_blocks WHERE store_id = :store_id ORDER BY title ASC, slug ASC',
+                ['store_id' => $storeId]
+            ) as $row) {
+                $pages[] = [
+                    'slug'  => (string) $row['slug'],
+                    'label' => (string) ($row['title'] !== null && $row['title'] !== '' ? $row['title'] : $row['slug']),
+                ];
+            }
+        }
+
+        return [
+            'categories'    => $categories,
+            'subcategories' => $subcategories,
+            'tags'          => $tags,
+            'filters'       => $filters,
+            'pages'         => $pages,
+        ];
     }
 
     // =====================================================================
@@ -829,6 +876,10 @@ final class MenuAdmin
                 return 'Etiqueta: ' . Catalog::tagLabel((string) ($row['target_key'] ?? ''));
             case 'url':
                 return 'Enlace: ' . (string) ($row['url'] ?? '');
+            case 'propios':
+                return 'Productos propios de la tienda (/propios)';
+            case 'pagina':
+                return 'Pagina de la tienda: /pagina/' . (string) ($row['target_key'] ?? '');
             case 'filtro':
                 return 'Filtro: ' . Catalog::structuredChipLabel($id, (int) ($row['target_extra'] ?? 0));
         }
@@ -909,5 +960,101 @@ final class MenuAdmin
     private static function storeExists(int $id): bool
     {
         return $id > 0 && (bool) Database::scalar('SELECT 1 FROM mt_stores WHERE id = :id LIMIT 1', ['id' => $id]);
+    }
+
+    /** ¿Tiene esta tienda una pagina de contenido con ese slug? */
+    private static function pageExists(int $storeId, string $slug): bool
+    {
+        if ($storeId <= 0 || $slug === '' || !Database::tableExists('mt_content_blocks')) {
+            return false;
+        }
+
+        return Database::first(
+            'SELECT id FROM mt_content_blocks WHERE store_id = :store_id AND slug = :slug LIMIT 1',
+            ['store_id' => $storeId, 'slug' => $slug]
+        ) !== null;
+    }
+
+    // =====================================================================
+    // ANULACIONES POR TIENDA (mostrar/ocultar y renombrar sin tocar el nodo)
+    // =====================================================================
+
+    /**
+     * Guarda lo que la tienda decide sobre un nodo: mostrarlo u ocultarlo y,
+     * opcionalmente, ponerle su propio nombre.
+     *
+     * No modifica `mt_menu_items` (el nodo puede ser compartido de la
+     * plataforma): guarda una fila en `mt_menu_item_overrides` para esa tienda.
+     *
+     * @return array{ok:bool,message:string}
+     */
+    public static function setOverride(int $itemId, int $storeId, string $state, string $label = ''): array
+    {
+        if ($storeId <= 0) {
+            return ['ok' => false, 'message' => 'Tienda no valida.'];
+        }
+
+        $row = self::node($itemId, $storeId, false);
+        if ($row === null) {
+            // `node()` solo devuelve lo compartido o lo de esta tienda, asi que
+            // un id de otra tienda no llega hasta aqui.
+            return ['ok' => false, 'message' => 'Ese nodo no existe o no lo puede ver tu tienda.'];
+        }
+
+        $state = strtolower(trim($state));
+        if (!in_array($state, ['visible', 'oculto'], true)) {
+            return ['ok' => false, 'message' => 'Estado no valido.'];
+        }
+
+        $label = trim($label);
+        if ($label !== '' && mb_strlen($label) > 120) {
+            return ['ok' => false, 'message' => 'El nombre no puede pasar de 120 caracteres.'];
+        }
+
+        try {
+            Database::execute(
+                'INSERT INTO mt_menu_item_overrides (store_id, item_id, state, label)
+                 VALUES (:store_id, :item_id, :state, :label)
+                 ON DUPLICATE KEY UPDATE state = VALUES(state), label = VALUES(label)',
+                [
+                    'store_id' => $storeId,
+                    'item_id'  => $itemId,
+                    'state'    => $state,
+                    'label'    => $label !== '' ? $label : null,
+                ]
+            );
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'message' => self::dbError($e)];
+        }
+
+        Menu::invalidate($storeId);
+
+        $message = $state === 'oculto'
+            ? 'Categoria oculta en tu web.'
+            : 'Categoria visible en tu web.';
+        if ($label !== '' && $label !== (string) $row['label']) {
+            $message = 'Guardado: se llamara «' . $label . '» en tu web.';
+        }
+
+        return ['ok' => true, 'message' => $message];
+    }
+
+    /** Quita la anulacion de un nodo (vuelve al estado del arbol). */
+    public static function clearOverride(int $itemId, int $storeId): array
+    {
+        if ($storeId <= 0) {
+            return ['ok' => false, 'message' => 'Tienda no valida.'];
+        }
+        if (!Database::tableExists('mt_menu_item_overrides')) {
+            return ['ok' => false, 'message' => 'Falta la migracion de anulaciones.'];
+        }
+
+        Database::execute(
+            'DELETE FROM mt_menu_item_overrides WHERE store_id = :store_id AND item_id = :item_id',
+            ['store_id' => $storeId, 'item_id' => $itemId]
+        );
+        Menu::invalidate($storeId);
+
+        return ['ok' => true, 'message' => 'Vuelto al estado del arbol.'];
     }
 }

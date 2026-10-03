@@ -528,12 +528,60 @@
             };
         };
 
-        var abrirFormulario = function (nodo) {
+        var abrirFormulario = function (nodo, li) {
             if (!dialog || !form) { return; }
             form.reset();
             form.action = base + '/nodo';
             form.querySelector('[name="id"]').value = nodo.id || '';
             form.querySelector('[name="parent_id"]').value = nodo.parent || '';
+
+            var campo = function (name) { return form.querySelector('[data-menu-field="' + name + '"]'); };
+            var poner = function (name, valor) {
+                var el = campo(name);
+                if (!el) { return; }
+                if (el.type === 'checkbox') {
+                    el.checked = valor === '1' || valor === 1 || valor === true;
+                } else {
+                    el.value = (valor === null || valor === undefined) ? '' : String(valor);
+                }
+            };
+
+            // Muestra solo los campos del destino elegido (evita rellenar los que
+            // no aplican: una categoria propia no necesita id de subcategoria).
+            var aplicarTipo = function () {
+                var tipo = campo('target_type') ? campo('target_type').value : 'categoria';
+                var mostrar = function (name, visible) {
+                    var el = campo(name);
+                    if (el && el.closest('label')) { el.closest('label').hidden = !visible; }
+                };
+                mostrar('target_id', ['categoria', 'subcategoria', 'marca'].indexOf(tipo) !== -1);
+                mostrar('target_key', tipo === 'etiqueta' || tipo === 'pagina');
+                mostrar('url', tipo === 'url');
+                mostrar('filter_id', tipo === 'filtro');
+                mostrar('filter_extra', tipo === 'filtro');
+            };
+
+            // Al editar, los campos se rellenan con lo que ya tiene el nodo: sin
+            // esto, guardar un nodo existente le borraba el destino.
+            if (nodo.id && li) {
+                poner('target_type', li.getAttribute('data-target-type') || 'categoria');
+                poner('target_id', li.getAttribute('data-target-id') || '0');
+                poner('filter_id', li.getAttribute('data-target-id') || '');
+                poner('filter_extra', li.getAttribute('data-target-extra') || '');
+                poner('target_key', li.getAttribute('data-target-key') || '');
+                poner('url', li.getAttribute('data-url') || '');
+                poner('icon', li.getAttribute('data-icon') || '');
+                poner('badge', li.getAttribute('data-badge') || '');
+                poner('badge_color', li.getAttribute('data-badge-color') || '');
+                poner('banner_id', li.getAttribute('data-banner-id') || '0');
+                poner('banner_url', li.getAttribute('data-banner-url') || '');
+                poner('min_customer_level', li.getAttribute('data-min-level') || '');
+                poner('hide_empty', li.getAttribute('data-hide-empty') || '0');
+                poner('active', li.getAttribute('data-active') || '1');
+            } else if (nodo.preset) {
+                poner('target_type', nodo.preset);
+            }
+
             var titulo = form.querySelector('[data-menu-dialog-title]');
             if (titulo) {
                 titulo.textContent = nodo.id
@@ -541,7 +589,15 @@
                     : (nodo.parent ? 'Nuevo nodo (nivel ' + (nodo.nivel + 1) + ')' : 'Nueva categoria');
             }
             var campoLabel = form.querySelector('[data-menu-field="label"]');
-            if (nodo.id && campoLabel) { campoLabel.value = nodo.label; }
+            if (campoLabel && nodo.label) { campoLabel.value = nodo.label; }
+
+            aplicarTipo();
+            var selectorTipo = campo('target_type');
+            if (selectorTipo && !selectorTipo.getAttribute('data-menu-bound')) {
+                selectorTipo.setAttribute('data-menu-bound', '1');
+                selectorTipo.addEventListener('change', aplicarTipo);
+            }
+
             if (dialog.showModal) { dialog.showModal(); } else { dialog.setAttribute('open', 'open'); }
             if (campoLabel) { campoLabel.focus(); }
         };
@@ -551,18 +607,20 @@
             if (editar) {
                 e.preventDefault();
                 var li = editar.closest('.mn-node');
-                if (li) { abrirFormulario(datosNodo(li)); }
+                if (li) { abrirFormulario(datosNodo(li), li); }
                 return;
             }
             var nuevo = e.target.closest('[data-menu-new]');
             if (nuevo) {
                 e.preventDefault();
+                var parentId = nuevo.getAttribute('data-menu-parent') || '';
                 abrirFormulario({
                     id: '',
-                    parent: nuevo.getAttribute('data-menu-parent') || '',
-                    nivel: nuevo.getAttribute('data-menu-parent') ? 2 : 1,
-                    label: ''
-                });
+                    parent: parentId,
+                    nivel: parentId ? 2 : 1,
+                    label: nuevo.getAttribute('data-menu-label') || '',
+                    preset: nuevo.getAttribute('data-menu-preset') || ''
+                }, null);
                 return;
             }
             if (e.target.closest('[data-menu-close]')) {

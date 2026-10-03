@@ -33,6 +33,9 @@ final class MenuController extends Controller
             'pageTitle'   => 'Menu',
             'styles'      => Menu::styles(),
             'style'       => $this->tenant->menuStyle(),
+            'scopes'      => Menu::scopes(),
+            'menuScope'   => Menu::scopeForStore($storeId),
+            'choice'      => Menu::choiceList($storeId),
             'stats'       => Menu::stats($storeId),
             'tree'        => MenuAdmin::tree($storeId),
             'pending'     => Menu::pending($storeId, 60),
@@ -40,7 +43,7 @@ final class MenuController extends Controller
             'draft'       => Menu::hasDraftChanges($storeId),
             'version'     => Menu::publishedVersion($storeId),
             'publishedAt' => Menu::publishedAt($storeId),
-            'destinos'    => MenuAdmin::destinations(),
+            'destinos'    => MenuAdmin::destinations($storeId),
             'icons'       => Menu::iconOptions(),
             'badges'      => Menu::badgePresets(),
             'banners'     => MenuAdmin::bannerOptions($storeId),
@@ -70,6 +73,68 @@ final class MenuController extends Controller
 
         $label = (string) (Menu::styles()[$style] ?? $style);
         Session::flash('success', 'Menu actualizado: ' . $label . '.');
+        $this->redirect('panel/menu');
+    }
+
+    /**
+     * Guarda el alcance del menu: «completo» o «elegido».
+     *
+     * Se guarda en `mt_stores.menu_scope` (el `store_id` sale de la sesion).
+     */
+    public function saveScope(array $params = []): string
+    {
+        $this->requireAuth();
+        $this->requireCsrf();
+        $storeId = $this->storeId();
+
+        $scope = strtolower(trim((string) $this->input('menu_scope', '')));
+        if (!isset(Menu::scopes()[$scope])) {
+            Session::flash('error', 'Elige uno de los dos modos de menu.');
+            $this->redirect('panel/menu');
+        }
+
+        Database::update('mt_stores', $storeId, ['menu_scope' => $scope]);
+        Menu::invalidate($storeId);
+
+        Session::flash(
+            'success',
+            $scope === 'elegido'
+                ? 'Ahora tu web muestra solo las categorias que marques.'
+                : 'Ahora tu web muestra el menu completo (menos lo que ocultes).'
+        );
+        $this->redirect('panel/menu');
+    }
+
+    /**
+     * Muestra u oculta un nodo en la web de ESTA tienda, y le puede poner su
+     * propio nombre, sin tocar el nodo (que puede ser compartido).
+     */
+    public function nodeOverride(array $params = []): string
+    {
+        $this->requireAuth();
+        $this->requireCsrf();
+        $storeId = $this->storeId();
+
+        $id = (int) ($params['id'] ?? 0);
+        $state = (string) $this->input('state', 'visible');
+        $label = (string) $this->input('label', '');
+
+        $result = MenuAdmin::setOverride($id, $storeId, $state, $label);
+        $this->flashResult($result, 'Guardado.');
+
+        $this->redirect('panel/menu');
+    }
+
+    /** Quita la anulacion de un nodo (vuelve a como esta en el arbol). */
+    public function nodeOverrideClear(array $params = []): string
+    {
+        $this->requireAuth();
+        $this->requireCsrf();
+        $storeId = $this->storeId();
+
+        $result = MenuAdmin::clearOverride((int) ($params['id'] ?? 0), $storeId);
+        $this->flashResult($result, 'Vuelto al estado del arbol.');
+
         $this->redirect('panel/menu');
     }
 

@@ -278,6 +278,31 @@ final class StorefrontController extends Controller
         ], 'shop');
     }
 
+    /**
+     * Listado de los productos propios de la tienda (`/propios`).
+     *
+     * Es el destino de un nodo de menu de tipo `propios`: la tienda puede crear
+     * su propia categoria «Productos propios» y solo la ve su web.
+     */
+    public function ownProducts(array $params = []): string
+    {
+        $storeId = $this->tenant->id();
+        $all = OwnProduct::publishedForStore($storeId);
+
+        $perPage = max(1, (int) Config::get('catalog.per_page', 20));
+        $pages = max(1, (int) ceil(count($all) / $perPage));
+        $page = min(max(1, (int) ($_GET['page'] ?? 1)), $pages);
+        $items = array_slice($all, ($page - 1) * $perPage, $perPage);
+
+        return $this->view($this->themeView('own'), [
+            'ownProducts' => $items,
+            'total'       => count($all),
+            'page'        => $page,
+            'pages'       => $pages,
+            'pageTitle'   => 'Productos propios - ' . $this->tenant->name(),
+        ], 'shop');
+    }
+
     /** Listado de una marca: /marca/{id}. */
     public function brand(array $params = []): string
     {

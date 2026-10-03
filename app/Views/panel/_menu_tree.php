@@ -25,19 +25,57 @@ $csrf = Csrf::field();
 $isPlatform = $scope === 'platform';
 
 /** Botones de accion de un nodo. */
-$nodeActions = static function (array $row, int $level) use ($actionBase, $csrf): string {
+$nodeActions = static function (array $row, int $level) use ($actionBase, $csrf, $isPlatform): string {
     $id = (int) $row['id'];
+    $own = $isPlatform || (int) ($row['store_id'] ?? 0) > 0;
+    if (!$own) {
+        // Nodo compartido de la plataforma: la tienda lo ve pero no lo toca.
+        // Para eso esta la tarjeta «Que categorias se ven» (mostrar/ocultar y
+        // renombrar solo para su web) y el panel de plataforma.
+        return '<span class="pill">Compartida: la gestiona la plataforma</span>';
+    }
+
     $html = '<form method="post" action="' . e($actionBase . '/nodo/' . $id . '/activar') . '" class="inline">' . $csrf
         . '<button class="btn btn-ghost btn-sm" type="submit" title="' . ((int) $row['active'] === 1 ? 'Desactivar' : 'Activar') . '">'
         . ((int) $row['active'] === 1 ? 'Activo' : 'Inactivo') . '</button></form>';
     $html .= '<button type="button" class="btn btn-ghost btn-sm" data-menu-edit="' . $id . '">Editar</button>';
-    if ($level !== 1) {
+    // La tienda puede colgar sus nodos dentro de un nodo compartido, pero no
+    // borrar el compartido. De primer nivel solo borra sus categorias PROPIAS
+    // (enlace, productos propios o pagina): las del catalogo se ocultan.
+    $custom = in_array((string) $row['target_type'], ['url', 'propios', 'pagina'], true);
+    if ($level !== 1 || $isPlatform || $custom) {
         $html .= '<form method="post" action="' . e($actionBase . '/nodo/' . $id . '/borrar') . '" class="inline"'
             . ' onsubmit="return confirm(\'Se borrara este nodo y todo lo que tenga dentro. ¿Seguir?\')">' . $csrf
             . '<button class="btn btn-danger btn-sm" type="submit">Borrar</button></form>';
     }
 
     return $html;
+};
+
+/** Atributos del nodo para que el JS pueda rellenar el formulario al editar. */
+$nodeData = static function (array $row) use ($actionBase): string {
+    $attrs = [
+        'data-label'       => (string) $row['label'],
+        'data-target-type' => (string) $row['target_type'],
+        'data-target-id'   => (string) (int) ($row['target_id'] ?? 0),
+        'data-target-extra' => (string) (int) ($row['target_extra'] ?? 0),
+        'data-target-key'  => (string) ($row['target_key'] ?? ''),
+        'data-url'         => (string) ($row['url'] ?? ''),
+        'data-icon'        => (string) ($row['icon'] ?? ''),
+        'data-badge'       => (string) ($row['badge'] ?? ''),
+        'data-badge-color' => (string) ($row['badge_color'] ?? ''),
+        'data-banner-id'   => (string) (int) ($row['banner_id'] ?? 0),
+        'data-banner-url'  => (string) ($row['banner_url'] ?? ''),
+        'data-min-level'   => (string) (int) ($row['min_customer_level'] ?? 0),
+        'data-hide-empty'  => (int) ($row['hide_empty'] ?? 0) === 1 ? '1' : '0',
+        'data-active'      => (int) $row['active'] === 1 ? '1' : '0',
+    ];
+    $out = '';
+    foreach ($attrs as $key => $value) {
+        $out .= ' ' . $key . '="' . e($value) . '"';
+    }
+
+    return $out;
 };
 
 /** Chip de badge. */
@@ -73,7 +111,7 @@ $badgeChip = static function (?string $text, ?string $color): string {
 
     <ul class="mn-tree" data-menu-level="1">
         <?php foreach ($tree as $cat): ?>
-            <li class="mn-node" data-id="<?= (int) $cat['id'] ?>" draggable="true">
+            <li class="mn-node" data-id="<?= (int) $cat['id'] ?>" draggable="true"<?= $nodeData($cat) ?>>
                 <div class="mn-node-head">
                     <span class="mn-drag" aria-hidden="true">⠿</span>
                     <span class="mn-node-label">
@@ -102,7 +140,7 @@ $badgeChip = static function (?string $text, ?string $color): string {
 
                 <ul class="mn-tree" data-menu-level="2">
                     <?php foreach ($cat['groups'] as $group): ?>
-                        <li class="mn-node" data-id="<?= (int) $group['id'] ?>" draggable="true">
+                        <li class="mn-node" data-id="<?= (int) $group['id'] ?>" draggable="true"<?= $nodeData($group) ?>>
                             <div class="mn-node-head">
                                 <span class="mn-drag" aria-hidden="true">⠿</span>
                                 <span class="mn-node-label">
@@ -120,7 +158,7 @@ $badgeChip = static function (?string $text, ?string $color): string {
 
                             <ul class="mn-tree" data-menu-level="3">
                                 <?php foreach ($group['links'] as $link): ?>
-                                    <li class="mn-node" data-id="<?= (int) $link['id'] ?>" draggable="true">
+                                    <li class="mn-node" data-id="<?= (int) $link['id'] ?>" draggable="true"<?= $nodeData($link) ?>>
                                         <div class="mn-node-head">
                                             <span class="mn-drag" aria-hidden="true">⠿</span>
                                             <span class="mn-node-label">
@@ -144,6 +182,10 @@ $badgeChip = static function (?string $text, ?string $color): string {
 
     <div class="actions">
         <button type="button" class="btn btn-primary" data-menu-new="1">Anadir categoria</button>
+        <button type="button" class="btn btn-ghost" data-menu-new="1" data-menu-preset="propios"
+                data-menu-label="Productos propios">+ Productos propios</button>
+        <button type="button" class="btn btn-ghost" data-menu-new="1" data-menu-preset="pagina"
+                data-menu-label="Servicio">+ Pagina de la tienda</button>
     </div>
 
     <pre class="mn-order-status muted" data-menu-status aria-live="polite"></pre>
@@ -179,6 +221,8 @@ $badgeChip = static function (?string $text, ?string $color): string {
                     <option value="marca">Marca</option>
                     <option value="etiqueta">Etiqueta comercial</option>
                     <option value="filtro">Filtro del catalogo</option>
+                    <option value="propios">Productos propios de la tienda</option>
+                    <option value="pagina">Pagina de la tienda</option>
                     <option value="url">Enlace libre</option>
                 </select>
             </label>
@@ -205,12 +249,21 @@ $badgeChip = static function (?string $text, ?string $color): string {
                 </select>
             </label>
 
-            <label>Etiqueta
+            <label>Etiqueta o pagina de la tienda
                 <select name="target_key" data-menu-field="target_key">
                     <option value="">— Elige —</option>
-                    <?php foreach ($destinos['tags'] as $tag): ?>
-                        <option value="<?= e((string) $tag['key']) ?>"><?= e((string) $tag['label']) ?></option>
-                    <?php endforeach; ?>
+                    <optgroup label="Etiquetas comerciales">
+                        <?php foreach ($destinos['tags'] as $tag): ?>
+                            <option value="<?= e((string) $tag['key']) ?>"><?= e((string) $tag['label']) ?></option>
+                        <?php endforeach; ?>
+                    </optgroup>
+                    <?php if (!empty($destinos['pages'])): ?>
+                        <optgroup label="Paginas de tu tienda">
+                            <?php foreach ($destinos['pages'] as $page): ?>
+                                <option value="<?= e((string) $page['slug']) ?>"><?= e((string) $page['label']) ?></option>
+                            <?php endforeach; ?>
+                        </optgroup>
+                    <?php endif; ?>
                 </select>
             </label>
             <label>Enlace libre
