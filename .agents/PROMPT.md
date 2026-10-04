@@ -21,6 +21,22 @@ _(vacío — sin petición pendiente)_
 
 Cada petición terminada se anota aquí con la fecha, qué se pidió y qué se hizo.
 
+### 2026-10-04 · Un solo botón en el buscador (petición por chat)
+
+**Pedido:** «sobre el buscador se dibujan dos botones para cerrar,
+`shop-search-clear` y `shop-search-close`; deja uno solo y que al pulsarlo se cierre
+toda la parte del buscador».
+
+**Qué pasaba:** eran dos aspas iguales pegadas: una borraba el texto (y solo aparecía
+al escribir) y la otra cerraba, así que parecían dos botones de cerrar.
+
+**Qué se hizo:** se quitó `shop-search-clear` (layout, JS y CSS) y queda **un único
+botón** que cierra todo el panel; para vaciar el texto está la X nativa del campo. Se
+conserva la búsqueda al cerrar y `verify.php` añade una comprobación para que no vuelva
+el segundo botón (231 → **232**, TODO OK). Probado en Chrome real por CDP a 1600 y
+390 px: un solo botón de 40×40 y el clic oculta el overlay, quita `is-open` y el bloqueo
+del body, sin errores de JavaScript.
+
 ### 2026-10-04 · Visibilidad del buscador: rejilla adaptativa en monitores grandes (petición por chat)
 
 **Pedido:** «Actúa como arquitecto senior full-stack especializado en comercio

@@ -1407,16 +1407,14 @@ body.shop-search-open { overflow: hidden; }
     border: 0; background: transparent; color: var(--c-text); font-size: 1.05rem;
 }
 .shop-search-input:focus { outline: none; }
-.shop-search-clear,
+/* Unico boton de la cabecera del panel: cierra todo el buscador. */
 .shop-search-close {
     display: inline-grid; place-items: center; width: 40px; height: 40px;
     border: 0; border-radius: var(--c-radius-md);
     background: transparent; color: var(--c-muted); cursor: pointer;
     transition: background .15s ease, color .15s ease;
 }
-.shop-search-clear:hover,
 .shop-search-close:hover { background: var(--c-surface-2); color: var(--c-primary); }
-.shop-search-clear svg,
 .shop-search-close svg { width: 18px; height: 18px; }
 
 .shop-search-meta { min-height: 1.1rem; padding: 0 1rem .4rem; font-size: .82rem; color: var(--c-muted); }

@@ -5,6 +5,36 @@ El detalle línea a línea está en `git log`.
 
 ---
 
+## 2026-10-04 · Buscador en vivo: un solo botón (el de cerrar)
+
+**Motivo (petición por chat):** «sobre el buscador se dibujan dos botones para cerrar,
+`shop-search-clear` y `shop-search-close`; deja uno solo y que al pulsarlo se cierre
+toda la parte del buscador».
+
+**Qué pasaba:** el panel tenía dos botones con la **misma aspa**: uno para borrar el
+texto (`shop-search-clear`, que se mostraba al escribir) y otro para cerrar
+(`shop-search-close`). Con texto escrito se veían los dos pegados, así que parecían dos
+botones de cerrar.
+
+**Qué se hizo**
+- Se quita `shop-search-clear` del layout, del JS (`els.clear`, el toggle `hidden` de
+  `sync()` y su listener) y del CSS. Queda **un único botón**, `shop-search-close`, que
+  cierra **todo** el panel (oculta el overlay, quita `is-open`, libera el scroll del body
+  y devuelve el foco al campo de la cabecera).
+- Para vaciar el texto sigue estando la **X nativa** del `<input type="search">` (y el
+  teclado). Al cerrar se conserva la búsqueda, por si el usuario vuelve a abrir.
+- Se añade una comprobación a `verify.php` para que no reaparezca el segundo botón.
+
+**Verificado en Chrome real por CDP** (1600 y 390 px): en la cabecera del panel hay
+**un solo botón** (40×40, visible y clicable), los resultados siguen saliendo en rejilla
+y el clic oculta el overlay (`hidden`), quita `is-open` y el bloqueo del body. Sin
+errores de JavaScript (el único 404 es `/favicon.ico`, porque la tienda demo no tiene
+favicon: es anterior y ajeno al buscador).
+
+`verify.php` 231 → **232**.
+
+---
+
 ## 2026-10-04 · Buscador en vivo: rejilla que se adapta (y Escape que cierra de verdad)
 
 **Motivo (petición por chat):** «mejora la visibilidad del buscador; en monitores grandes

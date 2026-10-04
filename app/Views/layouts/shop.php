@@ -102,8 +102,8 @@ $headerStyle = preg_replace('/[^a-z0-9_\-]/i', '', $tenant->headerStyle()) ?: 'c
             <label class="sr-only" for="shop-search-input">Buscar productos</label>
             <input type="search" id="shop-search-input" class="shop-search-input" autocomplete="off"
                    placeholder="Buscar productos, marcas, referencia...">
-            <button type="button" class="shop-search-clear" id="shop-search-clear"
-                    aria-label="Borrar busqueda" hidden><?= icon_svg('close') ?></button>
+            <?php /* Un unico boton en la cabecera del panel: cierra todo el buscador.
+                     La X nativa del campo (type="search") sigue sirviendo para borrar. */ ?>
             <button type="button" class="shop-search-close" id="shop-search-close"
                     aria-label="Cerrar buscador"><?= icon_svg('close') ?></button>
         </div>

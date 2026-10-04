@@ -15,7 +15,7 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
 
 > ✅ **Entorno (2026-10-03).** `idirecto_db` está **completa** (239 tablas:
 > catálogo con 41.289 productos con stock, 33 categorías con stock, y las `mt_`),
-> la web responde 200 y `php tools/verify.php` da **TODO OK (231)**. El menú se
+> la web responde 200 y `php tools/verify.php` da **TODO OK (232)**. El menú se
 > verificó además **en navegador real** (Chrome headless por CDP): 22 comprobaciones
 > con el Menú Catálogo, 16 con el Menú Compacto y 20 del **editor del panel**
 > (drag & drop incluido), sin errores de JavaScript. El **parpadeo** del Menú Compacto
@@ -307,6 +307,10 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
 - **Cerrar el panel (corregido 2026-10-04)**: Escape y la X devolvían el foco al campo de
   la cabecera y su listener de `focus` reabría el panel al instante. El foco programático
   va marcado (`state.closing`); el clic del usuario sigue abriendo.
+- **Un solo botón (corregido 2026-10-04)**: el panel tenía dos aspas iguales pegadas
+  (`shop-search-clear`, que borraba, y `shop-search-close`, que cerraba) y parecían dos
+  botones de cerrar. Se quitó el de borrar (layout, JS y CSS): queda solo el de cerrar,
+  que oculta todo el buscador. Para vaciar el texto está la X nativa del campo.
 
 ### Pedidos y envío al mayorista (2026-10-01)
 - Tablas propias `mt_orders` (pedido) y `mt_order_items` (líneas) con **envío por
@@ -375,7 +379,7 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
   en **nginx + PHP-FPM** (`sudo bash deploy/setup-nginx-domain.sh valduran.com`).
 - La app detecta el servidor (`app/Core/Server.php`): ruta pública de `/public`,
   esquema real (incluido proxy) y host de las URLs canónicas.
-- `tools/verify.php`: 231 comprobaciones automáticas (diseño, facetas, filtros
+- `tools/verify.php`: 232 comprobaciones automáticas (diseño, facetas, filtros
   estructurados del mayorista, catálogo, caché y precios en vivo,
   almacenamiento, DNS, servidor, registro de tiendas, pedidos y envío al mayorista).
 - Documentación interna en `.agents/`, blindada frente a la web.

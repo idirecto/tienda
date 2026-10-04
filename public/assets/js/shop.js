@@ -1016,7 +1016,6 @@
         var pageUrl = root.dataset.searchPage || '';
         var els = {
             input: root.querySelector('#shop-search-input'),
-            clear: root.querySelector('#shop-search-clear'),
             close: root.querySelector('#shop-search-close'),
             count: root.querySelector('#shop-search-count'),
             filters: root.querySelector('#shop-search-filters'),
@@ -1051,7 +1050,6 @@
             state.query = value;
             if (pageInput.value !== value) { pageInput.value = value; }
             if (els.input.value !== value) { els.input.value = value; }
-            if (els.clear) { els.clear.hidden = value.length === 0; }
         }
 
         function showIdle() {
@@ -1232,16 +1230,9 @@
             }
         });
 
-        if (els.clear) {
-            els.clear.addEventListener('click', function () {
-                sync('');
-                state.subs = [];
-                state.brands = [];
-                showIdle();
-                els.input.focus();
-            });
-        }
-
+        // Un unico boton en el panel: cierra todo el buscador (no hay boton de
+        // borrar propio; para vaciar el texto se usa la X nativa del campo o el
+        // teclado). Al cerrar se conserva la busqueda, por si el usuario vuelve.
         if (els.close) {
             els.close.addEventListener('click', function () { closePanel(true); });
         }

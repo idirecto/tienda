@@ -1581,6 +1581,12 @@ try {
         'el JS del buscador en vivo (panel, facetas y fichas) esta presente');
     check(str_contains($shopJs, 'state.closing') && str_contains($shopJs, 'if (state.closing) { return; }'),
         'cerrar el buscador (Escape o boton) no lo reabre al devolver el foco al campo');
+    // Un solo boton en la cabecera del panel: el de cerrar. El de borrar se quito
+    // porque se dibujaban dos aspas iguales y confundian.
+    check(str_contains($layoutShop, 'id="shop-search-close"')
+        && !str_contains($layoutShop, 'shop-search-clear')
+        && !str_contains($shopJs, 'els.clear'),
+        'el buscador tiene un unico boton: el de cerrar todo el panel');
 
     // Rejilla de resultados: sin el contenedor .grid-products las tarjetas caen
     // una por linea en cualquier monitor (era el fallo de visibilidad). El numero
