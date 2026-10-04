@@ -21,6 +21,30 @@ _(vacío — sin petición pendiente)_
 
 Cada petición terminada se anota aquí con la fecha, qué se pidió y qué se hizo.
 
+### 2026-10-04 · Visibilidad del buscador: rejilla adaptativa en monitores grandes (petición por chat)
+
+**Pedido:** «Actúa como arquitecto senior full-stack especializado en comercio
+electrónico, menús jerárquicos, sistemas multi-tienda y aplicaciones B2B. Mejora la
+visibilidad del buscador: en monitores grandes solo aparece un producto por línea,
+cuando en `/var/www/html/puntobyze` se va adaptando de acuerdo al tamaño de la
+pantalla; si es un teléfono sí muestra un resultado por línea, pero en un monitor
+grande muestra más».
+
+**Diagnóstico (Chrome real por CDP):** no era el CSS ni el JS, sino que
+`StorefrontController::searchLive()` devolvía las tarjetas sueltas, sin el contenedor
+`.grid-products` que el CSS ya esperaba; al ser bloques flex, caían **una por línea en
+cualquier ancho** (12 resultados → 12 filas medidas a 1600, 1280, 900 y 390 px).
+
+**Qué se hizo:** `/buscar/live` envuelve sus tarjetas en `.grid.grid-products` (una
+rejilla por grupo: «Productos de la tienda» y «Catalogo»); el panel usa
+`repeat(auto-fill, minmax(200px, 1fr))` con **una columna en teléfono** (≤639 px) y
+pasa al ancho `container-ultra` desde 1800 px. Además se corrigió un fallo **ya
+existente** que apareció al verificar: Escape y la X cerraban y el panel se reabría al
+instante porque el `focus` de vuelta al campo de la cabecera se confundía con el del
+usuario (nuevo `state.closing`). Medido: 390 px → 1 tarjeta por línea, 1280 → 4,
+1600 → 6, 2560 → 7, sin desbordes. `verify.php` 227 → **231** (TODO OK) + `CHANGELOG.md`
+y `STATE.md`.
+
 ### 2026-10-04 · Auditoría de caché y caché moderna que actualice los precios (petición por chat)
 
 **Pedido:** «Actúa como arquitecto senior full-stack especializado en comercio

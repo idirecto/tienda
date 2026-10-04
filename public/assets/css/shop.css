@@ -1389,6 +1389,11 @@ body.shop-search-open { overflow: hidden; }
         box-shadow: var(--c-shadow-lg);
     }
 }
+/* Ultra-ancho: el panel de resultados aprovecha todo el contenedor, de modo que
+   caben mas columnas de tarjetas (y no solo una, como pasaba antes). */
+@media (min-width: 1800px) {
+    .shop-search-panel { max-width: var(--c-container-ultra); }
+}
 
 .shop-search-head {
     display: flex; align-items: center; gap: .6rem;
@@ -1428,7 +1433,20 @@ body.shop-search-open { overflow: hidden; }
 }
 
 .shop-search-results { min-height: 0; padding: 1rem; overflow-y: auto; }
-.shop-search-results .grid-products { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); align-items: start; }
+/* Rejilla de resultados: el numero de columnas se adapta al ancho del panel.
+   El minimo de tarjeta (200 px, como las del catalogo) evita que se aprieten en
+   tablet; en un monitor grande entran 5-7, como en el buscador de PuntoByZE.
+   La rejilla la pinta el servidor: /buscar/live devuelve las tarjetas dentro
+   de .grid-products. */
+.shop-search-results .grid-products {
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 1rem;
+    align-items: start;
+}
+/* Telefono: una sola tarjeta por linea, como en el resto del storefront. */
+@media (max-width: 639px) {
+    .shop-search-results .grid-products { grid-template-columns: minmax(0, 1fr); }
+}
 
 .shop-search-hint { margin: .3rem 0; color: var(--c-muted); font-size: .88rem; }
 .shop-search-empty { padding: 2rem 0; color: var(--c-muted); text-align: center; }

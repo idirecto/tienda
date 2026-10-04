@@ -1579,6 +1579,23 @@ try {
     $shopJs = (string) file_get_contents(TIENDA_BASE . '/public/assets/js/shop.js');
     check(str_contains($shopJs, 'initLiveSearch') && str_contains($shopJs, 'shop-search-chip'),
         'el JS del buscador en vivo (panel, facetas y fichas) esta presente');
+    check(str_contains($shopJs, 'state.closing') && str_contains($shopJs, 'if (state.closing) { return; }'),
+        'cerrar el buscador (Escape o boton) no lo reabre al devolver el foco al campo');
+
+    // Rejilla de resultados: sin el contenedor .grid-products las tarjetas caen
+    // una por linea en cualquier monitor (era el fallo de visibilidad). El numero
+    // de columnas lo decide el CSS segun el ancho del panel.
+    $storefrontSrc = (string) file_get_contents(TIENDA_BASE . '/app/Controllers/StorefrontController.php');
+    check(substr_count($storefrontSrc, '\'<div class="grid grid-products">\'') === 2,
+        'el buscador en vivo envuelve sus tarjetas en la rejilla (catalogo y productos propios)');
+    $shopCss = (string) file_get_contents(TIENDA_BASE . '/public/assets/css/shop.css');
+    $posGrid = strpos($shopCss, '.shop-search-results .grid-products');
+    $bloqueGrid = $posGrid === false ? '' : substr($shopCss, $posGrid, 700);
+    check(str_contains($bloqueGrid, 'repeat(auto-fill, minmax(200px, 1fr))'),
+        'la rejilla del buscador usa auto-fill y gana columnas en pantallas grandes');
+    check(str_contains($bloqueGrid, '@media (max-width: 639px)')
+        && str_contains($bloqueGrid, 'grid-template-columns: minmax(0, 1fr)'),
+        'en el movil el buscador enseña una tarjeta por linea');
 
     // HTML limpio: nada de elementos decorativos vacios (el validador los marca).
     $menuView = (string) file_get_contents(TIENDA_BASE . '/app/Views/themes/idirecto/_menu.php');

@@ -544,7 +544,7 @@ tienda/
 │   │                        004_checkout.sql (mt_)
 │   ├── seeds/               001_seed.sql (planes, temas, tienda demo)
 │   └── migrate.php          Ejecutor de migraciones y semillas
-├── tools/verify.php         Comprobacion automatica (227)
+├── tools/verify.php         Comprobacion automatica (231)
 ├── tools/cache-clear.php    Gestion de la cache de datos (estado, vaciar, patrones, gc)
 └── deploy/                  Vhosts/plantillas de Apache y nginx + scripts
 ```

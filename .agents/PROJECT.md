@@ -87,7 +87,7 @@ public/                    ÚNICO directorio servido como estático
   assets/css|js            shop.css, panel.css, shop.js, panel.js
   uploads/                 Archivos locales (si STORAGE_DRIVER=local)
 storage/                   cache/ y logs/ (escritura de la app; la caché se limpia sola)
-tools/verify.php           227 comprobaciones automáticas
+tools/verify.php           231 comprobaciones automáticas
 tools/cache-clear.php      Gestiona la caché de datos (estado, vaciar, patrones, gc)
 ```
 
@@ -289,7 +289,7 @@ las que dan 404, y reutiliza la imagen grande si solo falta la miniatura.
 |---|---|
 | `/` | Portada: slider de banners, franja de garantías, accesos rápidos a categorías, destacados, productos propios |
 | `/catalogo` | Catálogo con buscador (`?q`), categoría (`?cat`), subcategoría (`?subcat`), **facetas** (`?f[clave][]=valor`), **precio** (`?pmin`/`?pmax`), orden (`?orden`) y paginación |
-| `/buscar/live` | **Buscador en vivo** (JSON): resultados del catálogo visible de la tienda + sus productos propios, con facetas de subcategoría y marca. Parámetros `q`, `s[]`, `m[]`, `pmin`, `pmax`. El panel lo pinta `shop.js` desde el campo de la cabecera |
+| `/buscar/live` | **Buscador en vivo** (JSON): resultados del catálogo visible de la tienda + sus productos propios, con facetas de subcategoría y marca. Parámetros `q`, `s[]`, `m[]`, `pmin`, `pmax`. Devuelve las tarjetas ya envueltas en `.grid-products` (rejilla adaptativa: 1 por línea en móvil, 5-7 en monitor grande). El panel lo pinta `shop.js` desde el campo de la cabecera |
 | `/producto/{slug}/{id}` | Ficha (**URL SEO**); `/producto/{id}` redirige 301 |
 | `/contacto`, `/pagina/{slug}` | Contacto y páginas de contenido |
 | `/registro` | **Alta de una tienda nueva** con la cuenta de idirecto (ver más abajo) |
@@ -563,7 +563,7 @@ servidores no los traen en `/etc/mime.types` y servirían la imagen sin
 
 ```bash
 sudo bash deploy/setup-local-domain.sh     # /etc/hosts + VirtualHost + permisos
-php tools/verify.php                       # 227 comprobaciones
+php tools/verify.php                       # 231 comprobaciones
 php -S 127.0.0.1:8099 index.php            # servidor embebido (alternativa)
 ```
 
@@ -590,7 +590,7 @@ con repetir el script con el nuevo nombre y tocar esas tres claves del `.env`.
 ## 10. Verificación antes de dar algo por hecho
 
 ```bash
-php tools/verify.php                 # debe decir: TODO OK (227 comprobaciones)
+php tools/verify.php                 # debe decir: TODO OK (231 comprobaciones)
 curl -s -o /dev/null -w '%{http_code}\n' http://local.tienda/
 curl -s -o /dev/null -w '%{http_code}\n' http://local.tienda/catalogo
 curl -s -o /dev/null -w '%{http_code}\n' "http://local.tienda/catalogo?cat=9&subcat=102&f%5Bsocket%5D%5B0%5D=am5"

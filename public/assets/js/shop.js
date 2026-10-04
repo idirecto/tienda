@@ -1035,7 +1035,10 @@
             controller: null,
             ignoreUntil: 0,
             open: false,
-            last: null
+            last: null,
+            // Al cerrar se devuelve el foco al campo de la cabecera; ese foco es
+            // programatico y no debe reabrir el panel (ver closePanel).
+            closing: false
         };
 
         function escapeHtml(value) {
@@ -1078,7 +1081,15 @@
             root.hidden = true;
             root.setAttribute('aria-hidden', 'true');
             document.body.classList.remove('shop-search-open');
-            if (returnFocus) { pageInput.focus(); }
+            if (returnFocus) {
+                // Devolver el foco al campo de la cabecera es correcto, pero su
+                // listener de `focus` no debe confundirlo con el usuario: si lo
+                // hiciera, el panel se reabriria al instante y ni Escape ni el
+                // boton de cerrar lo cerrarian.
+                state.closing = true;
+                pageInput.focus();
+                state.closing = false;
+            }
         }
 
         function buildUrl() {
@@ -1179,7 +1190,12 @@
             return url;
         }
 
-        pageInput.addEventListener('focus', openPanel);
+        // El foco programatico que devuelve closePanel no cuenta: solo abre el
+        // panel el foco del usuario (clic, tabulador o teclear en el campo).
+        pageInput.addEventListener('focus', function () {
+            if (state.closing) { return; }
+            openPanel();
+        });
         pageInput.addEventListener('click', openPanel);
         // Si el navegador deja el foco puesto al cargar (o el usuario escribe
         // sin haber hecho clic), teclear abre el panel y sigue la busqueda.

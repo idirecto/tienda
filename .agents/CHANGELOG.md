@@ -5,6 +5,40 @@ El detalle línea a línea está en `git log`.
 
 ---
 
+## 2026-10-04 · Buscador en vivo: rejilla que se adapta (y Escape que cierra de verdad)
+
+**Motivo (petición por chat):** «mejora la visibilidad del buscador; en monitores grandes
+solo aparece un producto por línea, cuando en puntobyze se va adaptando de acuerdo al
+tamaño de la pantalla».
+
+**Causa raíz (reproducida en Chrome real por CDP):** `StorefrontController::searchLive()`
+devolvía las tarjetas `<article class="product-card">` **sueltas**, sin el contenedor
+`.grid-products` que el CSS ya esperaba (`#shop-search-results` es un bloque y
+`.product-card` un bloque flex). Resultado: **una tarjeta por línea en cualquier
+ancho**; medido a 1600, 1280, 900 y 390 px, 12 resultados → 12 filas.
+
+**Qué se hizo**
+- `/buscar/live` envuelve sus tarjetas en `.grid.grid-products`, una rejilla por grupo
+  («Productos de la tienda» y «Catalogo»), de modo que el panel reutiliza la rejilla de
+  tarjetas del catálogo en vez de apilarlas.
+- CSS del panel: rejilla `repeat(auto-fill, minmax(200px, 1fr))` (mismo tamaño de
+  tarjeta que el catálogo) y **una sola columna en teléfono** (`max-width: 639px`); el
+  panel pasa a usar el ancho `container-ultra` desde 1800 px.
+- **Fallo encontrado al verificar** (ya existía, no lo introdujo este cambio): al cerrar
+  con **Escape** o con la **X**, `closePanel()` devolvía el foco al campo de la cabecera
+  y su listener de `focus` reabría el panel: se cerraba y se reabría al instante. Ahora
+  ese foco programático va marcado (`state.closing`) y no reabre; el clic real del
+  usuario sigue abriendo.
+
+**Medido (Chrome real por CDP, `local.tienda`):** 390/480 px → 1 tarjeta por línea;
+640 → 2; 768 → 3; 1024 → 3; 1280 → 4; 1440 → 5; 1600 → 6; 1800 → 6; 2560 → 7. Sin
+desbordes horizontales, sin tarjetas recortadas y con el CTA en todas. Escape cierra
+(devolviendo el foco al campo) y el siguiente clic lo reabre.
+
+`verify.php` 227 → **231** (rejilla del controlador, CSS adaptativo, teléfono y cierre).
+
+---
+
 ## 2026-10-04 · Caché de datos con driver (APCu/fichero) y precios que nunca se quedan viejos
 
 **Motivo:** al auditar el rendimiento se vio que el proyecto ya tenía caché, pero

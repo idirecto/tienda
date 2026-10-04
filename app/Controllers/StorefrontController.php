@@ -417,19 +417,34 @@ final class StorefrontController extends Controller
         $noFilters = $chosenSubs === [] && $brands === [] && $priceMin === null && $priceMax === null;
         $own = $noFilters ? OwnProduct::searchPublished($storeId, $q, 4) : [];
 
-        $html = '';
-        if ($own !== []) {
-            $html .= '<p class="shop-search-group">Productos de la tienda</p>';
-            foreach ($own as $item) {
-                $html .= View::render($this->themeView('_card_own'), [
-                    'p' => $item, 'tenant' => $this->tenant, 'base' => $base,
-                ]);
-            }
-        }
-        foreach ($result['items'] as $item) {
-            $html .= View::render($this->themeView('_card'), [
+        // Las tarjetas van SIEMPRE dentro de una rejilla (.grid-products): sin
+        // ese contenedor caian una por linea, porque .product-card es un bloque
+        // flex. El CSS del panel sabe adaptar esa rejilla al ancho (una tarjeta
+        // en el movil y varias en un monitor grande).
+        $ownCards = '';
+        foreach ($own as $item) {
+            $ownCards .= View::render($this->themeView('_card_own'), [
                 'p' => $item, 'tenant' => $this->tenant, 'base' => $base,
             ]);
+        }
+
+        $catalogCards = '';
+        foreach ($result['items'] as $item) {
+            $catalogCards .= View::render($this->themeView('_card'), [
+                'p' => $item, 'tenant' => $this->tenant, 'base' => $base,
+            ]);
+        }
+
+        $html = '';
+        if ($ownCards !== '') {
+            $html .= '<p class="shop-search-group">Productos de la tienda</p>'
+                . '<div class="grid grid-products">' . $ownCards . '</div>';
+        }
+        if ($catalogCards !== '') {
+            if ($ownCards !== '') {
+                $html .= '<p class="shop-search-group">Catalogo</p>';
+            }
+            $html .= '<div class="grid grid-products">' . $catalogCards . '</div>';
         }
 
         $facets = Catalog::searchFacets($q, $scope, ['terms' => $terms], 20, 12);
