@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tienda\Models;
 
+use Tienda\Core\Cache;
 use Tienda\Core\CatalogUrl;
 use Tienda\Core\Config;
 use Tienda\Core\Database;
@@ -1296,34 +1297,27 @@ final class Menu
     /**
      * Invalida la cache del arbol de una tienda (se llama SIEMPRE al publicar).
      *
-     * Se borran todos los ficheros `menu_tree_*_<tienda>_*.json` porque la clave
-     * lleva la version publicada: si solo se borrara la actual quedarian las
-     * anteriores ocupando sitio.
+     * Se borran todas las claves `menu_tree_*_<tienda>_*` porque la clave lleva
+     * la version publicada: si solo se borrara la actual quedarian las
+     * anteriores ocupando sitio. Va por `Cache`, asi que vale igual con el driver
+     * de fichero y con APCu.
      */
     public static function invalidate(int $storeId): void
     {
         $patterns = [
-            self::cachePattern('tree_*_' . $storeId . '_*'),
-            self::cachePattern('tree_' . $storeId),
-            self::cachePattern('tree_v*_' . $storeId),
+            'tree_*_' . $storeId . '_*',
+            'tree_' . $storeId,
+            'tree_v*_' . $storeId,
         ];
         foreach ($patterns as $pattern) {
-            foreach ((array) glob($pattern) as $file) {
-                if (is_file($file)) {
-                    @unlink($file);
-                }
-            }
+            Cache::forgetPattern(self::CACHE_KEY_PREFIX . $pattern);
         }
     }
 
     /** Borra la cache de todas las tiendas (al tocar nodos de la plataforma). */
     public static function invalidateAll(): void
     {
-        foreach ((array) glob(self::cachePattern('tree_*')) as $file) {
-            if (is_file($file)) {
-                @unlink($file);
-            }
-        }
+        Cache::forgetPattern(self::CACHE_KEY_PREFIX . 'tree_*');
     }
 
     // =====================================================================
@@ -1735,47 +1729,20 @@ final class Menu
     }
 
     // =====================================================================
-    // CACHE EN FICHERO
+    // CACHE
     // =====================================================================
 
-    private static function cacheFile(string $key): string
-    {
-        $safe = preg_replace('/[^a-z0-9_\-]/i', '_', $key);
-
-        return TIENDA_BASE . '/storage/cache/menu_' . $safe . '.json';
-    }
+    /** Prefijo de las claves del menu dentro de `Cache` (mantiene `menu_*.json`). */
+    private const CACHE_KEY_PREFIX = 'menu_';
 
     /**
-     * Ruta para un patron de cache (con comodines).
-     *
-     * Va aparte de `cacheFile()` porque aquel sanea los comodines (`*` -> `_`) y
-     * un `glob()` con el patron saneado no encontraria ningun fichero.
+     * Cache con TTL del arbol. Delega en `Cache` (driver APCu/fichero, memo por
+     * peticion y bloqueo antiestampida) y conserva el prefijo `menu_` para que
+     * los ficheros y los borrados por patron sigan siendo los de siempre.
      */
-    private static function cachePattern(string $pattern): string
-    {
-        $safe = preg_replace('/[^a-z0-9_\-\*]/i', '_', $pattern);
-
-        return TIENDA_BASE . '/storage/cache/menu_' . $safe . '.json';
-    }
-
     private static function cached(string $key, int $ttl, callable $compute): mixed
     {
-        $file = self::cacheFile($key);
-        if (is_file($file) && (time() - (int) filemtime($file)) < $ttl) {
-            $data = json_decode((string) file_get_contents($file), true);
-            if (is_array($data)) {
-                return $data;
-            }
-        }
-
-        $data = $compute();
-
-        $dir = dirname($file);
-        if (is_dir($dir) && is_writable($dir)) {
-            @file_put_contents($file, json_encode($data, JSON_UNESCAPED_UNICODE));
-        }
-
-        return $data;
+        return Cache::remember(self::CACHE_KEY_PREFIX . $key, $ttl, $compute);
     }
 
     /**

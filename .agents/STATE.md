@@ -1,7 +1,7 @@
 # STATE — Estado del proyecto
 
 > **El agente actualiza este fichero al terminar cada sesión.**
-> Última actualización: **2026-10-03**
+> Última actualización: **2026-10-04**
 
 ---
 
@@ -15,7 +15,7 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
 
 > ✅ **Entorno (2026-10-03).** `idirecto_db` está **completa** (239 tablas:
 > catálogo con 41.289 productos con stock, 33 categorías con stock, y las `mt_`),
-> la web responde 200 y `php tools/verify.php` da **TODO OK (215)**. El menú se
+> la web responde 200 y `php tools/verify.php` da **TODO OK (227)**. El menú se
 > verificó además **en navegador real** (Chrome headless por CDP): 22 comprobaciones
 > con el Menú Catálogo, 16 con el Menú Compacto y 20 del **editor del panel**
 > (drag & drop incluido), sin errores de JavaScript. El **parpadeo** del Menú Compacto
@@ -339,6 +339,26 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
 - Medido en HTTP real: portada ~30 ms, catálogo ~25 ms, catálogo con subcategoría
   ~60 ms, filtrado ~30 ms.
 
+### Caché de datos y precios (2026-10-04)
+- Una sola capa: **`Tienda\Core\Cache`** (`get/set/delete/remember/flush/
+  forgetPattern/gc`) con drivers **`FileCache`** y **`ApcuCache`**
+  (`config/cache.php`, claves `CACHE_*`). `Catalog` y `Menu` ya no tienen su
+  propia caché en fichero.
+- **APCu** se usa solo si la extensión está instalada (`CACHE_DRIVER=auto`);
+  si no, fichero. **En esta máquina no está instalada**, así que ahora corre el
+  driver de fichero. Para activarla:
+  `sudo apt-get install php8.4-apcu` y reiniciar PHP-FPM/Apache.
+- Lo que aporta la capa nueva: **memo por petición** (L1), **bloqueo por clave**
+  (una clave caducada no la recalculan N peticiones) y **limpieza automática**
+  (caducados, ficheros viejos y tope de ficheros; antes la carpeta crecía sin fin).
+- **Regla de precios**: nunca se cachea un precio. `Catalog::featured()` cachea
+  **solo los ids** de la selección y relee precio/stock/marca/specs en vivo
+  (`findMany()`); `forgetPriceCache()` solo queda para el rango del filtro.
+- Herramienta: **`tools/cache-clear.php`** (`estado|all|catalog|menu|precios|
+  patron|gc`).
+- Medido en HTTP real: `/catalogo` 4,4-6,9 s en frío → **24-60 ms** en caliente
+  estable (sin los picos de 4 s que había con la caché casera).
+
 ### Entorno y operación
 - `deploy/setup-local-domain.sh`: dominio de pruebas `http://local.tienda` con
   permisos correctos para `www-data` (Apache).
@@ -346,8 +366,8 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
   en **nginx + PHP-FPM** (`sudo bash deploy/setup-nginx-domain.sh valduran.com`).
 - La app detecta el servidor (`app/Core/Server.php`): ruta pública de `/public`,
   esquema real (incluido proxy) y host de las URLs canónicas.
-- `tools/verify.php`: 186 comprobaciones automáticas (diseño, facetas, filtros
-  estructurados del mayorista, catálogo,
+- `tools/verify.php`: 227 comprobaciones automáticas (diseño, facetas, filtros
+  estructurados del mayorista, catálogo, caché y precios en vivo,
   almacenamiento, DNS, servidor, registro de tiendas, pedidos y envío al mayorista).
 - Documentación interna en `.agents/`, blindada frente a la web.
 - Repositorio publicado en GitHub (`main`).

@@ -308,8 +308,10 @@ Condiciones aplicadas en `app/Models/Catalog.php` (idénticas a idirecto):
 La ficha de un producto **sigue existiendo aunque se agote** (muestra "Sin stock"),
 pero los agotados **no aparecen** en los listados ni en los destacados.
 
-El contador total del listado se cachea 5 minutos en `storage/cache/` para no
-repetir un `COUNT` pesado en cada petición.
+El contador total del listado se cachea 10 minutos con `Tienda\Core\Cache`
+(fichero en `storage/cache/`, o APCu si la extensión está instalada) para no
+repetir un `COUNT` pesado en cada petición. **Los precios no se cachean**: los
+destacados de portada guardan solo la lista de ids y releen precio y stock en vivo.
 
 ### URLs de producto (SEO)
 
@@ -518,12 +520,13 @@ completo se mantiene relevancia y nombre.
 ```
 tienda/
 ├── index.php                Front controller (rutas)
-├── config/                  app.php, appearance.php, database.php, storage.php, tenant.php, catalog.php, idirecto.php
+├── config/                  app.php, appearance.php, database.php, storage.php, tenant.php, catalog.php, idirecto.php, cache.php
 ├── app/
 │   ├── bootstrap.php        Autoload, entorno, sesion, helpers
 │   ├── Core/                Env, Config, Appearance, Database, Router, View, Controller, Model,
 │   │   │                    Auth, Csrf, Session, Tenant, TenantResolver, Dns, Specs, Str,
-│   │   │                    Registration, Cart, Checkout, Shipping, CustomerAuth
+│   │   │                    Cache, Registration, Cart, Checkout, Shipping, CustomerAuth
+│   │   ├── Cache/           CacheInterface, FileCache, ApcuCache (driver de la cache de datos)
 │   │   ├── Idirecto/        Account, Pricing, OrderGateway (envio de pedidos al mayorista)
 │   │   └── Storage/         StorageInterface, LocalStorage, S3Storage, StorageManager
 │   ├── Controllers/         Storefront, Cart, Checkout, Customer, Registration
@@ -541,7 +544,8 @@ tienda/
 │   │                        004_checkout.sql (mt_)
 │   ├── seeds/               001_seed.sql (planes, temas, tienda demo)
 │   └── migrate.php          Ejecutor de migraciones y semillas
-├── tools/verify.php         Comprobacion automatica (118)
+├── tools/verify.php         Comprobacion automatica (227)
+├── tools/cache-clear.php    Gestion de la cache de datos (estado, vaciar, patrones, gc)
 └── deploy/                  Vhosts/plantillas de Apache y nginx + scripts
 ```
 

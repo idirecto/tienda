@@ -5,6 +5,49 @@ El detalle línea a línea está en `git log`.
 
 ---
 
+## 2026-10-04 · Caché de datos con driver (APCu/fichero) y precios que nunca se quedan viejos
+
+**Motivo:** al auditar el rendimiento se vio que el proyecto ya tenía caché, pero
+**casera y con trampas**: la portada guardaba en caché las fichas **con el precio
+dentro** (hasta 10 min de precio viejo), no había protección contra la estampida
+(cuando caducaba el `COUNT`, 4,4 s por petición y por combinación), y la carpeta
+`storage/cache` **crecía sin límite** (711 ficheros, 576 eran `count_page_*`).
+
+**Qué se hizo**
+- **`Tienda\Core\Cache`**: fachada única con `get/set/delete/remember/flush/
+  forgetPattern/gc`. Añade tres cosas que no había: **driver intercambiable**
+  (`CacheInterface` + `FileCache` + `ApcuCache`), **memo por petición** (L1) y
+  **bloqueo por clave** antiestampida (el que llega segundo espera el valor en vez
+  de repetir el cálculo). `config/cache.php` + claves `CACHE_*` en `.env.example`.
+- **APCu cuando esté disponible** (`CACHE_DRIVER=auto`): memoria compartida del
+  servidor, sin ficheros ni red. Si falta la extensión, cae solo al driver de
+  fichero (es lo que pasa ahora en esta máquina, que no tiene `php8.4-apcu`).
+- **Los precios dejan de cachearse**: `Catalog::featured()` ahora guarda **solo la
+  lista de ids** (lo caro de elegir) y relee precio, stock, marca y specs **en
+  vivo** con `findMany()`. Un cambio de tarifa del mayorista se ve en la siguiente
+  petición, no cuando caduque un TTL.
+- `FileCache` escribe **atómico** (temporal + `rename`), guarda la caducidad dentro
+  del JSON (`e`) y **se limpia solo** (caducados + ficheros viejos + tope de
+  ficheros). El formato antiguo se trata como no existente: se recalcula una vez y
+  se reescribe nuevo.
+- `Catalog::cached()` y `Menu::cached()` pasan por la capa nueva; `Menu::invalidate()`
+  invalida por patrón (vale también con APCu, ya no depende de `glob()`).
+- **`tools/cache-clear.php`**: estado, vaciar todo, borrar solo catálogo/menú,
+  borrar las claves con importes o pasar la limpieza.
+- `verify.php` 215 → **227**: driver válido, ida y vuelta, memo, borrado por patrón,
+  limpieza, y —lo importante— que los destacados **no** cachean el precio y que el
+  precio de la portada se recalcula al cambiar el beneficio.
+
+**Medido** (HTTP real, `local.tienda`): `/catalogo` 4,4–6,9 s en frío → **24–60 ms**
+en caliente, estable; `/buscar/live?q=rtx` en caliente ~35 ms; `/` ~25 ms. Sin
+picos de 4 s repetidos al caducar el contador.
+
+**Nota para el dueño:** para el modo APCu falta instalar la extensión en el
+servidor (`sudo apt-get install php8.4-apcu` y reiniciar PHP-FPM/Apache). Mientras
+no esté, funciona con el driver de fichero.
+
+---
+
 ## 2026-10-03 · HTML del storefront: sin elementos decorativos vacíos y `tel:` válido
 
 **Motivo:** el validador de HTML de Chrome marcaba en la portada elementos decorativos

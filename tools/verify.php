@@ -22,6 +22,7 @@ require dirname(__DIR__) . '/app/bootstrap.php';
 
 use Tienda\Core\Appearance;
 use Tienda\Core\Auth;
+use Tienda\Core\Cache;
 use Tienda\Core\Cart;
 use Tienda\Core\Checkout;
 use Tienda\Core\Database;
@@ -1623,6 +1624,73 @@ try {
 }
 $pdoPropios->rollBack();
 check(true, 'la prueba del buscador de propios deshace sus datos (transaccion)');
+
+// =============================================================================
+// Cache de datos: driver, memo, bloqueo y, sobre todo, precios en vivo.
+// =============================================================================
+echo "\n== Cache de datos ==\n";
+try {
+    check(in_array(Cache::driverName(), ['file', 'apcu'], true),
+        'la cache resuelve un driver valido (' . Cache::driverName() . ')');
+
+    $clave = 'prueba_verify_' . bin2hex(random_bytes(4));
+    Cache::set($clave, ['n' => 42, 'lista' => [1, 2, 3]], 60);
+    $leido = Cache::get($clave);
+    check(is_array($leido) && ($leido['n'] ?? null) === 42 && ($leido['lista'] ?? []) === [1, 2, 3],
+        'la cache guarda y devuelve estructuras complejas');
+    check(Cache::get('no_existe_' . $clave, 'defecto') === 'defecto',
+        'una clave que no existe devuelve el valor por defecto');
+    check(Cache::delete($clave) === true && Cache::get($clave, 'borrado') === 'borrado',
+        'la cache borra una clave');
+
+    $calculos = 0;
+    $k = 'prueba_verify_remember_' . bin2hex(random_bytes(4));
+    $a = Cache::remember($k, 60, static function () use (&$calculos): int { $calculos++; return 7; });
+    $b = Cache::remember($k, 60, static function () use (&$calculos): int { $calculos++; return 9; });
+    check($a === 7 && $b === 7 && $calculos === 1,
+        'remember solo calcula una vez (memo por peticion incluido)');
+    check(Cache::forgetPattern($k) >= 1 && Cache::get($k, 'fuera') === 'fuera',
+        'forgetPattern borra por patron (conservando los comodines)');
+
+    // Limpieza: un fichero caducado y viejo desaparece al forzar el gc().
+    $dir = (string) config('cache.path');
+    $viejo = $dir . '/catalog_prueba_gc_verify.json';
+    file_put_contents($viejo, json_encode(['v' => 1, 'e' => time() - 10, 't' => time() - 100]));
+    touch($viejo, time() - (int) config('cache.gc_max_age', 172800) - 86400);
+    Cache::gc(true);
+    check(!is_file($viejo), 'la limpieza borra las entradas caducadas y viejas');
+
+    check(is_file(TIENDA_BASE . '/tools/cache-clear.php'),
+        'existe la herramienta de linea de comandos para vaciar la cache');
+} catch (\Throwable $e) {
+    check(false, 'la cache de datos no lanza excepciones (' . $e->getMessage() . ')');
+}
+
+// Los destacados cachean SOLO la seleccion de ids: el precio va en vivo.
+try {
+    $fids = Catalog::featured(6);
+    check(count($fids) > 0, 'la portada resuelve productos destacados');
+    $seleccion = Cache::get('catalog_featured_ids_0_6');
+    check(is_array($seleccion) && $seleccion !== [] && $seleccion === array_values(array_filter($seleccion, 'is_int')),
+        'los destacados cachean solo la lista de ids (numeros), no el precio');
+    $primero = $fids[0] ?? null;
+    $ficha = $primero === null ? null : Catalog::find((int) $primero['id']);
+    check($primero !== null && $ficha !== null
+        && (float) $primero['price_final'] === (float) $ficha['price_final'],
+        'el precio de la portada coincide con la ficha en vivo (no hay precio cacheado)');
+
+    // Cambiar el beneficio cambia el precio sin tocar la cache: solo se
+    // cachearon los ids, asi que la portada nunca muestra un precio viejo.
+    Catalog::forStore(null, 0.0, 21.0, false);
+    $sinBeneficio = (float) (Catalog::featured(6)[0]['price_final'] ?? 0);
+    Catalog::forStore(null, 50.0, 21.0, false);
+    $conBeneficio = (float) (Catalog::featured(6)[0]['price_final'] ?? 0);
+    Catalog::forStore(null, 0.0, 21.0, false);
+    check($sinBeneficio > 0 && $conBeneficio > $sinBeneficio,
+        'el precio de la portada se recalcula en vivo, sin esperar a que caduque la cache');
+} catch (\Throwable $e) {
+    check(false, 'los destacados no lanzan excepciones (' . $e->getMessage() . ')');
+}
 
 echo "\n==============================================================\n";
 if ($fail === 0) {

@@ -74,7 +74,7 @@ app/
                            design_preview.php)
     themes/idirecto/       Tema público (home, _hero, catalog, product, page, _card, cart,
                            checkout, thanks, account/*)
-config/                    app, appearance, database, storage, tenant, catalog, idirecto
+config/                    app, appearance, database, storage, tenant, catalog, idirecto, cache
 database/
   migrations/001_schema.sql      13 tablas mt_ (idempotente)
   migrations/002_design_tokens.sql  Columnas de identidad visual en mt_stores
@@ -86,8 +86,9 @@ deploy/                    Vhosts de Apache, plantilla de nginx y scripts
 public/                    ÚNICO directorio servido como estático
   assets/css|js            shop.css, panel.css, shop.js, panel.js
   uploads/                 Archivos locales (si STORAGE_DRIVER=local)
-storage/                   cache/ y logs/ (escritura de la app)
-tools/verify.php           118 comprobaciones automáticas
+storage/                   cache/ y logs/ (escritura de la app; la caché se limpia sola)
+tools/verify.php           227 comprobaciones automáticas
+tools/cache-clear.php      Gestiona la caché de datos (estado, vaciar, patrones, gc)
 ```
 
 ---
@@ -100,6 +101,7 @@ tools/verify.php           118 comprobaciones automáticas
 | `Config` | Carga `config/*.php` con acceso por punto: `Config::get('catalog.markup')` |
 | `Appearance` | **Sistema de diseño**: resuelve los tokens (config + tienda + `theme_tokens`), deriva hover/suave/contraste y emite el CSS de variables `--c-*` |
 | `Database` | PDO singleton; `select/first/scalar/execute/insert/update/delete/transaction/tableExists` |
+| `Cache` | **Caché de datos**: `get/set/delete/remember/flush/forgetPattern/gc` con driver `Cache/FileCache` o `Cache/ApcuCache` (`config/cache.php`). Memo por petición + bloqueo antiestampida. **Nunca guarda precios** |
 | `Router` | Compila `{param}`, detecta el subdirectorio base y despacha |
 | `TenantResolver` | **Decide qué tienda se sirve** según el hostname |
 | `Tenant` | Contexto inmutable de la tienda (nombre, tema, colores, radios, cuotas…) |
@@ -235,7 +237,13 @@ Resultado en la BD de desarrollo: **39.437 de 233.773** productos.
 
 - La **ficha** de un producto sigue existiendo aunque se agote (muestra "Sin
   stock"), pero los agotados **no aparecen en listados**.
-- El `COUNT` total se cachea **5 minutos** en `storage/cache/`.
+- El `COUNT` total se cachea **10 minutos** con `Tienda\Core\Cache`
+  (`config/cache.php`): fichero en `storage/cache/`, o APCu si la extensión está
+  instalada. El contador va protegido con un bloqueo, así que al caducar no lo
+  recalculan N peticiones a la vez.
+- **Ningún precio se cachea.** Los listados y la ficha leen el precio en cada
+  petición; los destacados de portada cachean **solo los ids** y releen precio,
+  stock y marca en vivo (`Catalog::featured()` + `findMany()`).
 
 ### Imágenes: `img_name` es una plantilla
 
@@ -407,8 +415,8 @@ primera imagen es el LCP: `fetchpriority="high"` y `preconnect` al host del CDN.
 La cabecera monta un **megamenú** (estilo PcComponentes / PuntoByZE) a partir de
 `Catalog::menuTree()`: categorías en columna lateral y subcategorías repartidas
 en columnas; en móvil es pantalla completa con navegación por pasos y botón
-atrás. Solo entran categorías **con stock** y el árbol se cachea 30 min en
-`storage/cache/catalog_menu.json` (`Catalog::MENU_TTL`). Se pinta en
+atrás. Solo entran categorías **con stock** y el árbol se cachea 30 min con
+`Tienda\Core\Cache` (`Catalog::MENU_TTL`). Se pinta en
 `layouts/shop.php` y su CSS/JS viven en los bloques `catmenu` de `shop.css` y
 `shop.js`.
 
@@ -555,7 +563,7 @@ servidores no los traen en `/etc/mime.types` y servirían la imagen sin
 
 ```bash
 sudo bash deploy/setup-local-domain.sh     # /etc/hosts + VirtualHost + permisos
-php tools/verify.php                       # 118 comprobaciones
+php tools/verify.php                       # 227 comprobaciones
 php -S 127.0.0.1:8099 index.php            # servidor embebido (alternativa)
 ```
 
@@ -582,7 +590,7 @@ con repetir el script con el nuevo nombre y tocar esas tres claves del `.env`.
 ## 10. Verificación antes de dar algo por hecho
 
 ```bash
-php tools/verify.php                 # debe decir: TODO OK (118 comprobaciones)
+php tools/verify.php                 # debe decir: TODO OK (227 comprobaciones)
 curl -s -o /dev/null -w '%{http_code}\n' http://local.tienda/
 curl -s -o /dev/null -w '%{http_code}\n' http://local.tienda/catalogo
 curl -s -o /dev/null -w '%{http_code}\n' "http://local.tienda/catalogo?cat=9&subcat=102&f%5Bsocket%5D%5B0%5D=am5"
@@ -646,12 +654,15 @@ Es **la misma regla** que el `EXISTS` original (verificado: 41.289 productos con
 ambas formas) pero la subconsulta no depende de la fila exterior, así que MySQL
 la resuelve una vez.
 
-El contador total y los destacados de portada sí son caros (~1-3 s con la caché
-InnoDB fría: recorren `productos` comprobando `stock`) y por eso se cachean en
-fichero 10 minutos (`storage/cache/catalog_count_*.json`, `catalog_featured_*.json`). Si algún día
-se quiere eliminar ese pico periódico, la vía limpia es materializar el stock
-válido en una tabla propia `mt_` refrescada por tarea — es una decisión de
-frescura de datos del dueño, no un cambio que deba hacer un agente por su cuenta.
+El contador total sí es caro (~1-3 s con la caché InnoDB fría: recorre `productos`
+comprobando `stock`) y por eso se cachea 10 minutos con `Tienda\Core\Cache`
+(`catalog_count_*`), con bloqueo para que al caducar no lo recalculen varias
+peticiones a la vez. Los **destacados de portada** ya no guardan el precio: cachean
+solo la lista de ids 10 minutos (`catalog_featured_ids_*`) y releen el precio en
+vivo. Si algún día se quiere eliminar ese pico periódico, la vía limpia es
+materializar el stock válido en una tabla propia `mt_` refrescada por tarea — es
+una decisión de frescura de datos del dueño, no un cambio que deba hacer un agente
+por su cuenta.
 
 ---
 

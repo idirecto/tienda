@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tienda\Models;
 
+use Tienda\Core\Cache;
 use Tienda\Core\Config;
 use Tienda\Core\Database;
 use Tienda\Core\Specs;
@@ -47,6 +48,13 @@ final class Catalog
 
     /** TTL de la cache del arbol de categorias del menu (segundos). */
     private const MENU_TTL = 1800;
+
+    /**
+     * Prefijo de las claves de cache de este modelo dentro de `Cache`. Mantiene
+     * los nombres de fichero que ya usaba el proyecto (`catalog_*.json`), de
+     * modo que las herramientas y los borrados por patron siguen valiendo.
+     */
+    private const CACHE_KEY_PREFIX = 'catalog_';
 
     /**
      * Tablas del catalogo central que se consultan siempre (listado, filtros,
@@ -198,25 +206,14 @@ final class Catalog
     /**
      * Olvida las caches que dependen del precio de venta de la tienda.
      *
-     * Los destacados y el rango de precios van cacheados por tienda (tarifa +
-     * beneficio); se llama al guardar los ajustes de venta para que el cambio de
-     * beneficio se vea al momento y no cuando caduque la cache.
+     * Solo queda el rango de precios del filtro (el deslizador), que si guarda
+     * importes. Los destacados ya **no** guardan precios: cachean solo los ids y
+     * el precio se resuelve en vivo, asi que un cambio de beneficio de la tienda
+     * se ve al momento sin tocar la cache.
      */
     public static function forgetPriceCache(): int
     {
-        $borrados = 0;
-        foreach (glob(TIENDA_BASE . '/storage/cache/catalog_featured_*.json') ?: [] as $file) {
-            if (@unlink($file)) {
-                $borrados++;
-            }
-        }
-        foreach (glob(TIENDA_BASE . '/storage/cache/catalog_price_bounds_*.json') ?: [] as $file) {
-            if (@unlink($file)) {
-                $borrados++;
-            }
-        }
-
-        return $borrados;
+        return Cache::forgetPattern(self::CACHE_KEY_PREFIX . 'price_bounds_*');
     }
 
     // =====================================================================
@@ -353,9 +350,14 @@ final class Catalog
     /**
      * Productos destacados (portada). Solo con stock.
      *
-     * La seleccion se cachea 10 minutos: es la misma para todos los visitantes
-     * (no depende de la tienda) y evita repetir en la portada un recorrido
-     * pesado del catalogo cuando el servidor de base de datos esta frio.
+     * Se cachea **solo la seleccion** (la lista de ids, 10 minutos): elegir los
+     * productos recorre medio catalogo y es lo caro. El precio, el stock y la
+     * marca se resuelven **en vivo** al hidratar, asi que si el mayorista cambia
+     * una tarifa, la portada muestra el precio nuevo en la siguiente peticion
+     * sin esperar a que caduque ninguna cache.
+     *
+     * Antes se cacheaban las filas enteras (con `precio` dentro) y la portada
+     * podia ensenar un precio viejo hasta 10 minutos.
      */
     public static function featured(int $limit = 8, ?int $categoryId = null): array
     {
@@ -365,8 +367,8 @@ final class Catalog
         $limit = max(1, min(48, $limit));
         $categoryId = $categoryId !== null && $categoryId > 0 ? $categoryId : null;
 
-        $items = self::cached(
-            'featured_' . ($categoryId ?? 0) . '_' . $limit . '_' . self::pricingKey(),
+        $ids = self::cached(
+            'featured_ids_' . ($categoryId ?? 0) . '_' . $limit,
             600,
             static function () use ($limit, $categoryId): array {
                 $where = self::baseConditions();
@@ -377,7 +379,7 @@ final class Catalog
                 }
 
                 $rows = Database::select(
-                    'SELECT ' . self::selectColumns() . "
+                    "SELECT p.id
                      FROM productos p
                      WHERE $where
                      ORDER BY p.id DESC
@@ -385,12 +387,64 @@ final class Catalog
                     $params
                 );
 
-                self::hydrate($rows);
-                return $rows;
+                return array_map(static fn (array $row): int => (int) $row['id'], $rows);
             }
         );
 
-        return (array) $items;
+        return self::findMany((array) $ids);
+    }
+
+    /**
+     * Relee en vivo una lista de ids, conservando el orden recibido.
+     *
+     * Se usa para lo que cachea la seleccion pero no el contenido (portada):
+     * una sola consulta con `IN` trae el precio actual de todos, y `hydrate()`
+     * completa marca, specs, stock y oferta. El orden se reconstruye en PHP
+     * porque `IN` no lo garantiza.
+     *
+     * @param array<int,int|string> $ids
+     * @return array<int,array>
+     */
+    private static function findMany(array $ids): array
+    {
+        $ids = array_values(array_unique(array_filter(
+            array_map('intval', $ids),
+            static fn (int $id): bool => $id > 0
+        )));
+        if ($ids === [] || !self::isAvailable()) {
+            return [];
+        }
+
+        $placeholders = [];
+        $params = [];
+        foreach ($ids as $i => $id) {
+            $ph = 'f' . $i;
+            $placeholders[] = ':' . $ph;
+            $params[$ph] = $id;
+        }
+
+        $rows = Database::select(
+            'SELECT ' . self::selectColumns() . "
+             FROM productos p
+             WHERE p.estado <> 4 AND p.id IN (" . implode(',', $placeholders) . ')',
+            $params
+        );
+
+        $byId = [];
+        foreach ($rows as $row) {
+            $byId[(int) $row['id']] = $row;
+        }
+
+        $out = [];
+        foreach ($ids as $id) {
+            if (isset($byId[$id])) {
+                $out[] = $byId[$id];
+            }
+        }
+
+        self::hydrate($out);
+
+        return $out;
     }
 
     /**
@@ -2093,32 +2147,16 @@ final class Catalog
     // =====================================================================
 
     /**
-     * Cache en fichero con TTL. Se usa para lo que es caro y cambia poco
-     * (contador, arbol de categorias, facetas). Nunca rompe nada: si no se
-     * puede escribir, se calcula el valor y se sigue.
+     * Cache con TTL para lo que es caro y cambia poco (contador, arbol de
+     * categorias, facetas). Delega en `Cache`, que resuelve el driver (APCu o
+     * fichero), el memo por peticion y el bloqueo antiestampida.
+     *
+     * Regla: **aqui no se guarda ningun precio**. Lo que lleva precio se cachea
+     * solo como seleccion de ids y se resuelve en vivo (ver `featured()`).
      */
     private static function cached(string $key, int $ttl, callable $compute): mixed
     {
-        $dir = TIENDA_BASE . '/storage/cache';
-        $file = $dir . '/catalog_' . preg_replace('/[^a-z0-9_\-]/i', '_', $key) . '.json';
-
-        if (is_file($file) && (time() - (int) filemtime($file)) < $ttl) {
-            $data = json_decode((string) file_get_contents($file), true);
-            if (is_array($data) && array_key_exists('value', $data)) {
-                return $data['value'];
-            }
-        }
-
-        $value = $compute();
-
-        if (!is_dir($dir)) {
-            @mkdir($dir, 0775, true);
-        }
-        @file_put_contents($file, json_encode(['value' => $value, 'ts' => time()], JSON_UNESCAPED_UNICODE));
-        // Escribible por web y por consola (mismo criterio que el contador).
-        @chmod($file, 0664);
-
-        return $value;
+        return Cache::remember(self::CACHE_KEY_PREFIX . $key, $ttl, $compute);
     }
 
     /** Cache en fichero del contador total (evita un COUNT pesado por peticion). */

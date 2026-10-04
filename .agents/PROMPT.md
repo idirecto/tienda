@@ -21,6 +21,30 @@ _(vacío — sin petición pendiente)_
 
 Cada petición terminada se anota aquí con la fecha, qué se pidió y qué se hizo.
 
+### 2026-10-04 · Auditoría de caché y caché moderna que actualice los precios (petición por chat)
+
+**Pedido:** «Actúa como arquitecto senior full-stack especializado en comercio
+electrónico […]; revisa todo el sistema en `/var/www/html/tienda` y dime si tenemos
+un sistema de caché y en caso de no contar sugiere alguno moderno que mejore la
+carga de la web pero que actualice los precios en caso de haber cambios».
+
+**Auditoría:** sí había caché, pero casera y con trampas: dos `cached()` privados
+(`Catalog` y `Menu`) sobre fichero con TTL por `filemtime`; la portada cacheaba las
+fichas **con el precio dentro** (hasta 10 min de precio viejo); sin protección
+contra la estampida (4,4 s por petición y combinación al caducar el `COUNT`); sin
+limpieza (711 ficheros, 576 eran `count_page_*`); sin caché HTTP (las páginas salen
+`no-store`). Medido en HTTP real.
+
+**Decisión confirmada:** empezar por **Fase 1a + APCu** (cachear ids y resolver
+precios en vivo + driver APCu con fallback a fichero, locks antiestampida y GC).
+
+**Qué se hizo:** `Tienda\Core\Cache` con drivers `FileCache`/`ApcuCache`
+(`config/cache.php`, claves `CACHE_*`), memo por petición y bloqueo por clave;
+`Catalog::featured()` cachea solo los ids y relee en vivo (`findMany()`);
+`Catalog::cached()` y `Menu::cached()` pasan por la capa nueva; `Menu::invalidate()`
+invalida por patrón; `tools/cache-clear.php`; 12 comprobaciones nuevas en
+`verify.php` (215 → **227**, TODO OK). Documentado en `CHANGELOG.md` y `STATE.md`.
+
 ### 2026-10-03 · Buscador en vivo como PuntoByZE, con el menú y los propios (petición por chat)
 
 **Pedido:** «revisa el buscador de `/var/www/html/puntobyze`; haz que el buscador en este
