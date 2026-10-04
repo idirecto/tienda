@@ -92,8 +92,9 @@ $gradient = 'linear-gradient(115deg, var(--c-secondary), var(--c-primary))';
                             <button type="button" class="hero-dot<?= $i === 0 ? ' is-active' : '' ?>"
                                     data-slider-dot="<?= $i ?>" role="tab"
                                     aria-selected="<?= $i === 0 ? 'true' : 'false' ?>"
-                                    aria-controls="hero-slide-<?= $i ?>"
-                                    aria-label="Banner <?= $i + 1 ?>"></button>
+                                    aria-controls="hero-slide-<?= $i ?>">
+                                <span class="sr-only">Banner <?= $i + 1 ?></span>
+                            </button>
                         <?php endfor; ?>
                     </div>
 

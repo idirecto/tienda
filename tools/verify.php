@@ -1582,11 +1582,15 @@ try {
     // HTML limpio: nada de elementos decorativos vacios (el validador los marca).
     $menuView = (string) file_get_contents(TIENDA_BASE . '/app/Views/themes/idirecto/_menu.php');
     $cardView = (string) file_get_contents(TIENDA_BASE . '/app/Views/themes/idirecto/_card.php');
+    $heroView = (string) file_get_contents(TIENDA_BASE . '/app/Views/themes/idirecto/_hero.php');
+    $panelCss = (string) file_get_contents(TIENDA_BASE . '/public/assets/css/panel.css');
     check(!str_contains($menuView, 'mn-caret" aria-hidden="true"></span>')
         && !str_contains($menuView, 'mn-arrow" aria-hidden="true"></span>')
         && !str_contains($cardView, '<i class="dot"')
+        && !str_contains($heroView, 'aria-label="Banner <?= $i + 1 ?>"></button>')
+        && !str_contains($panelCss, '.logo-dot')
         && str_contains(icon_svg('chevron-d', 'mn-caret'), 'class="mn-caret"'),
-        'los iconos decorativos (caret, flecha y punto de stock) tienen contenido real');
+        'los iconos decorativos (caret, flecha, punto de stock, punto del slider y logo) tienen contenido real');
     check((new Tenant(['phone' => '+34 91 123 45 67']))->phoneHref() === '+34911234567'
         && (new Tenant(['phone' => '91 123 45 67']))->phoneHref() === '911234567'
         && (new Tenant(['phone' => 'sin numeros']))->phoneHref() === '',

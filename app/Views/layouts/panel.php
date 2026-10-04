@@ -55,7 +55,6 @@ $isActive = static function (string $path) use ($current, $base): bool {
 <div class="shell">
     <aside class="sidebar">
         <div class="sidebar-brand">
-            <span class="logo-dot"></span>
             <div>
                 <strong><?= e($tenant->name()) ?></strong>
                 <small><?= e($tenant->planName()) ?></small>

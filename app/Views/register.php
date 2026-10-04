@@ -13,7 +13,6 @@ use Tienda\Core\Csrf;
 $baseDomain = (string) (config('tenant.base_domains', ['localhost'])[0] ?? 'localhost');
 ?>
 <div class="auth-head">
-    <span class="logo-dot"></span>
     <h1>Crea tu tienda</h1>
     <p class="muted">Para clientes de idirecto: entra con tu cuenta del mayorista.</p>
 </div>

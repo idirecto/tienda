@@ -20,6 +20,10 @@ vacíos («trimming empty span/i/button») y una URI mal formada en un enlace `<
   CSS `::after`, así que el elemento quedaba vacío).
 - La **barra de progreso** del slider es un `::after` de `.hero-controls` (el JS escribe
   `--progress` ahí): fuera el `<span class="hero-progress">` vacío.
+- Los **puntos del slider** (`hero-dot`) llevan un `<span class="sr-only">Banner N</span>`
+  (son el nombre accesible del `role="tab"`): antes eran botones vacíos con `aria-label`.
+- El **logo** del panel y de `/registro` (`.logo-dot`) pasa a `::before` del contenedor
+  (`.sidebar-brand` y `.auth-head`), que era otro `<span>` vacío.
 - El **punto de la actividad** del panel también pasa a `::before` de `.activity li`.
 - **`Tenant::phoneHref()`**: el enlace `tel:` se construye solo con dígitos y el `+`
   inicial, de modo que un teléfono con espacios («+34 91 123 45 67») no genera una URI

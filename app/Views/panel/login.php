@@ -3,7 +3,6 @@
 use Tienda\Core\Csrf;
 ?>
 <div class="auth-head">
-    <span class="logo-dot"></span>
     <h1>Accede a tu tienda</h1>
     <p class="muted">Gestiona tu catalogo, diseno y pedidos.</p>
 </div>
