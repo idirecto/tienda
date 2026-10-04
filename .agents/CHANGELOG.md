@@ -5,6 +5,36 @@ El detalle línea a línea está en `git log`.
 
 ---
 
+## 2026-10-03 · HTML del storefront: sin elementos decorativos vacíos y `tel:` válido
+
+**Motivo:** el validador de HTML de Chrome marcaba en la portada elementos decorativos
+vacíos («trimming empty span/i/button») y una URI mal formada en un enlace `<a>`.
+
+**Qué se hizo**
+- El **punto de stock** de las tarjetas (`_card`, `_card_own`, previa de diseño) se dibuja
+  con `::before` de `.badge-stock`: fuera el `<i class="dot" aria-hidden="true"></i>`.
+- El **caret** del menú (Compacto y «Más categorías») es un icono en línea
+  (`icon_svg('chevron-d')`, nuevo en el juego de iconos): fuera el `<span>` vacío y los
+  botones sin contenido; la rotación al abrir sigue en CSS (`.mn-caret`).
+- La **flecha** `›` del menú lateral lleva su carácter dentro del `<span>` (antes iba por
+  CSS `::after`, así que el elemento quedaba vacío).
+- La **barra de progreso** del slider es un `::after` de `.hero-controls` (el JS escribe
+  `--progress` ahí): fuera el `<span class="hero-progress">` vacío.
+- El **punto de la actividad** del panel también pasa a `::before` de `.activity li`.
+- **`Tenant::phoneHref()`**: el enlace `tel:` se construye solo con dígitos y el `+`
+  inicial, de modo que un teléfono con espacios («+34 91 123 45 67») no genera una URI
+  mal formada.
+
+**Lo que NO se toca (falsos positivos del validador):** los avisos de atributos «proprietary»
+en `<svg>` (`fill`, `stroke`, `stroke-width`, `stroke-linecap`, `stroke-linejoin`) y en
+`aria-modal`, `aria-roledescription`, `loading`, `decoding`, `fetchpriority` o `integrity`
+son atributos válidos de HTML5/ARIA/SVG; el validador usa un DTD antiguo y no los conoce.
+
+`verify.php` 213 → **215** (iconos con contenido real y `tel:` válido). Verificado en Chrome
+real por CDP: el menú y el slider siguen funcionando y sin errores de JavaScript.
+
+---
+
 ## 2026-10-03 · Buscador en vivo como PuntoByZE, con el menú de la tienda y sus productos propios
 
 **Motivo:** «revisa el buscador de `/var/www/html/puntobyze`; haz que el buscador en este

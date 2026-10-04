@@ -194,6 +194,7 @@ function icon_svg(string $name, string $class = '', int $size = 0): string
         'check'     => '<path d="M4 12.5l5 5L20 6.5"/>',
         'chevron-l' => '<path d="M14.5 5l-7 7 7 7"/>',
         'chevron-r' => '<path d="M9.5 5l7 7-7 7"/>',
+        'chevron-d' => '<path d="M5 9.5l7 7 7-7"/>',
         'arrow-r'   => '<path d="M4 12h15M13 6l6 6-6 6"/>',
         'grid'      => '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
         'list'      => '<path d="M4 6h16M4 12h16M4 18h16"/>',

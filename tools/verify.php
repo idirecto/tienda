@@ -1578,6 +1578,19 @@ try {
     $shopJs = (string) file_get_contents(TIENDA_BASE . '/public/assets/js/shop.js');
     check(str_contains($shopJs, 'initLiveSearch') && str_contains($shopJs, 'shop-search-chip'),
         'el JS del buscador en vivo (panel, facetas y fichas) esta presente');
+
+    // HTML limpio: nada de elementos decorativos vacios (el validador los marca).
+    $menuView = (string) file_get_contents(TIENDA_BASE . '/app/Views/themes/idirecto/_menu.php');
+    $cardView = (string) file_get_contents(TIENDA_BASE . '/app/Views/themes/idirecto/_card.php');
+    check(!str_contains($menuView, 'mn-caret" aria-hidden="true"></span>')
+        && !str_contains($menuView, 'mn-arrow" aria-hidden="true"></span>')
+        && !str_contains($cardView, '<i class="dot"')
+        && str_contains(icon_svg('chevron-d', 'mn-caret'), 'class="mn-caret"'),
+        'los iconos decorativos (caret, flecha y punto de stock) tienen contenido real');
+    check((new Tenant(['phone' => '+34 91 123 45 67']))->phoneHref() === '+34911234567'
+        && (new Tenant(['phone' => '91 123 45 67']))->phoneHref() === '911234567'
+        && (new Tenant(['phone' => 'sin numeros']))->phoneHref() === '',
+        'el telefono se convierte en una URI tel: valida');
 } catch (\Throwable $e) {
     check(false, 'el buscador del storefront no lanza excepciones (' . $e->getMessage() . ' en ' . $e->getFile() . ':' . $e->getLine() . ')');
 }

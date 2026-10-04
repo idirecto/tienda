@@ -29,9 +29,7 @@ $initial = mb_strtoupper(mb_substr((string) ($p['name'] ?? ''), 0, 2));
 
         <div class="product-flags">
             <span class="badge badge-own">Propio</span>
-            <span class="badge badge-stock badge-<?= e($band) ?>">
-                <i class="dot" aria-hidden="true"></i><?= e($label) ?>
-            </span>
+            <span class="badge badge-stock badge-<?= e($band) ?>"><?= e($label) ?></span>
         </div>
     </div>
 

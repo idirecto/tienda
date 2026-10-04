@@ -154,8 +154,8 @@ $headerStyle = preg_replace('/[^a-z0-9_\-]/i', '', $tenant->headerStyle()) ?: 'c
         </form>
 
         <div class="header-actions">
-            <?php if ($tenant->phone()): ?>
-                <a class="phone" href="tel:<?= e($tenant->phone()) ?>">
+            <?php if ($tenant->phoneHref() !== ''): ?>
+                <a class="phone" href="tel:<?= e($tenant->phoneHref()) ?>">
                     <?= icon_svg('phone') ?>
                     <span><?= e($tenant->phone()) ?></span>
                 </a>

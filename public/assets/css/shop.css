@@ -272,8 +272,11 @@ svg { flex: 0 0 auto; }
 }
 .hero-dot:hover { background: rgba(255, 255, 255, .8); }
 .hero-dot.is-active { width: 26px; background: var(--c-primary); }
-.hero-progress {
-    position: absolute; left: 0; bottom: -1.1rem; width: 100%; height: 3px;
+/* Barra de progreso del slider: pseudo-elemento de los controles (no necesita
+   un <span> vacio, que el validador de HTML marcaba como contenido recortado).
+   El JS escribe la variable `--progress` en `.hero-controls`. */
+.hero-controls::after {
+    content: ''; position: absolute; left: 0; bottom: -1.1rem; width: 100%; height: 3px;
     background: linear-gradient(90deg, var(--c-primary) var(--progress, 0%), transparent var(--progress, 0%));
 }
 
@@ -295,7 +298,7 @@ svg { flex: 0 0 auto; }
     .hero-overlay { background: linear-gradient(180deg, rgba(6, 10, 16, .55) 0%, rgba(6, 10, 16, .88) 100%); }
     .hero-copy { padding: 2rem 0; }
     .hero-controls { position: static; justify-content: center; margin-top: .9rem; }
-    .hero-progress { display: none; }
+    .hero-controls::after { display: none; }
 }
 
 /* =============================================================================
@@ -495,7 +498,9 @@ svg { flex: 0 0 auto; }
     background: var(--c-surface-2); color: var(--c-heading);
     box-shadow: var(--c-shadow-sm);
 }
-.badge .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+/* El punto de stock es decorativo y se dibuja con CSS: asi el badge no lleva
+   un elemento vacio dentro (el validador de HTML lo marcaba como tal). */
+.badge-stock::before { content: ''; flex: 0 0 auto; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .badge-stock { background: var(--c-surface); }
 .badge-in { color: var(--c-stock-in); }
 .badge-low { color: var(--c-stock-low); }
@@ -1155,12 +1160,11 @@ body.no-scroll { overflow: hidden; }
     color: var(--c-muted); border-radius: var(--c-radius-sm);
 }
 .mn-bar-toggle:hover { color: var(--c-primary); background: var(--c-surface-2); }
-.mn-caret {
-    display: inline-block; width: 8px; height: 8px; margin-left: .3rem;
-    border-right: 2px solid currentColor; border-bottom: 2px solid currentColor;
-    transform: rotate(45deg) translateY(-1px); transition: transform .18s ease;
-}
-.mn-bar-item.is-open .mn-caret, .mn-more-btn[aria-expanded="true"] .mn-caret { transform: rotate(-135deg) translateY(-1px); }
+/* El caret del desplegable es un icono en linea: el boton tiene contenido real
+   (antes era un <span> vacio y el validador de HTML lo marcaba como recortado). */
+.mn-caret { width: 14px; height: 14px; margin-left: .3rem; transition: transform .18s ease; }
+.mn-bar-item.is-open .mn-caret,
+.mn-more-btn[aria-expanded="true"] .mn-caret { transform: rotate(180deg); }
 
 /* «Mas categorias»: agrupa las categorias que no caben en la barra */
 .mn-more { position: relative; }
@@ -1230,7 +1234,7 @@ body.no-scroll { overflow: hidden; }
 }
 .mn-cat-label { flex: 1; min-width: 0; }
 .mn-cat-count { font-size: .75rem; color: var(--c-muted); font-weight: 500; }
-.mn-arrow::after { content: '\203A'; font-size: 1.1rem; line-height: 1; color: var(--c-border-strong); }
+.mn-arrow { font-size: 1.1rem; line-height: 1; color: var(--c-border-strong); }
 .mn-side-foot { border-top: 1px solid var(--c-border); }
 .mn-side-all { display: flex; align-items: center; gap: .5rem; padding: .75rem .9rem; font-weight: 700; color: var(--c-primary); }
 .mn-side-all:hover { background: var(--c-surface); }

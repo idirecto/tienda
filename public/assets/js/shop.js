@@ -23,7 +23,7 @@
         var stage = root.querySelector('[data-slider-stage]');
         var slides = Array.prototype.slice.call(root.querySelectorAll('[data-slider-slide]'));
         var dots = Array.prototype.slice.call(root.querySelectorAll('[data-slider-dot]'));
-        var progress = root.querySelector('[data-slider-progress]');
+        var progress = root.querySelector('.hero-controls');
 
         if (!stage || slides.length === 0) {
             return;

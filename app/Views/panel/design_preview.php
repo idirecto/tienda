@@ -71,9 +71,7 @@ $demoSpecs = [
                     <div class="product-media">
                         <span class="product-ph" aria-hidden="true"><?= e(mb_substr($demo['brand'], 0, 2)) ?></span>
                         <div class="product-flags">
-                            <span class="badge badge-stock badge-<?= e($demo['band']) ?>">
-                                <i class="dot" aria-hidden="true"></i><?= e($demo['label']) ?>
-                            </span>
+                            <span class="badge badge-stock badge-<?= e($demo['band']) ?>"><?= e($demo['label']) ?></span>
                         </div>
                     </div>
                     <div class="product-body">

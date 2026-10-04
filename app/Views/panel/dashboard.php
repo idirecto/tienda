@@ -60,7 +60,6 @@ $quotaText = $stats['cuota_ilimitada']
             <ul class="activity">
                 <?php foreach ($activity as $p): ?>
                     <li>
-                        <span class="dot"></span>
                         <div>
                             <strong><?= e($p['name']) ?></strong>
                             <small><?= e($p['created_at']) ?> · <?= e(euros($p['price'])) ?></small>

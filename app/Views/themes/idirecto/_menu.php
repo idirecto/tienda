@@ -58,9 +58,7 @@ $isCatalogo = $style === 'catalogo';
                                          enlace navega directo y no hace falta el desplegable. */ ?>
                                 <button type="button" class="mn-bar-toggle" data-mn-open="<?= $i ?>"
                                         aria-expanded="false" aria-controls="mn-panel"
-                                        aria-label="Abrir <?= e($cat['label']) ?>">
-                                    <span class="mn-caret" aria-hidden="true"></span>
-                                </button>
+                                        aria-label="Abrir <?= e($cat['label']) ?>"><?= icon_svg('chevron-d', 'mn-caret') ?></button>
                             <?php endif; ?>
                         </li>
                     <?php endforeach; ?>
@@ -69,9 +67,7 @@ $isCatalogo = $style === 'catalogo';
                 <?php if ($extra !== []): ?>
                     <div class="mn-more" data-mn-more>
                         <button type="button" class="mn-more-btn" data-mn-more-btn
-                                aria-expanded="false" aria-controls="mn-more-panel">
-                            Mas categorias<span class="mn-caret" aria-hidden="true"></span>
-                        </button>
+                                aria-expanded="false" aria-controls="mn-more-panel">Mas categorias<?= icon_svg('chevron-d', 'mn-caret') ?></button>
                         <div class="mn-more-panel" id="mn-more-panel" hidden>
                             <ul>
                                 <?php foreach ($extra as $cat): ?>
@@ -174,7 +170,7 @@ $isCatalogo = $style === 'catalogo';
                                     <?php if (!empty($cat['badge'])): ?>
                                         <span class="mn-badge"><?= e($cat['badge']) ?></span>
                                     <?php endif; ?>
-                                    <span class="mn-arrow" aria-hidden="true"></span>
+                                    <span class="mn-arrow" aria-hidden="true">&#8250;</span>
                                 </button>
                             </li>
                         <?php endforeach; ?>

@@ -100,8 +100,6 @@ $gradient = 'linear-gradient(115deg, var(--c-secondary), var(--c-primary))';
                     <button type="button" class="hero-arrow hero-next" data-slider-next aria-label="Banner siguiente">
                         <?= icon_svg('chevron-r') ?>
                     </button>
-
-                    <span class="hero-progress" data-slider-progress aria-hidden="true"></span>
                 </div>
             <?php endif; ?>
         </div>

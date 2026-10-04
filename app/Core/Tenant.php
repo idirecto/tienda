@@ -47,6 +47,25 @@ final class Tenant
         return (string) ($this->store['phone'] ?? '');
     }
 
+    /**
+     * Numero listo para un enlace `tel:`: solo digitos y, si procede, el `+`
+     * inicial. Un telefono con espacios o simbolos («+34 91 123 45 67») daba un
+     * `href="tel:..."` que no es una URI valida.
+     */
+    public function phoneHref(): string
+    {
+        $raw = trim($this->phone());
+        if ($raw === '') {
+            return '';
+        }
+        $digits = preg_replace('/\D/', '', $raw) ?? '';
+        if ($digits === '') {
+            return '';
+        }
+
+        return str_starts_with($raw, '+') ? '+' . $digits : $digits;
+    }
+
     public function whatsapp(): string
     {
         return (string) ($this->store['whatsapp'] ?? '');

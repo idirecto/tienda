@@ -15,7 +15,7 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
 
 > ✅ **Entorno (2026-10-03).** `idirecto_db` está **completa** (239 tablas:
 > catálogo con 41.289 productos con stock, 33 categorías con stock, y las `mt_`),
-> la web responde 200 y `php tools/verify.php` da **TODO OK (213)**. El menú se
+> la web responde 200 y `php tools/verify.php` da **TODO OK (215)**. El menú se
 > verificó además **en navegador real** (Chrome headless por CDP): 22 comprobaciones
 > con el Menú Catálogo, 16 con el Menú Compacto y 20 del **editor del panel**
 > (drag & drop incluido), sin errores de JavaScript. El **parpadeo** del Menú Compacto
@@ -23,6 +23,9 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
 > El **buscador en vivo** también se probó en navegador real: teclear en la cabecera
 > abre el panel, filtra por subcategoría/marca, cierra con Escape/clic fuera y no
 > genera errores de JavaScript.
+> El **HTML del storefront** ya no tiene elementos decorativos vacíos (punto de stock,
+> caret y flecha del menú, progreso del slider) ni enlaces `tel:` mal formados; los
+> avisos de atributos SVG/ARIA del validador de Chrome son falsos positivos.
 >
 > ⚠️ **Si vuelve a salir un 500 con «Error interno»**: casi siempre es que el
 > usuario del servidor web (`www-data`) **no puede leer `.env`**, no un fallo de

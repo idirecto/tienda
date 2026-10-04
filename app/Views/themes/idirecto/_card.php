@@ -29,9 +29,7 @@ $initial = mb_strtoupper(mb_substr((string) ($p['nombre'] ?? ''), 0, 2));
 
         <div class="product-flags">
             <?php if ($label !== ''): ?>
-                <span class="badge badge-stock badge-<?= e($band) ?>">
-                    <i class="dot" aria-hidden="true"></i><?= e($label) ?>
-                </span>
+                <span class="badge badge-stock badge-<?= e($band) ?>"><?= e($label) ?></span>
             <?php endif; ?>
             <?php if (!empty($p['is_new']) && $band !== 'out'): ?>
                 <span class="badge badge-new">Novedad</span>
