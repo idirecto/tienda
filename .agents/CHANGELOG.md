@@ -5,6 +5,56 @@ El detalle línea a línea está en `git log`.
 
 ---
 
+## 2026-10-05 · Catálogo: 40 productos por página y tarjeta entera enlazada
+
+**Motivo (petición por chat):** en `/telefonia/moviles-smartphone` (448 productos) solo
+se veían **12 productos por página** y la **imagen y la parte superior de la tarjeta no
+llevaban a la ficha**; había que acertar con «Ver ficha». Dos mejoras, sin tocar carrito,
+checkout, menú, usuarios ni pedidos.
+
+**Auditoría previa (solo lectura):**
+
+- No había que inventar nada de paginación: **ya existía** paginación tradicional con
+  `LIMIT/OFFSET` y rutas SEO (`/categoria/subcategoria/page/N`, `CatalogUrl`), con 301
+  desde las URLs con query.
+- El `12` **no estaba en el código**: `config/catalog.php` valía 20 (`.env` de desarrollo,
+  20) y el `.env` de **producción tenía 12**. El fallback del modelo era 12 y el buscador
+  en vivo usaba una clave inexistente (`catalog.search_per_page`), así que siempre servía 12.
+- El enlace estirado ya existía (`_card.php`: `.product-name a::after`), pero la imagen
+  tenía `z-index: 1` y el overlay ninguno: **la foto se comía el clic**. Verificado con
+  `elementFromPoint` y con un clic real por CDP (la URL no cambiaba).
+- Los productos propios (`_card_own.php`) **no tienen ficha** (no hay ruta ni vista de
+  detalle); se acuerda dejarlos como estaban.
+- Índices: los existentes bastan (`idx_cat_estado`, `idx_subcat_estado`, `idx_marca_estado`,
+  `idx_stock_*`, `idx_precio_lookup`); las tablas del mayorista son de solo lectura.
+
+**Qué se hizo**
+
+- **Límite (Fase 1):** `CATALOG_PER_PAGE=40` en `.env`, `.env.example` y por defecto en
+  `config/catalog.php`; tope de seguridad 120 en `Catalog::paginate()` (antes 60). El
+  buscador en vivo estrena `CATALOG_SEARCH_PER_PAGE=16` y los destacados de portada siguen
+  en 12. Se quitó el `12`/`20` duplicado del controlador.
+- **Paginación (Fase 2):** partial común `app/Views/themes/idirecto/_pagination.php` usado
+  por `catalog.php` y `own.php`: Anterior/Siguiente siempre presentes (desactivados en los
+  extremos), ventana de números con `…`, `aria-current="page"`, `rel="prev"`/`rel="next"` y
+  «Página X de Y · N productos». Los enlaces conservan categoría, subcategoría, filtros,
+  orden, etiqueta y búsqueda (los construye `$buildUrl`). Las páginas fuera de rango
+  responden **404** (antes 200 con «Sin resultados»).
+- **Tarjeta (Fase 3-4):** el overlay del enlace estirado pasa a `z-index: 2` y las
+  acciones a `z-index: 4` (la imagen se queda en 1): imagen, marca, specs y precio llevan a
+  la ficha con **un solo `<a>`** (sin enlaces anidados); «Ver ficha» sigue siendo enlace
+  hermano y «Agregar al carrito» un botón independiente. Se añade `cursor: pointer`, subrayado
+  del nombre en hover/focus y carga inmediata de las 4 primeras imágenes
+  (`fetchpriority="high"` en la primera).
+- **Pruebas:** `verify.php` 244 → **250** (TODO OK); clics reales por CDP en móvil (390) y
+  escritorio (1280) con hover; responsive 320→1920 sin desbordes; medición de página
+  (40 tarjetas, ~0,2 s, +13 % de HTML; la consulta sigue en 40-90 ms). Detalle en `STATE.md`.
+
+**Nota de despliegue:** el `.env` de **producción** (valduran.com) tiene que pasar a
+`CATALOG_PER_PAGE=40`; sin eso seguirá sirviendo 12.
+
+---
+
 ## 2026-10-05 · Carrito: botón «Agregar al carrito» y mini-carrito lateral
 
 **Motivo (petición por chat):** mejorar el botón «Agregar al carrito» y crear un

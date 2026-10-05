@@ -41,7 +41,7 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
 | **Registro de tiendas (solo con cuenta activa del mayorista)** | ✅ Completo |
 | **Compra del cliente final (carrito, cuenta, direcciones y pedido)** | ✅ Completo (**sin pasarela de pago**) |
 | **Carrito: botón «Agregar al carrito» + mini-carrito lateral (AJAX, responsive, stock real)** | ✅ Completo |
-| Catálogo central (stock, búsqueda, paginación) | ✅ Completo (**listados en ~20 ms**, ver notas) |
+| Catálogo central (stock, búsqueda, paginación) | ✅ Completo (**listados de 40 productos y tarjeta entera enlazada**, ~20-60 ms) |
 | **Navegación: Menú Compacto y Menú Catalogo (un solo árbol de 3 niveles)** | ✅ Completo (14 categorías / 83 grupos / 346 destinos) |
 | **Menú administrable: editor, borrador/publicación, visibilidad por tienda y nivel de cliente** | ✅ Completo (panel de tienda + panel de plataforma con rol `platform`) |
 | **La tienda elige qué categorías se ven (modo completo/elegido), las oculta o renombra, y crea categorías propias (`/propios`, páginas, enlace libre)** | ✅ Completo |
@@ -147,6 +147,36 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
   buscador en vivo y categorías; doble clic; error que no abre el panel; medidas a 1440,
   768, 390 y 844×390; sin errores de JavaScript).
 
+### Catálogo: 40 productos por página y tarjeta entera enlazada (2026-10-05)
+- **40 productos por página** en todos los listados (`CATALOG_PER_PAGE`, `.env`,
+  `.env.example` y valor por defecto de `config/catalog.php`); tope de seguridad
+  120 en `Catalog::paginate()`. El límite lo fija el **servidor para todas las
+  pantallas** (una URL canónica por página, sin duplicados); el número de
+  **columnas** sí es responsive (1 en móvil, 3-4 en tablet, 4-5 en escritorio).
+  Medido: 40 productos = 7-9 filas y la consulta sigue en ~40-90 ms.
+- **El buscador en vivo** se separa (`CATALOG_SEARCH_PER_PAGE`, 16) para que
+  subir los listados no alargue el desplegable. Los destacados de portada siguen
+  en `CATALOG_HOME_FEATURED` (12).
+- **Paginación común** (`_pagination.php`) para catálogo y productos propios:
+  Anterior/Siguiente siempre visibles (desactivados en los extremos), ventana de
+  números con `…`, `aria-current="page"`, `rel="prev"`/`rel="next"` y
+  «Página X de Y · N productos». Enlaces reales, sin JavaScript, que conservan
+  categoría, subcategoría, filtros, orden, etiqueta y búsqueda. Las páginas
+  fuera de rango responden **404** (antes devolvían una página vacía con 200).
+- **Toda la tarjeta lleva a la ficha**: el enlace estirado del nombre (`z-index`
+  por encima de la imagen y por debajo de las acciones) hace clicables imagen,
+  marca, especificaciones y precio con **un solo `<a>`** (sin enlaces anidados);
+  «Ver ficha» sigue siendo un enlace hermano y «Agregar al carrito» un botón
+  independiente. Verificado con clics reales (CDP): imagen/marca/specs/precio/
+  «Ver ficha» navegan, el carrito añade y abre el mini-carrito sin navegar, en
+  móvil y en escritorio con hover.
+- Rendimiento: la primera fila de imágenes carga de inmediato
+  (`fetchpriority="high"` en la primera) y el resto en diferido. Página de
+  categoría: 40 tarjetas, ~0,2 s y +13 % de HTML que con 20 (el peso lo domina
+  el megamenú, no las tarjetas).
+- `verify.php` 244 → **250** (TODO OK), con comprobaciones nuevas del límite, de
+  la paginación común y del apilado de la tarjeta.
+
 ### Storefront
 - Catálogo filtrado a **productos con stock**, con las mismas condiciones que
   idirecto: 41.289 de 235.165 productos; contador cacheado 10 min.
@@ -191,8 +221,11 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
   ordena sin volver al catálogo completo, y la página de una marca conserva
   facetas, precio y orden.
 - Buscador, filtro por categoría y **subcategoría** (`?subcat`) y paginación,
-  con **20 productos por página** (`CATALOG_PER_PAGE`; tope duro 60 en
-  `Catalog::paginate`). Los **destacados de la portada** van aparte
+  con **40 productos por página** (`CATALOG_PER_PAGE`; tope duro 120 en
+  `Catalog::paginate`). Las columnas de la rejilla sí son responsive, pero el
+  número de productos lo fija el servidor para todas las pantallas (una sola
+  URL canónica, sin duplicados). El **buscador en vivo** tiene su propio tamaño
+  (`CATALOG_SEARCH_PER_PAGE`, 16) y los **destacados de la portada** van aparte
   (`CATALOG_HOME_FEATURED`, 12) porque son una selección editorial, no un
   listado.
 - **Menú de categorías (megamenú)** en la cabecera, estilo PuntoByZE: categorías
@@ -405,9 +438,10 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
   en **nginx + PHP-FPM** (`sudo bash deploy/setup-nginx-domain.sh valduran.com`).
 - La app detecta el servidor (`app/Core/Server.php`): ruta pública de `/public`,
   esquema real (incluido proxy) y host de las URLs canónicas.
-- `tools/verify.php`: 244 comprobaciones automáticas (diseño, facetas, filtros
-  estructurados del mayorista, catálogo, caché y precios en vivo, carrito y
-  mini-carrito, almacenamiento, DNS, servidor, registro de tiendas, pedidos y envío al mayorista).
+- `tools/verify.php`: 250 comprobaciones automáticas (diseño, facetas, filtros
+  estructurados del mayorista, catálogo, paginación y enlaces de las tarjetas, caché y
+  precios en vivo, carrito y mini-carrito, almacenamiento, DNS, servidor, registro de
+  tiendas, pedidos y envío al mayorista).
 - Documentación interna en `.agents/`, blindada frente a la web.
 - Repositorio publicado en GitHub (`main`).
 

@@ -266,6 +266,14 @@ if (Catalog::isAvailable()) {
         'destacados de la portada (' . $destacados . ')'
     );
 
+    // El buscador en vivo (desplegable de la cabecera) tiene su propio tamano,
+    // aparte del de los listados: si no, subir los listados lo alargaria.
+    $buscador = (int) config('catalog.search_per_page', 16);
+    check($buscador >= 8 && $buscador <= 24, 'resultados del buscador en vivo (' . $buscador . ')');
+
+    // El limite de los listados no se queda en 12: es el fallo que se corrigio.
+    check((int) config('catalog.per_page') >= 40, 'los listados sirven 40 productos por pagina o mas');
+
     // Menu de categorias -> subcategorias (mismo arbol que usa el storefront).
     $menu = Catalog::menuTree();
     check($menu !== [] && isset($menu[0]['subcategories'][0]['id']), 'menu de categorias (' . count($menu) . ' categorias)');
@@ -1630,6 +1638,38 @@ try {
     check(str_contains($bloqueGrid, '@media (max-width: 639px)')
         && str_contains($bloqueGrid, 'grid-template-columns: minmax(0, 1fr)'),
         'en el movil el buscador enseña una tarjeta por linea');
+
+    // --- Tarjeta de producto: toda la tarjeta lleva a la ficha --------------
+    // El enlace "estirado" del nombre tiene que quedar POR ENCIMA de la imagen
+    // (si no, la foto se come el clic: era el fallo original) y POR DEBAJO de
+    // las acciones, para que "Agregar al carrito" siga siendo independiente.
+    preg_match('/^\.product-name a::after\s*\{[^}]*z-index:\s*(\d+)/m', $shopCss, $mOverlay);
+    preg_match('/^\.product-media img\s*\{[^}]*z-index:\s*(\d+)/m', $shopCss, $mImagen);
+    preg_match('/^\.product-actions\s*\{[^}]*z-index:\s*(\d+)/m', $shopCss, $mAcciones);
+    $zImagen = (int) ($mImagen[1] ?? 0);
+    $zOverlay = (int) ($mOverlay[1] ?? 0);
+    $zAcciones = (int) ($mAcciones[1] ?? 0);
+    check($zOverlay > $zImagen && $zAcciones > $zOverlay,
+        'imagen, marca, specs y precio llevan a la ficha y las acciones quedan por encima (z-index '
+        . $zImagen . ' < ' . $zOverlay . ' < ' . $zAcciones . ')');
+
+    $cardViewMarkup = (string) file_get_contents(TIENDA_BASE . '/app/Views/themes/idirecto/_card.php');
+    check(str_contains($cardViewMarkup, '_eager') && str_contains($cardViewMarkup, 'fetchpriority="high"')
+        && str_contains($cardViewMarkup, "'eager' : 'lazy'"),
+        'la primera fila de imagenes carga de inmediato (LCP) y el resto va en diferido');
+
+    // --- Paginacion comun a los listados ------------------------------------
+    $paginationView = (string) file_get_contents(TIENDA_BASE . '/app/Views/themes/idirecto/_pagination.php');
+    $catalogViewSrc = (string) file_get_contents(TIENDA_BASE . '/app/Views/themes/idirecto/catalog.php');
+    check(str_contains($paginationView, 'rel="prev"')
+        && str_contains($paginationView, 'rel="next"')
+        && str_contains($paginationView, 'aria-current="page"')
+        && str_contains($paginationView, '$pageUrl')
+        && str_contains($catalogViewSrc, '_pagination.php'),
+        'paginacion comun: Anterior/Siguiente, pagina actual y URLs construidas por el listado');
+    check(str_contains($paginationView, 'page-info') && str_contains($paginationView, 'Pagina ')
+        && str_contains($paginationView, 'productos'),
+        'la paginacion dice la pagina actual, el total de paginas y el total de productos');
 
     // HTML limpio: nada de elementos decorativos vacios (el validador los marca).
     $menuView = (string) file_get_contents(TIENDA_BASE . '/app/Views/themes/idirecto/_menu.php');

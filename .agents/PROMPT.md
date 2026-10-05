@@ -21,6 +21,39 @@ _(vacío — sin petición pendiente)_
 
 Cada petición terminada se anota aquí con la fecha, qué se pidió y qué se hizo.
 
+### 2026-10-05 · Catálogo: 40 productos por página y tarjeta entera enlazada (petición por chat)
+
+**Pedido:** como desarrollador senior full-stack de e-commerce, rendimiento web, catálogos,
+paginación, UX/UI responsive, accesibilidad y SEO técnico: (1) aumentar y optimizar el
+número de productos de las páginas de categorías y subcategorías (objetivo: ~40 en
+escritorio, 24 en tablet, 12-16 en móvil) sin cargar todo de golpe y con paginación real y
+rastreable; y (2) que **toda la zona visual y superior de cada tarjeta** (imagen, marca,
+nombre, características, «Ver ficha») lleve a la ficha, sin enlaces anidados y sin que
+«Agregar al carrito» u otras acciones naveguen. Página de ejemplo:
+`https://valduran.com/telefonia/moviles-smartphone` (448 productos). Sin tocar carrito,
+checkout, menú, usuarios ni pedidos. Auditoría antes de tocar nada y desarrollo por fases.
+
+**Auditoría (solo lectura):** la paginación ya existía (tradicional, `LIMIT/OFFSET`, rutas
+`/page/N` con 301 desde query); el `12` venía del **`.env` de producción** (en desarrollo
+eran 20), el fallback del modelo era 12 y el buscador en vivo usaba una clave inexistente;
+la tarjeta ya tenía enlace estirado pero la imagen (`z-index: 1`) se comía el clic —
+confirmado con `elementFromPoint` y clic real por CDP—; los productos propios no tienen
+ficha. Índices existentes suficientes (tablas del mayorista de solo lectura).
+
+**Decisión confirmada:** 40 productos en el **servidor para todas las pantallas** (las
+columnas sí son responsive, para no duplicar URLs) y dejar las tarjetas de productos
+propios como estaban (no tienen ficha).
+
+**Hecho:** `CATALOG_PER_PAGE=40` (+ `CATALOG_SEARCH_PER_PAGE=16`) en `.env`, `.env.example`
+y `config/catalog.php`, tope 120 en `Catalog::paginate()`; partial de paginación común
+(`_pagination.php`) con Anterior/Siguiente, `…`, `aria-current`, `rel=prev|next` y «Página X
+de Y · N productos», conservando filtros/orden/búsqueda, y 404 para páginas fuera de rango;
+tarjeta entera clicable con un solo `<a>` (imagen, marca, specs y precio) manteniendo el
+botón de carrito independiente; primera fila de imágenes inmediata y el resto en diferido.
+`verify.php` 244 → **250** (TODO OK), probado con clics reales por CDP en móvil y escritorio
+y responsive 320→1920. **Pendiente de despliegue:** poner `CATALOG_PER_PAGE=40` en el `.env`
+de producción. Detalle en `CHANGELOG.md` y `STATE.md`.
+
 ### 2026-10-05 · Carrito: botón «Agregar al carrito» y mini-carrito lateral (petición por chat)
 
 **Pedido:** actuar como desarrollador senior full-stack de e-commerce y mejorar el botón

@@ -94,8 +94,12 @@ $services = [
             </div>
 
             <div class="grid grid-products">
-                <?php foreach ($central as $p): ?>
-                    <?php include $cardFile; ?>
+                <?php foreach ($central as $i => $p): ?>
+                    <?php
+                    $p['_eager'] = $i < 4;
+                    $p['_lcp'] = $i === 0;
+                    include $cardFile;
+                    ?>
                 <?php endforeach; ?>
             </div>
         </div>
@@ -113,8 +117,12 @@ $services = [
             </div>
 
             <div class="grid grid-products">
-                <?php foreach ($ownProducts as $p): ?>
-                    <?php include $ownCardFile; ?>
+                <?php foreach ($ownProducts as $i => $p): ?>
+                    <?php
+                    $p['_eager'] = $i < 4;
+                    $p['_lcp'] = $i === 0;
+                    include $ownCardFile;
+                    ?>
                 <?php endforeach; ?>
             </div>
         </div>

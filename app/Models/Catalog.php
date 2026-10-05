@@ -37,6 +37,15 @@ final class Catalog
     private const SUBCATEGORIA_EXCLUIDA = 178;
 
     /**
+     * Tope duro de productos por pagina (seguridad).
+     *
+     * El tamano normal lo define `catalog.per_page` (40). Este tope solo evita
+     * que una llamada interna pida una pagina gigante por error; no es el valor
+     * de negocio y no debe bajarse por debajo de `catalog.per_page`.
+     */
+    private const MAX_PER_PAGE = 120;
+
+    /**
      * TTL de la cache del contador total (segundos).
      *
      * Contar los productos con stock de TODO el catalogo cuesta ~1 s en esta
@@ -309,8 +318,8 @@ final class Catalog
         string $tag = 'todos',
         array $scope = []
     ): array {
-        $perPage = $perPage ?? (int) Config::get('catalog.per_page', 12);
-        $perPage = max(1, min(60, $perPage));
+        $perPage = $perPage ?? (int) Config::get('catalog.per_page', 40);
+        $perPage = max(1, min(self::MAX_PER_PAGE, $perPage));
         $page = max(1, $page);
 
         if (!self::isAvailable()) {

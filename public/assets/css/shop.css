@@ -425,7 +425,7 @@ svg { flex: 0 0 auto; }
     box-shadow: var(--c-shadow-lg);
 }
 
-.product-media { position: relative; aspect-ratio: 1 / 1; background: var(--c-surface-2); overflow: hidden; }
+.product-media { position: relative; aspect-ratio: 1 / 1; background: var(--c-surface-2); overflow: hidden; cursor: pointer; }
 .product-media img {
     position: absolute; inset: 0; z-index: 1;
     width: 100%; height: 100%; object-fit: contain; padding: .85rem;
@@ -440,7 +440,7 @@ svg { flex: 0 0 auto; }
 .product-ph-lg { min-height: 320px; font-size: 3rem; }
 
 .product-flags {
-    position: absolute; top: .55rem; left: .55rem; right: .55rem; z-index: 2;
+    position: absolute; top: .55rem; left: .55rem; right: .55rem; z-index: 3;
     display: flex; flex-wrap: wrap; gap: .3rem; pointer-events: none;
 }
 
@@ -455,8 +455,13 @@ svg { flex: 0 0 auto; }
     display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
     color: var(--c-heading);
 }
-.product-name a::after { content: ''; position: absolute; inset: 0; } /* toda la tarjeta clicable */
-.product-name a:hover { color: var(--c-primary); }
+/* Enlace "estirado": el ::after del nombre cubre TODA la tarjeta, de modo que
+   imagen, marca, nombre, specs y precio llevan a la ficha con un unico <a> (no
+   hay enlaces anidados). El z-index tiene que quedar POR ENCIMA de la imagen
+   (`.product-media img` = 1) y POR DEBAJO de las acciones (`.product-actions` = 4),
+   que son las que deben seguir siendo independientes. */
+.product-name a::after { content: ''; position: absolute; inset: 0; z-index: 2; }
+.product-name a:hover { color: var(--c-primary); text-decoration: underline; text-underline-offset: .15em; }
 .product-desc {
     display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
     margin: 0; font-size: .82rem; color: var(--c-muted);
@@ -477,7 +482,10 @@ svg { flex: 0 0 auto; }
 .product-price-na { color: var(--c-muted); font-weight: 700; }
 .product-vat { font-size: .7rem; color: var(--c-muted); }
 
-.product-actions { position: relative; z-index: 2; }
+/* Las acciones (Ver ficha / Agregar al carrito) van POR ENCIMA del enlace
+   estirado de la tarjeta: sus botones son independientes y no deben navegar a
+   la ficha salvo que el enlace sea el propio CTA. */
+.product-actions { position: relative; z-index: 4; }
 .product-cta { gap: .4rem; }
 .product-cta svg { width: 16px; height: 16px; transition: transform .2s ease; }
 .product-cta:hover svg { transform: translateX(3px); }
@@ -637,16 +645,29 @@ svg { flex: 0 0 auto; }
 .chip-clear:hover { background: var(--c-surface); color: var(--c-primary); border-color: var(--c-primary); }
 
 /* ---------- Paginacion ---------- */
-.pagination { display: flex; gap: .35rem; justify-content: center; margin: 2rem 0; flex-wrap: wrap; }
-.pagination a {
+.pagination { display: flex; gap: .35rem; justify-content: center; margin: 2rem 0 0; flex-wrap: wrap; }
+.pagination a,
+.pagination .page-current {
     display: inline-grid; place-items: center; min-width: 40px; height: 40px; padding: 0 .6rem;
     border: 1px solid var(--c-border); border-radius: var(--c-radius-md);
     background: var(--c-surface); font-size: .9rem; font-weight: 600;
     transition: border-color .15s ease, background .15s ease, color .15s ease;
 }
 .pagination a:hover { border-color: var(--c-primary); color: var(--c-primary); }
-.pagination a.active { background: var(--c-primary); border-color: var(--c-primary); color: var(--c-primary-contrast); cursor: default; }
+.pagination .page-current { background: var(--c-primary); border-color: var(--c-primary); color: var(--c-primary-contrast); cursor: default; }
 .pagination a svg { width: 18px; height: 18px; }
+/* Anterior / Siguiente: icono + texto, para no depender solo del icono. */
+.pagination .page-nav { display: inline-flex; align-items: center; gap: .35rem; }
+.pagination .page-nav.is-disabled { opacity: .45; cursor: not-allowed; }
+.pagination .page-gap { display: inline-grid; place-items: center; min-width: 24px; height: 40px; color: var(--c-muted); }
+/* Info de la paginacion: pagina actual, total de paginas y total de productos. */
+.page-info { margin: .6rem 0 0; text-align: center; font-size: .82rem; color: var(--c-muted); }
+.page-info-sep { margin: 0 .35rem; }
+/* En pantallas muy estrechas el texto Anterior/Siguiente se oculta (queda el
+   icono y el aria-label): asi la fila de numeros no se parte en exceso. */
+@media (max-width: 519px) {
+    .pagination .page-nav-label { display: none; }
+}
 
 /* ---------- Migas de pan ---------- */
 .breadcrumb {

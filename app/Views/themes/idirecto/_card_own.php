@@ -18,13 +18,17 @@ $label = match ($band) {
     default => 'En stock',
 };
 $initial = mb_strtoupper(mb_substr((string) ($p['name'] ?? ''), 0, 2));
+$eager = !empty($p['_eager']);
+$lcp = !empty($p['_lcp']);
 ?>
 <article class="product-card product-card-own" data-stock="<?= e($band) ?>">
     <div class="product-media">
         <span class="product-ph" aria-hidden="true"><?= e($initial) ?></span>
         <?php if (!empty($p['image_url'])): ?>
             <img src="<?= e($p['image_url']) ?>" alt="<?= e($p['name']) ?>"
-                 loading="lazy" decoding="async" width="400" height="400" onerror="this.remove()">
+                 loading="<?= $eager ? 'eager' : 'lazy' ?>" decoding="async"
+                 <?= $lcp ? 'fetchpriority="high"' : '' ?>
+                 width="400" height="400" onerror="this.remove()">
         <?php endif; ?>
 
         <div class="product-flags">

@@ -127,6 +127,14 @@ final class StorefrontController extends Controller
             $scope
         );
 
+        // Pagina fuera de rango: no se sirve una pagina vacia (seria contenido
+        // duplicado y confunde al usuario). Se responde 404, que es lo que
+        // espera un buscador ante una pagina que no existe.
+        $totalPages = (int) ($result['pages'] ?? 0);
+        if ($totalPages > 0 && $page > $totalPages) {
+            return $this->notFound();
+        }
+
         // Categoria activa: nombre y subcategorias (menu lateral del catalogo).
         $categoryName = null;
         $subcategories = [];
@@ -300,7 +308,7 @@ final class StorefrontController extends Controller
         $storeId = $this->tenant->id();
         $all = OwnProduct::publishedForStore($storeId);
 
-        $perPage = max(1, (int) Config::get('catalog.per_page', 20));
+        $perPage = max(1, (int) Config::get('catalog.per_page', 40));
         $pages = max(1, (int) ceil(count($all) / $perPage));
         $page = min(max(1, (int) ($_GET['page'] ?? 1)), $pages);
         $items = array_slice($all, ($page - 1) * $perPage, $perPage);
@@ -409,7 +417,9 @@ final class StorefrontController extends Controller
             'subcategories' => $effectiveSubs,
         ];
 
-        $perPage = max(1, min(24, (int) Config::get('catalog.search_per_page', 12)));
+        // El buscador en vivo es un desplegable: tiene su propio tamano
+        // (`catalog.search_per_page`), independiente del de los listados.
+        $perPage = max(1, min(24, (int) Config::get('catalog.search_per_page', 16)));
         $result = Catalog::paginate(1, $perPage, $q, null, null, $terms, $priceMin, $priceMax, 'relevancia', 'todos', $listScope);
 
         // Los productos propios solo entran sin filtros de catalogo: son ajenos

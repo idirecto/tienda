@@ -39,31 +39,21 @@ $ownCardFile = TIENDA_BASE . '/app/Views/themes/idirecto/_card_own.php';
         </div>
     <?php else: ?>
         <div class="grid grid-products">
-            <?php foreach ($ownProducts as $p): ?>
-                <?php include $ownCardFile; ?>
+            <?php foreach ($ownProducts as $i => $p): ?>
+                <?php
+                $p['_eager'] = $i < 4;
+                $p['_lcp'] = $i === 0;
+                include $ownCardFile;
+                ?>
             <?php endforeach; ?>
         </div>
 
-        <?php if ($pages > 1): ?>
-            <nav class="pagination" aria-label="Paginacion">
-                <?php if ($page > 1): ?>
-                    <a class="page-nav" href="<?= e($base) ?>/propios?page=<?= $page - 1 ?>" rel="prev"
-                       aria-label="Pagina anterior"><?= icon_svg('chevron-l') ?></a>
-                <?php endif; ?>
-
-                <?php for ($i = 1; $i <= $pages; $i++): ?>
-                    <a class="<?= $i === $page ? 'active' : '' ?>"
-                       href="<?= e($base) ?>/propios?page=<?= $i ?>"
-                       <?= $i === $page ? 'aria-current="page"' : '' ?>>
-                        <?= $i ?>
-                    </a>
-                <?php endfor; ?>
-
-                <?php if ($page < $pages): ?>
-                    <a class="page-nav" href="<?= e($base) ?>/propios?page=<?= $page + 1 ?>" rel="next"
-                       aria-label="Pagina siguiente"><?= icon_svg('chevron-r') ?></a>
-                <?php endif; ?>
-            </nav>
-        <?php endif; ?>
+        <?php
+        // Misma paginacion que el catalogo (enlaces reales, Anterior/Siguiente,
+        // ventana de numeros y "Pagina X de Y").
+        $pageUrl = static fn (int $n): string => $base . '/propios' . ($n > 1 ? '?page=' . $n : '');
+        $ariaLabel = 'Paginacion de productos propios';
+        include __DIR__ . '/_pagination.php';
+        ?>
     <?php endif; ?>
 </div>

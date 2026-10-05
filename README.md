@@ -291,7 +291,8 @@ CATALOG_IMAGE_URL=https://idirecto.es/img_products
 CATALOG_IMAGE_PATH=               # ruta en disco (opcional, solo desarrollo local)
 CATALOG_CARD_IMAGE_SIZE=l         # talla de imagen en los listados: c | l | f
 CATALOG_MARKUP=30                 # % aplicado si no hay precio de tarifa
-CATALOG_PER_PAGE=20               # productos por pagina en los listados
+CATALOG_PER_PAGE=40               # productos por pagina en los listados (todas las pantallas)
+CATALOG_SEARCH_PER_PAGE=16        # resultados del buscador en vivo de la cabecera
 CATALOG_HOME_FEATURED=12          # destacados de la portada (seleccion editorial)
 ```
 

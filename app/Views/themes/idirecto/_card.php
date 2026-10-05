@@ -17,13 +17,19 @@ $band = (string) ($p['stock_band'] ?? ($p['in_stock'] ?? false ? 'in' : 'out'));
 $label = (string) ($p['stock_label'] ?? '');
 $specs = (array) ($p['specs'] ?? []);
 $initial = mb_strtoupper(mb_substr((string) ($p['nombre'] ?? ''), 0, 2));
+// Las tarjetas de la primera fila se piden en cuanto carga la pagina (mejor LCP);
+// el resto van en diferido. Lo decide quien incluye la tarjeta.
+$eager = !empty($p['_eager']);
+$lcp = !empty($p['_lcp']);
 ?>
 <article class="product-card" data-stock="<?= e($band) ?>">
     <div class="product-media">
         <span class="product-ph" aria-hidden="true"><?= e($initial) ?></span>
         <?php if (!empty($p['image_url'])): ?>
             <img src="<?= e($p['image_url']) ?>" alt="<?= e($p['nombre']) ?>"
-                 loading="lazy" decoding="async" width="400" height="400"
+                 loading="<?= $eager ? 'eager' : 'lazy' ?>" decoding="async"
+                 <?= $lcp ? 'fetchpriority="high"' : '' ?>
+                 width="400" height="400"
                  onerror="this.remove()">
         <?php endif; ?>
 

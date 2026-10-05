@@ -33,10 +33,23 @@ return [
     // este beneficio. Se cambia por tienda en el panel > Ajustes.
     'default_markup' => (float) Env::get('CATALOG_DEFAULT_MARKUP', 15),
 
-    // Productos por pagina en los LISTADOS (catalogo, categoria, busqueda y
-    // filtros). 20 llena bien la rejilla en escritorio (3-4 filas) sin alargar
-    // demasiado la pagina; el tope duro esta en Catalog::paginate().
-    'per_page'  => Env::int('CATALOG_PER_PAGE', 20),
+    // Productos por pagina en los LISTADOS (catalogo, categoria, subcategoria,
+    // busqueda, filtros y etiquetas).
+    //
+    // 40 es el valor de servidor para TODOS los dispositivos: la paginacion se
+    // resuelve en backend antes de conocer el viewport, asi que depender del
+    // ancho de pantalla obligaria a servir variantes de la misma URL (contenido
+    // distinto por usuario) y ensuciaria el SEO. El numero de COLUMNAS si es
+    // responsive (`.grid-products`): en el movil cabe 1, en tablet 3-4 y en
+    // escritorio 4-6, de modo que 40 productos son 7-9 filas como mucho.
+    //
+    // Este es el UNICO punto donde se define el tamano de pagina de los
+    // listados; el tope de seguridad vive en Catalog::paginate().
+    'per_page'  => Env::int('CATALOG_PER_PAGE', 40),
+
+    // Resultados que sirve el buscador EN VIVO de la cabecera. Va aparte porque
+    // es un desplegable, no una pagina: interesa que sea rapido y corto.
+    'search_per_page' => Env::int('CATALOG_SEARCH_PER_PAGE', 16),
 
     // Productos destacados de la PORTADA. Va aparte porque no es un listado
     // paginado sino una seleccion editorial: interesa que no crezca sola cada

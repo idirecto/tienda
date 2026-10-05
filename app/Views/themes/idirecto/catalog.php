@@ -350,8 +350,13 @@ $priceMax = $selection['price_max'];
             <?php if (!empty($ownProducts)): ?>
                 <h2 class="subsection">Productos de la tienda</h2>
                 <div class="grid grid-products">
-                    <?php foreach ($ownProducts as $p): ?>
-                        <?php include TIENDA_BASE . '/app/Views/themes/idirecto/_card_own.php'; ?>
+                    <?php foreach ($ownProducts as $i => $p): ?>
+                        <?php
+                        // Primera fila: se pide ya (LCP). El resto, en diferido.
+                        $p['_eager'] = $i < 4;
+                        $p['_lcp'] = $i === 0;
+                        include TIENDA_BASE . '/app/Views/themes/idirecto/_card_own.php';
+                        ?>
                     <?php endforeach; ?>
                 </div>
             <?php endif; ?>
@@ -371,33 +376,25 @@ $priceMax = $selection['price_max'];
                 </div>
             <?php else: ?>
                 <div class="grid grid-products">
-                    <?php foreach ($result['items'] as $p): ?>
-                        <?php include TIENDA_BASE . '/app/Views/themes/idirecto/_card.php'; ?>
+                    <?php foreach ($result['items'] as $i => $p): ?>
+                        <?php
+                        // Primera fila: se pide ya (LCP). El resto, en diferido.
+                        $p['_eager'] = $i < 4;
+                        $p['_lcp'] = $i === 0;
+                        include TIENDA_BASE . '/app/Views/themes/idirecto/_card.php';
+                        ?>
                     <?php endforeach; ?>
                 </div>
 
-                <?php if ($pages > 1): ?>
-                    <nav class="pagination" aria-label="Paginacion">
-                        <?php if ($page > 1): ?>
-                            <a class="page-nav" href="<?= e($buildUrl(['page' => $page - 1])) ?>" rel="prev"
-                               aria-label="Pagina anterior"><?= icon_svg('chevron-l') ?></a>
-                        <?php endif; ?>
-
-                        <?php for ($i = 1; $i <= $pages; $i++): ?>
-                            <?php if ($i > 12 && $i < $pages - 1) { continue; } ?>
-                            <a class="<?= $i === $page ? 'active' : '' ?>"
-                               href="<?= e($buildUrl(['page' => $i])) ?>"
-                               <?= $i === $page ? 'aria-current="page"' : '' ?>>
-                                <?= $i ?>
-                            </a>
-                        <?php endfor; ?>
-
-                        <?php if ($page < $pages): ?>
-                            <a class="page-nav" href="<?= e($buildUrl(['page' => $page + 1])) ?>" rel="next"
-                               aria-label="Pagina siguiente"><?= icon_svg('chevron-r') ?></a>
-                        <?php endif; ?>
-                    </nav>
-                <?php endif; ?>
+                <?php
+                // Paginacion comun a todos los listados. La URL la construye
+                // `$buildUrl`, que parte de `$baseParams`: asi cada enlace
+                // conserva categoria, subcategoria, filtros, orden, etiqueta y
+                // busqueda, y cada pagina tiene su URL rastreable.
+                $pageUrl = static fn (int $n): string => $buildUrl(['page' => $n]);
+                $ariaLabel = 'Paginacion de ' . $title;
+                include __DIR__ . '/_pagination.php';
+                ?>
             <?php endif; ?>
         </div>
     </div>
