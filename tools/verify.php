@@ -721,6 +721,34 @@ check(
     'no se puede anadir un producto que no existe'
 );
 
+// Stock real del catalogo: el carrito nunca deja pedir mas unidades de las que hay.
+$stockCatalogo = Catalog::stockTotal(254967);
+check(
+    $stockCatalogo !== null && $stockCatalogo > 0,
+    'el carrito conoce el stock real del catalogo (' . (int) $stockCatalogo . ' uds)'
+);
+$esperadoStock = min((int) $stockCatalogo, Cart::MAX_QTY);
+$sobreStock = Cart::add(1, 'catalog', 254967, $esperadoStock + 50);
+check(
+    $sobreStock['ok'] && Cart::count(1) === $esperadoStock,
+    'anadir mas unidades de las que hay se recorta al stock (' . Cart::count(1) . ' uds)'
+);
+$miniCarrito = Cart::miniViewData(1, [
+    'id' => 1, 'shipping_flat' => 4.95, 'free_shipping_from' => 60.0, 'allow_orders' => 1,
+]);
+check(
+    count($miniCarrito['items']) === 1 && (int) $miniCarrito['count'] === $esperadoStock
+        && (int) $miniCarrito['maxQty'] === Cart::MAX_QTY && $miniCarrito['totals']['total'] > 0,
+    'el mini-carrito comparte el estado real del carrito (lineas, totales y contador)'
+);
+$avisosStock = Cart::updateQuantities(1, [Cart::key('catalog', 254967) => $esperadoStock + 50]);
+check(
+    Cart::count(1) === $esperadoStock && $avisosStock !== [],
+    'cambiar la cantidad por encima del stock se recorta y avisa'
+);
+Cart::remove(1, Cart::key('catalog', 254967));
+check(Cart::count(1) === 0, 'el carrito queda limpio tras la prueba de stock');
+
 // -----------------------------------------------------------------------------
 // Cliente, direcciones y pedido (en una transaccion que se deshace)
 // -----------------------------------------------------------------------------
@@ -1647,6 +1675,71 @@ try {
 }
 $pdoPropios->rollBack();
 check(true, 'la prueba del buscador de propios deshace sus datos (transaccion)');
+
+// =============================================================================
+// Carrito: boton «Agregar al carrito» y mini-carrito lateral.
+// El mini-carrito es una vista del MISMO carrito de sesion; no hay carrito
+// paralelo ni se duplica ninguna ruta funcional.
+// =============================================================================
+echo "\n== Carrito: boton y mini-carrito ==\n";
+$cardView = (string) file_get_contents(TIENDA_BASE . '/app/Views/themes/idirecto/_card.php');
+$cardOwnView = (string) file_get_contents(TIENDA_BASE . '/app/Views/themes/idirecto/_card_own.php');
+$productView = (string) file_get_contents(TIENDA_BASE . '/app/Views/themes/idirecto/product.php');
+$miniView = (string) file_get_contents(TIENDA_BASE . '/app/Views/themes/idirecto/_mini_cart.php');
+$layoutShop = (string) file_get_contents(TIENDA_BASE . '/app/Views/layouts/shop.php');
+$shopJs = (string) file_get_contents(TIENDA_BASE . '/public/assets/js/shop.js');
+$shopCss = (string) file_get_contents(TIENDA_BASE . '/public/assets/css/shop.css');
+$cartController = (string) file_get_contents(TIENDA_BASE . '/app/Controllers/CartController.php');
+$indexSrc = (string) file_get_contents(TIENDA_BASE . '/index.php');
+
+check(
+    str_contains($cardView, 'Agregar al carrito')
+        && str_contains($cardOwnView, 'Agregar al carrito')
+        && str_contains($productView, 'Agregar al carrito')
+        && !str_contains($productView, 'Añadir al carrito'),
+    'el boton dice exactamente «Agregar al carrito» en tarjetas y ficha'
+);
+check(
+    str_contains($layoutShop, 'id="minicart"')
+        && str_contains($layoutShop, 'data-minicart-url')
+        && str_contains($layoutShop, 'name="csrf-token"'),
+    'el layout incluye el mini-carrito y el token para las llamadas AJAX'
+);
+check(
+    str_contains($indexSrc, "'/carrito/mini'")
+        && str_contains($indexSrc, "'/carrito/anadir'")
+        && str_contains($indexSrc, "'/carrito/actualizar'")
+        && str_contains($indexSrc, "'/carrito/quitar'")
+        && str_contains($indexSrc, "'/carrito/vaciar'"),
+    'el mini-carrito reutiliza los endpoints del carrito y solo anade la lectura /carrito/mini'
+);
+check(
+    method_exists(\Tienda\Controllers\CartController::class, 'mini')
+        && str_contains($cartController, 'isAjax()')
+        && str_contains($cartController, '_mini_cart'),
+    'el carrito responde JSON en AJAX y conserva el formulario normal sin JS'
+);
+check(
+    str_contains($miniView, 'data-minicart-step')
+        && str_contains($miniView, 'data-minicart-input')
+        && str_contains($miniView, 'data-minicart-remove')
+        && str_contains($miniView, 'Ver artículos del carrito')
+        && str_contains($miniView, 'Ver carrito'),
+    'el mini-carrito tiene +/-, cantidad editable, quitar y la CTA de escritorio y movil'
+);
+check(
+    str_contains($shopJs, 'data-minicart-url')
+        && str_contains($shopJs, 'shop-minicart-open')
+        && str_contains($shopJs, "e.key === 'Escape'")
+        && str_contains($shopJs, 'data-minicart-overlay'),
+    'el JS abre y cierra el mini-carrito (boton, Escape y capa exterior) sin bloquear el scroll'
+);
+check(
+    str_contains($shopCss, '100dvh')
+        && str_contains($shopCss, 'safe-area-inset-top')
+        && str_contains($shopCss, 'env(safe-area-inset-bottom'),
+    'el mini-carrito es responsive y respeta las safe-areas del movil'
+);
 
 // =============================================================================
 // Cache de datos: driver, memo, bloqueo y, sobre todo, precios en vivo.

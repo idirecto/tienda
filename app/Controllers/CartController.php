@@ -8,6 +8,7 @@ use Tienda\Core\Cart;
 use Tienda\Core\Controller;
 use Tienda\Core\Session;
 use Tienda\Core\Shipping;
+use Tienda\Core\View;
 
 /**
  * Carrito de la compra del storefront.
@@ -15,6 +16,10 @@ use Tienda\Core\Shipping;
  * Sin JavaScript obligatorio: anadir y cambiar cantidades son formularios POST
  * normales, asi que funciona igual con JS desactivado. El carrito vive en la
  * sesion y esta separado por tienda (`Cart`).
+ *
+ * JavaScript solo lo mejora: los mismos endpoints detectan una peticion AJAX
+ * (`X-Requested-With`) y, en ese caso, responden JSON con el estado real del
+ * carrito y el HTML del mini-carrito, en lugar de redirigir.
  */
 final class CartController extends Controller
 {
@@ -43,13 +48,28 @@ final class CartController extends Controller
         ], 'shop');
     }
 
+    /**
+     * Estado actual del carrito para el mini-carrito (JSON).
+     *
+     * Solo lectura: no cambia nada. Se usa al abrir el panel por primera vez o
+     * para resincronizarlo.
+     */
+    public function mini(array $params = []): string
+    {
+        return $this->json($this->cartPayload(true, '', 'success', false));
+    }
+
     /** Anade un producto (ficha del producto o tarjeta del catalogo). */
     public function add(array $params = []): string
     {
         $this->requireCsrf('carrito');
 
         if (!$this->tenant->allowOrders()) {
-            Session::flash('error', 'Esta tienda no esta aceptando pedidos en este momento.');
+            $message = 'Esta tienda no esta aceptando pedidos en este momento.';
+            if ($this->isAjax()) {
+                return $this->cartJson(false, $message, 'error');
+            }
+            Session::flash('error', $message);
             $this->redirect('carrito');
         }
 
@@ -58,6 +78,18 @@ final class CartController extends Controller
         $qty = (int) $this->input('qty', 1);
 
         $result = Cart::add($this->tenant->id(), $source, $productId, $qty);
+
+        // JavaScript: se devuelve el estado real y el mini-carrito ya pintado.
+        // Solo se abre si de verdad se ha podido anadir (nunca tras un error).
+        if ($this->isAjax()) {
+            return $this->cartJson(
+                $result['ok'],
+                $result['message'],
+                $result['ok'] ? 'success' : 'error',
+                $result['ok']
+            );
+        }
+
         Session::flash($result['ok'] ? 'success' : 'error', $result['message']);
 
         // Desde la ficha del producto se vuelve a ella (el cliente sigue mirando);
@@ -76,9 +108,17 @@ final class CartController extends Controller
         $this->requireCsrf('carrito');
 
         $quantities = $this->input('qty', []);
-        Cart::updateQuantities($this->tenant->id(), is_array($quantities) ? $quantities : []);
-        Session::flash('success', 'Carrito actualizado.');
+        $warnings = Cart::updateQuantities(
+            $this->tenant->id(),
+            is_array($quantities) ? $quantities : []
+        );
+        $message = $warnings === [] ? 'Carrito actualizado.' : implode(' ', $warnings);
 
+        if ($this->isAjax()) {
+            return $this->cartJson(true, $message, 'success');
+        }
+
+        Session::flash('success', $message);
         $this->redirect('carrito');
     }
 
@@ -88,8 +128,12 @@ final class CartController extends Controller
         $this->requireCsrf('carrito');
 
         Cart::remove($this->tenant->id(), (string) $this->input('key', ''));
-        Session::flash('success', 'Producto quitado del carrito.');
 
+        if ($this->isAjax()) {
+            return $this->cartJson(true, 'Producto quitado del carrito.', 'success');
+        }
+
+        Session::flash('success', 'Producto quitado del carrito.');
         $this->redirect('carrito');
     }
 
@@ -99,9 +143,60 @@ final class CartController extends Controller
         $this->requireCsrf('carrito');
 
         Cart::clear($this->tenant->id());
-        Session::flash('success', 'Carrito vaciado.');
 
+        if ($this->isAjax()) {
+            return $this->cartJson(true, 'Carrito vaciado.', 'success');
+        }
+
+        Session::flash('success', 'Carrito vaciado.');
         $this->redirect('carrito');
+    }
+
+    // =====================================================================
+    // RESPUESTA AJAX DEL CARRITO
+    // =====================================================================
+
+    /** Envia el estado del carrito como JSON y termina la peticion. */
+    private function cartJson(bool $ok, string $message, string $type = 'success', bool $open = false): never
+    {
+        $this->json($this->cartPayload($ok, $message, $type, $open));
+    }
+
+    /**
+     * Estado real del carrito + mini-carrito ya renderizado.
+     *
+     * El HTML sale del mismo partial que pinta el layout (`_mini_cart.php`), asi
+     * que el panel nunca muestra datos distintos de los del backend.
+     */
+    private function cartPayload(bool $ok, string $message, string $type, bool $open): array
+    {
+        $storeId = $this->tenant->id();
+        $store = $this->tenant->toArray();
+        $view = Cart::miniViewData($storeId, $store);
+        $totals = $view['totals'];
+
+        $html = View::render($this->themeView('_mini_cart'), $view + [
+            'tenant' => $this->tenant,
+        ]);
+
+        return [
+            'ok'             => $ok,
+            'type'           => $type,
+            'message'        => $message,
+            'open'           => $open,
+            'count'          => (int) $view['count'],
+            'units'          => (int) $totals['units'],
+            'lines'          => (int) $totals['lines'],
+            'subtotal'       => (float) $totals['subtotal'],
+            'shipping'       => (float) $totals['shipping'],
+            'total'          => (float) $totals['total'],
+            'subtotal_label' => euros($totals['subtotal']),
+            'shipping_label' => $totals['shipping'] > 0 ? euros($totals['shipping']) : 'Gratis',
+            'total_label'    => euros($totals['total']),
+            'allow_orders'   => (bool) $view['allowOrders'],
+            'dropped'        => array_values($view['dropped']),
+            'html'           => $html,
+        ];
     }
 
     /**

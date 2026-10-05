@@ -56,8 +56,10 @@ $puedeSeguir = $allowOrders && $items !== [];
                                 </td>
                                 <td class="ta-c"><?= e(euros($item['price'])) ?><br><small class="muted">IVA incl.</small></td>
                                 <td class="ta-c">
+                                    <?php /* El tope respeta el stock real cuando se conoce (0 = quitar la linea). */ ?>
+                                    <?php $lineMax = !empty($item['stock_total']) ? min((int) $maxQty, (int) $item['stock_total']) : (int) $maxQty; ?>
                                     <input class="cart-qty" type="number" name="qty[<?= e($item['key']) ?>]"
-                                           value="<?= (int) $item['qty'] ?>" min="0" max="<?= (int) $maxQty ?>"
+                                           value="<?= (int) $item['qty'] ?>" min="0" max="<?= (int) $lineMax ?>"
                                            inputmode="numeric" aria-label="Cantidad de <?= e($item['name']) ?>">
                                     <?php if (!empty($item['stock_total'])): ?>
                                         <br><small class="muted"><?= (int) $item['stock_total'] ?> disp.</small>

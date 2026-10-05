@@ -699,6 +699,38 @@ final class Catalog
     }
 
     /**
+     * Unidades realmente disponibles de un producto del catalogo.
+     *
+     * Suma las filas de `stock` con stock valido (la misma regla que usa el
+     * listado para decidir si un producto esta a la venta), asi que el carrito
+     * puede impedir pedir mas unidades de las que hay. Devuelve `null` si el
+     * producto no existe o si la consulta falla: en ese caso el carrito se
+     * comporta como antes (solo el tope global) en vez de romper la compra.
+     */
+    public static function stockTotal(int $id): ?int
+    {
+        if ($id <= 0 || !self::isAvailable()) {
+            return null;
+        }
+
+        try {
+            $total = Database::scalar(
+                'SELECT SUM(s.stock)
+                 FROM productos p
+                 INNER JOIN stock s ON s.part_number = p.part_number
+                 INNER JOIN almacenes a ON a.id = s.id_almacen
+                 WHERE p.id = :id
+                   AND s.stock > 0 AND s.activo = 1 AND s.costo > 0 AND a.tipo <> 2',
+                ['id' => $id]
+            );
+        } catch (\Throwable) {
+            return null;
+        }
+
+        return $total === null ? null : max(0, (int) $total);
+    }
+
+    /**
      * Especificaciones clave de cada tarjeta, a partir de la cadena corta
      * `productos_ext.caracteristicas` (una sola consulta y sin HTML pesado).
      *

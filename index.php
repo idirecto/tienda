@@ -90,6 +90,8 @@ $router->get('/buscar/live',           [StorefrontController::class, 'searchLive
 // COMPRA DEL CLIENTE (carrito, su cuenta y cierre del pedido)
 // -----------------------------------------------------------------------------
 $router->get('/carrito',                [CartController::class, 'index']);
+// Estado del carrito para el mini-carrito lateral (JSON, solo lectura).
+$router->get('/carrito/mini',           [CartController::class, 'mini']);
 $router->post('/carrito/anadir',        [CartController::class, 'add']);
 $router->post('/carrito/actualizar',    [CartController::class, 'update']);
 $router->post('/carrito/quitar',        [CartController::class, 'remove']);

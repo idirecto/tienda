@@ -1,7 +1,7 @@
 # STATE — Estado del proyecto
 
 > **El agente actualiza este fichero al terminar cada sesión.**
-> Última actualización: **2026-10-04**
+> Última actualización: **2026-10-05**
 
 ---
 
@@ -40,6 +40,7 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
 | Multi-tienda (resolución por hostname) | ✅ Completo |
 | **Registro de tiendas (solo con cuenta activa del mayorista)** | ✅ Completo |
 | **Compra del cliente final (carrito, cuenta, direcciones y pedido)** | ✅ Completo (**sin pasarela de pago**) |
+| **Carrito: botón «Agregar al carrito» + mini-carrito lateral (AJAX, responsive, stock real)** | ✅ Completo |
 | Catálogo central (stock, búsqueda, paginación) | ✅ Completo (**listados en ~20 ms**, ver notas) |
 | **Navegación: Menú Compacto y Menú Catalogo (un solo árbol de 3 niveles)** | ✅ Completo (14 categorías / 83 grupos / 346 destinos) |
 | **Menú administrable: editor, borrador/publicación, visibilidad por tienda y nivel de cliente** | ✅ Completo (panel de tienda + panel de plataforma con rol `platform`) |
@@ -120,6 +121,31 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
   en `pedidos.detalles`, igual que hace puntobyze.
 - **Panel**: sección **Clientes** (listado con buscador y ficha con direcciones y
   pedidos) y bloque **Venta y cobro** en Ajustes.
+
+### Carrito: botón «Agregar al carrito» y mini-carrito lateral (2026-10-05)
+- **Botón** con el texto exacto **«Agregar al carrito»** en la ficha, las tarjetas del
+  catálogo y las de productos propios, con estados normal/hover/activo/**carga**,
+  confirmación visual y sin dobles altas (se bloquea mientras la petición está en vuelo;
+  el servidor, además, suma en la línea existente y nunca duplica).
+- **Stock real en el carrito**: `Catalog::stockTotal()` y `Cart` lo aplican al añadir y al
+  cambiar cantidades (con aviso en español). Antes el catálogo no se recortaba por stock.
+  Los propios con `stock = 0` siguen significando «la tienda no lleva stock».
+- **AJAX sin carrito paralelo**: los endpoints de siempre (`/carrito/anadir`,
+  `/carrito/actualizar`, `/carrito/quitar`, `/carrito/vaciar`) responden JSON cuando la
+  petición es AJAX (`Controller::isAjax()`) y siguen redirigiendo sin JavaScript; el CSRF
+  inválido responde 403 JSON. `GET /carrito/mini` es solo lectura y devuelve el partial
+  `_mini_cart.php` con el carrito de la sesión.
+- **Mini-carrito lateral**: drawer fijo, 380-460 px en escritorio, adaptado en tablet y
+  **100 % en móvil**, `100dvh`, safe-areas, sin scroll horizontal, cabecera y pie fijos con
+  **lista de scroll propio**; abre tras un alta correcta y cierra con X, Escape y clic
+  fuera, devolviendo el foco y **liberando el scroll**. Cada línea trae imagen, nombre,
+  SKU, precio, +/−, cantidad editable (mín. 1, máx. stock), subtotal, total y quitar, con
+  aviso flotante de éxito/error. CTA «Ver artículos del carrito» / «Ver carrito».
+- **Enlace de respaldo**: el icono del carrito de la cabecera abre el mini-carrito con JS
+  y sigue siendo un enlace a **`/carrito`** sin JS.
+- `verify.php` 232 → **244** (TODO OK), probado en Chrome real por CDP (tarjetas, ficha,
+  buscador en vivo y categorías; doble clic; error que no abre el panel; medidas a 1440,
+  768, 390 y 844×390; sin errores de JavaScript).
 
 ### Storefront
 - Catálogo filtrado a **productos con stock**, con las mismas condiciones que
@@ -379,9 +405,9 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
   en **nginx + PHP-FPM** (`sudo bash deploy/setup-nginx-domain.sh valduran.com`).
 - La app detecta el servidor (`app/Core/Server.php`): ruta pública de `/public`,
   esquema real (incluido proxy) y host de las URLs canónicas.
-- `tools/verify.php`: 232 comprobaciones automáticas (diseño, facetas, filtros
-  estructurados del mayorista, catálogo, caché y precios en vivo,
-  almacenamiento, DNS, servidor, registro de tiendas, pedidos y envío al mayorista).
+- `tools/verify.php`: 244 comprobaciones automáticas (diseño, facetas, filtros
+  estructurados del mayorista, catálogo, caché y precios en vivo, carrito y
+  mini-carrito, almacenamiento, DNS, servidor, registro de tiendas, pedidos y envío al mayorista).
 - Documentación interna en `.agents/`, blindada frente a la web.
 - Repositorio publicado en GitHub (`main`).
 

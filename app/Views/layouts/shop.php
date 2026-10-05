@@ -54,6 +54,8 @@ $headerStyle = preg_replace('/[^a-z0-9_\-]/i', '', $tenant->headerStyle()) ?: 'c
     <title><?= e($pageTitle ?? $tenant->name()) ?></title>
     <meta name="description" content="<?= e($pageDescription ?? $tenant->metaDescription()) ?>">
     <meta name="theme-color" content="<?= e(Appearance::themeColor($tenant)) ?>">
+    <?php /* Token para las llamadas AJAX del carrito (mismo que usan los formularios). */ ?>
+    <meta name="csrf-token" content="<?= e(\Tienda\Core\Csrf::token()) ?>">
     <?php if (!empty($canonical)): ?>
         <link rel="canonical" href="<?= e($canonical) ?>">
     <?php endif; ?>
@@ -173,11 +175,13 @@ $headerStyle = preg_replace('/[^a-z0-9_\-]/i', '', $tenant->headerStyle()) ?: 'c
                 <span class="shop-account-label"><?= $shopCustomer ? e(mb_substr((string) $shopCustomer['name'], 0, 12)) : 'Entrar' ?></span>
             </a>
 
-            <a class="icon-btn shop-cart" href="<?= e($base) ?>/carrito" aria-label="Carrito de la compra">
+            <?php /* Sin JS sigue siendo un enlace a /carrito; con JS, `shop.js`
+                     abre el mini-carrito lateral (carga el estado real). */ ?>
+            <a class="icon-btn shop-cart" href="<?= e($base) ?>/carrito"
+               data-minicart-open aria-haspopup="dialog" aria-controls="minicart"
+               aria-label="Carrito de la compra">
                 <?= icon_svg('cart') ?>
-                <?php if ($cartUnits > 0): ?>
-                    <span class="shop-cart-count"><?= (int) $cartUnits ?></span>
-                <?php endif; ?>
+                <span class="shop-cart-count" data-cart-count<?= $cartUnits > 0 ? '' : ' hidden' ?>><?= (int) $cartUnits ?></span>
             </a>
 
             <a class="btn-panel" href="<?= e($base) ?>/panel">Mi panel</a>
@@ -271,6 +275,34 @@ $headerStyle = preg_replace('/[^a-z0-9_\-]/i', '', $tenant->headerStyle()) ?: 'c
         </div>
     </div>
 </footer>
+
+<?php /* Mini-carrito lateral: aqui solo va el armazon. El contenido lo pide
+         `shop.js` a GET /carrito/mini (y a los endpoints del carrito), que
+         devuelven el partial `_mini_cart.php` con el carrito REAL de la sesion.
+         Asi el carrito no cuesta consultas en cada pagina: solo al abrirlo. */ ?>
+<div class="minicart" id="minicart" data-minicart hidden aria-hidden="true"
+     data-minicart-url="<?= e($base) ?>/carrito/mini"
+     data-minicart-url-update="<?= e($base) ?>/carrito/actualizar"
+     data-minicart-url-remove="<?= e($base) ?>/carrito/quitar">
+    <div class="minicart-overlay" data-minicart-overlay></div>
+    <aside class="minicart-panel" role="dialog" aria-modal="true" aria-label="Tu carrito" tabindex="-1">
+        <div class="minicart-content minicart-content--loading" data-minicart-content>
+            <header class="minicart-head">
+                <h2 class="minicart-title">Tu carrito</h2>
+                <button type="button" class="minicart-close" data-minicart-close aria-label="Cerrar el carrito">
+                    <?= icon_svg('close') ?>
+                </button>
+            </header>
+            <div class="minicart-loading">
+                <span class="minicart-spinner" aria-hidden="true"></span>
+                <span>Cargando tu carrito…</span>
+            </div>
+        </div>
+    </aside>
+</div>
+
+<?php /* Avisos del carrito (exito y error) sin recargar la pagina. */ ?>
+<div class="shop-toast" id="shop-toast" role="status" aria-live="polite" hidden></div>
 
 <script src="<?= e(asset('assets/js/shop.js')) ?>" defer></script>
 </body>

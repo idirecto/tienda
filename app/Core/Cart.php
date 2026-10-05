@@ -39,6 +39,10 @@ final class Cart
         $product = self::loadProduct($storeId, $source, $productId);
 
         if ($product === null) {
+            // Se deja rastro en el log del proyecto (storage/logs/php-error.log)
+            // para poder diagnosticar intentos sobre productos no disponibles.
+            error_log('[tienda] carrito: producto no disponible (tienda ' . $storeId
+                . ', ' . $source . ' ' . $productId . ')');
             return ['ok' => false, 'message' => 'Ese producto ya no esta disponible.'];
         }
 
@@ -64,9 +68,19 @@ final class Cart
         return ['ok' => true, 'message' => $product['name'] . ' anadido al carrito.'];
     }
 
-    /** Guarda las cantidades enviadas desde el carrito (0 = quitar la linea). */
-    public static function updateQuantities(int $storeId, array $quantities): void
+    /**
+     * Guarda las cantidades enviadas desde el carrito (0 = quitar la linea).
+     *
+     * Respeta el stock real: si la tienda publica unidades (catalogo central y
+     * productos propios con stock > 0) no deja subir de ahi. Devuelve los avisos
+     * para poder explicar por que no se ha aplicado la cantidad pedida.
+     *
+     * @return array<int,string>
+     */
+    public static function updateQuantities(int $storeId, array $quantities): array
     {
+        $warnings = [];
+
         foreach ($quantities as $key => $qty) {
             $key = (string) $key;
             if (!array_key_exists($key, $_SESSION[self::SESSION_KEY][$storeId] ?? [])) {
@@ -77,8 +91,23 @@ final class Cart
                 unset($_SESSION[self::SESSION_KEY][$storeId][$key]);
                 continue;
             }
-            $_SESSION[self::SESSION_KEY][$storeId][$key] = min($qty, self::MAX_QTY);
+
+            $qty = min($qty, self::MAX_QTY);
+
+            [$source, $productId] = self::parseKey($key);
+            if ($source !== null) {
+                $product = self::loadProduct($storeId, $source, $productId);
+                $stock = $product['stock_total'] ?? null;
+                if ($stock !== null && (int) $stock > 0 && $qty > (int) $stock) {
+                    $qty = (int) $stock;
+                    $warnings[] = 'Solo quedan ' . $qty . ' unidades de ' . $product['name'] . '.';
+                }
+            }
+
+            $_SESSION[self::SESSION_KEY][$storeId][$key] = max(1, $qty);
         }
+
+        return $warnings;
     }
 
     public static function remove(int $storeId, string $key): void
@@ -183,6 +212,58 @@ final class Cart
         ];
     }
 
+    /**
+     * Estado completo del carrito, listo para pintar el mini-carrito o para
+     * responder por AJAX.
+     *
+     * Usa exactamente las mismas funciones que la pagina del carrito
+     * (`items()` + `totals()` + `count()`), asi que el mini-carrito nunca puede
+     * desincronizarse: no hay estado paralelo ni datos de ejemplo.
+     *
+     * @param array<string,mixed>    $store   Fila de la tienda (gastos de envio)
+     * @param array<int,string>|null $dropped Nombres de productos descartados
+     * @return array{items:array,totals:array,count:int,dropped:array}
+     */
+    public static function state(int $storeId, array $store, ?array &$dropped = null): array
+    {
+        $items = self::items($storeId, $dropped);
+        $totals = self::totals($items, $store);
+
+        return [
+            'items'   => $items,
+            'totals'  => $totals,
+            'count'   => self::count($storeId),
+            'dropped' => $dropped,
+        ];
+    }
+
+    /**
+     * Datos que necesita la vista del mini-carrito (y la respuesta AJAX).
+     *
+     * Reune el estado real del carrito con los avisos de envio y si la tienda
+     * admite pedidos, para que el partial no tenga que consultar nada.
+     *
+     * @param array<string,mixed> $store Fila de la tienda
+     * @return array<string,mixed>
+     */
+    public static function miniViewData(int $storeId, array $store): array
+    {
+        $dropped = [];
+        $state = self::state($storeId, $store, $dropped);
+        $totals = $state['totals'];
+
+        return [
+            'items'       => $state['items'],
+            'totals'      => $totals,
+            'count'       => $state['count'],
+            'dropped'     => $dropped,
+            'maxQty'      => self::MAX_QTY,
+            'freeFrom'    => Shipping::hasFreeFrom($store),
+            'missingFree' => Shipping::missingForFree($store, (float) $totals['subtotal']),
+            'allowOrders' => (int) ($store['allow_orders'] ?? 1) === 1,
+        ];
+    }
+
     // =====================================================================
     // INTERNOS
     // =====================================================================
@@ -257,6 +338,11 @@ final class Cart
             return null;
         }
 
+        // Stock real del mayorista: sin esto el carrito no podia recortar las
+        // unidades al anadir. `stockTotal()` devuelve `null` si no se puede
+        // consultar, y entonces se mantiene el tope global.
+        $stockTotal = Catalog::stockTotal($productId);
+
         return [
             'source'      => 'catalog',
             'product_id'  => $productId,
@@ -267,7 +353,7 @@ final class Cart
             'tax_rate'    => (float) ($product['tax_rate'] ?? 21),
             'image_url'   => $product['image_url'] ?? null,
             'url'         => product_url($product),
-            'stock_total' => isset($product['stock_total']) ? (int) $product['stock_total'] : null,
+            'stock_total' => $stockTotal,
             'is_stock'    => true,
         ];
     }

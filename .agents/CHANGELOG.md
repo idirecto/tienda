@@ -5,6 +5,55 @@ El detalle línea a línea está en `git log`.
 
 ---
 
+## 2026-10-05 · Carrito: botón «Agregar al carrito» y mini-carrito lateral
+
+**Motivo (petición por chat):** mejorar el botón «Agregar al carrito» y crear un
+mini-carrito lateral derecho con una experiencia tipo PcComponentes, pero con el diseño
+de Valduran, **usando el carrito real** (sesión) y sin tocar menú, categorías, productos,
+checkout ni nada ajeno.
+
+**Auditoría previa:** el carrito es `Core/Cart`, vive en `$_SESSION['cart'][$storeId]`
+(claves `c<id>`/`o<id>`); no hay tabla ni localStorage. El añadir era
+`POST /carrito/anadir` (redirect + flash), el contador salía de `Cart::count()` en la
+cabecera, la ruta del carrito es **`/carrito`** y no existe sistema de variantes. Se
+detectó que `Cart::loadProduct()` usaba `Catalog::find()`, que **no traía `stock_total`**,
+así que el catálogo no se recortaba por stock (solo el tope global 99).
+
+**Qué se hizo**
+- **Stock real:** `Catalog::stockTotal()` (suma de `stock` válido) y `Cart::loadProduct()`
+  lo usa; `Cart::updateQuantities()` también recorta y **avisa**. `Catalog::MAX_QTY` (99)
+  sigue como tope. Los productos propios con `stock = 0` mantienen el comportamiento
+  actual (la tienda no lleva stock), como se acordó.
+- **Botón:** texto exacto **«Agregar al carrito»** en ficha y tarjetas
+  (`_card.php`, `_card_own.php`, `product.php`) con estados normal/hover/activo/**carga**
+  y confirmación; la cantidad de la ficha respeta `data-max` (stock).
+- **AJAX sin carrito paralelo:** los mismos endpoints detectan la petición AJAX
+  (`Controller::isAjax()`) y responden JSON con el **estado real** y el partial
+  `_mini_cart.php` ya pintado; sin JS todo sigue siendo un POST con redirección. La
+  petición AJAX sin CSRF válido responde **403 JSON** (no un 302 que rompería el fetch).
+- **Mini-carrito:** ruta de **solo lectura** `GET /carrito/mini` + armazón en el layout
+  (no cuesta consultas si no se abre). Se abre solo tras un alta correcta; cierre con X,
+  Escape y clic en la capa exterior; foco al panel, `role="dialog"`/`aria-modal`,
+  bloqueo de scroll que **se libera al cerrar**. Responsive: 380-460 px en escritorio,
+  adaptado en tablet y **100 % en móvil**, `100dvh`, `safe-area-inset-top/bottom`, sin
+  scroll horizontal, cabecera y pie fijos y **lista con scroll propio**. CTA
+  «Ver artículos del carrito» en escritorio y «Ver carrito» en móvil.
+- **Líneas:** imagen, nombre, SKU, precio unitario, +/−, cantidad editable (mínimo 1,
+  máximo stock), subtotal, total y quitar, todo contra los endpoints del carrito, con
+  estado de carga, sin peticiones duplicadas y con aviso flotante.
+- **Anti doble alta:** el botón se bloquea mientras la petición está en vuelo (el
+  servidor, además, suma en la línea existente: nunca crea líneas duplicadas).
+- Se limita también la cantidad de la **página del carrito** al stock real.
+
+**Verificado en Chrome real por CDP** (19/19 + 4 + 8 comprobaciones): alta desde tarjeta,
+ficha, buscador en vivo y categoría; doble clic = una sola petición; error no abre el
+panel y sale en español; +/−, cantidad manual recortada al stock, quitar y totales en
+vivo; contador sin recargar; cierre con X/Escape/capa y scroll liberado; medidas reales
+a 1440 (430 px), 768 (430 px), 390 (390 px) y 844×390 (alto completo) sin desbordes y sin
+errores de JavaScript. `php tools/verify.php` 232 → **244** (TODO OK).
+
+---
+
 ## 2026-10-04 · Buscador en vivo: un solo botón (el de cerrar)
 
 **Motivo (petición por chat):** «sobre el buscador se dibujan dos botones para cerrar,

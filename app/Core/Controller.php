@@ -68,6 +68,23 @@ abstract class Controller
         return array_merge($_GET, $_POST);
     }
 
+    /**
+     * Peticion AJAX/JSON (la manda `shop.js` con `X-Requested-With`).
+     *
+     * Sirve para que un mismo endpoint siga respondiendo una redireccion HTML
+     * cuando la usa un formulario normal y JSON cuando la usa JavaScript.
+     */
+    protected function isAjax(): bool
+    {
+        $requestedWith = $_SERVER['HTTP_X_REQUESTED_WITH'] ?? '';
+        if (is_string($requestedWith) && stripos($requestedWith, 'xmlhttprequest') !== false) {
+            return true;
+        }
+
+        $accept = $_SERVER['HTTP_ACCEPT'] ?? '';
+        return is_string($accept) && str_contains($accept, 'application/json');
+    }
+
     protected function redirect(string $path): never
     {
         header('Location: ' . $this->url($path));
@@ -122,6 +139,16 @@ abstract class Controller
         }
 
         if (!Csrf::validate(is_string($token) ? $token : null)) {
+            // En AJAX no tiene sentido redirigir: el carrito espera JSON y, si
+            // recibe un 302, el navegador lo sigue y rompe la respuesta.
+            if ($this->isAjax()) {
+                $this->json([
+                    'ok'      => false,
+                    'type'    => 'error',
+                    'message' => 'La sesion ha caducado. Recarga la pagina y vuelve a intentarlo.',
+                ], 403);
+            }
+
             // 419 no lo entienden Apache/PHP y acaba en 500: se responde 403.
             http_response_code(403);
             Session::flash('error', 'Token de seguridad invalido. Vuelve a enviar el formulario.');

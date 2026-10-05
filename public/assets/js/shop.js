@@ -568,15 +568,23 @@
        ===================================================================== */
     var qty = document.getElementById('ficha-qty');
     if (qty) {
+        var qtyMax = function () {
+            return Math.max(1, parseInt(qty.getAttribute('data-max'), 10) || 99);
+        };
         document.querySelectorAll('.qty-btn').forEach(function (btn) {
             btn.addEventListener('click', function () {
                 var delta = parseInt(btn.getAttribute('data-step'), 10) || 1;
                 var value = parseInt(qty.value, 10) || 1;
-                qty.value = Math.max(1, value + delta);
+                qty.value = Math.min(qtyMax(), Math.max(1, value + delta));
             });
         });
         qty.addEventListener('input', function () {
             qty.value = qty.value.replace(/[^0-9]/g, '');
+        });
+        // Al salir del campo se respeta el stock: nunca menos de 1 ni mas de lo disponible.
+        qty.addEventListener('change', function () {
+            var value = parseInt(qty.value, 10) || 1;
+            qty.value = Math.min(qtyMax(), Math.max(1, value));
         });
     }
 
@@ -1258,4 +1266,366 @@
             if (e.key === 'Escape' && state.open) { closePanel(true); }
         });
     }
+})();
+
+/* =====================================================================
+   CARRITO: ANADIR POR AJAX Y MINI-CARRITO LATERAL
+
+   Sin JavaScript todo sigue igual (los formularios POST navegan a /carrito).
+   Con JavaScript:
+     - los formularios de las tarjetas y de la ficha se envian por fetch;
+     - el boton se bloquea mientras la peticion esta en vuelo (nada de dobles
+       clics ni altas duplicadas);
+     - el contador de la cabecera se actualiza sin recargar la pagina;
+     - el mini-carrito se abre SOLO cuando el alta ha ido bien y se rellena con
+       el estado REAL del backend (GET /carrito/mini y los mismos endpoints del
+       carrito de siempre). Nunca hay un carrito paralelo.
+   ===================================================================== */
+(function () {
+    'use strict';
+
+    var root = document.getElementById('minicart');
+    if (!root) { return; }
+
+    var panel = root.querySelector('.minicart-panel');
+    var host = root.querySelector('[data-minicart-content]');
+    var counter = document.querySelector('[data-cart-count]');
+    var toast = document.getElementById('shop-toast');
+    var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+
+    var endpointMini = root.getAttribute('data-minicart-url') || '';
+    var endpointUpdate = root.getAttribute('data-minicart-url-update') || '';
+    var endpointRemove = root.getAttribute('data-minicart-url-remove') || '';
+    var token = csrfMeta ? (csrfMeta.getAttribute('content') || '') : '';
+
+    var openers = Array.prototype.slice.call(document.querySelectorAll('[data-minicart-open]'));
+    var isOpen = false;
+    var lastFocus = null;
+    var loadingContent = false;
+    var loaded = false;
+
+    /* ---------- utilidades ---------- */
+    function showToast(message, type) {
+        if (!toast || !message) { return; }
+        toast.textContent = message;
+        toast.className = 'shop-toast is-' + (type === 'error' ? 'error' : 'success');
+        toast.hidden = false;
+        if (showToast.timer) { window.clearTimeout(showToast.timer); }
+        showToast.timer = window.setTimeout(function () { toast.hidden = true; }, 4500);
+    }
+
+    function setCount(value) {
+        if (!counter) { return; }
+        var n = parseInt(value, 10) || 0;
+        counter.textContent = String(n);
+        counter.hidden = n <= 0;
+    }
+
+    function setContent(html) {
+        if (typeof html !== 'string' || html.trim() === '' || !host) { return; }
+        var tmp = document.createElement('div');
+        tmp.innerHTML = html.trim();
+        var fresh = tmp.firstElementChild;
+        if (!fresh) { return; }
+        host.replaceWith(fresh);
+        host = fresh;
+        loaded = true;
+    }
+
+    function setBusy(el, on) {
+        el.classList.toggle('is-loading', on);
+        el.disabled = on;
+        if (on) { el.setAttribute('aria-busy', 'true'); } else { el.removeAttribute('aria-busy'); }
+    }
+
+    function get(url) {
+        return fetch(url, {
+            credentials: 'same-origin',
+            headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
+        }).then(function (res) { return res.json().catch(function () { return null; }); });
+    }
+
+    function post(url, data) {
+        return fetch(url, {
+            method: 'POST',
+            body: data,
+            credentials: 'same-origin',
+            headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
+        }).then(function (res) { return res.json().catch(function () { return null; }); });
+    }
+
+    /* ---------- abrir / cerrar ---------- */
+    // Cierra las capas que quedan por debajo (buscador en vivo y menu movil)
+    // para que el mini-carrito no aparezca detras de ninguna de ellas.
+    function closeLayersBehind() {
+        var search = document.getElementById('shop-search');
+        var searchClose = document.getElementById('shop-search-close');
+        if (search && searchClose && !search.hidden) {
+            searchClose.click();
+        }
+        if (document.body.classList.contains('mn-panel-open')) {
+            var mnClose = document.querySelector('[data-mn-close]');
+            if (mnClose) { mnClose.click(); }
+        }
+    }
+
+    function openCart() {
+        if (isOpen) { return; }
+        isOpen = true;
+        lastFocus = document.activeElement;
+        closeLayersBehind();
+        root.hidden = false;
+        root.removeAttribute('aria-hidden');
+        void root.offsetWidth; // fuerza el reflow para que se vea la animacion
+        root.classList.add('is-open');
+        document.body.classList.add('shop-minicart-open');
+        if (panel) { panel.focus({ preventScroll: true }); }
+        loadCart();
+    }
+
+    function closeCart() {
+        if (!isOpen) { return; }
+        isOpen = false;
+        root.classList.remove('is-open');
+        document.body.classList.remove('shop-minicart-open');
+
+        var finish = function () {
+            if (isOpen) { return; }
+            root.hidden = true;
+            root.setAttribute('aria-hidden', 'true');
+        };
+        if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+            finish();
+        } else {
+            window.setTimeout(finish, 280);
+        }
+
+        if (lastFocus && typeof lastFocus.focus === 'function') {
+            lastFocus.focus({ preventScroll: true });
+        }
+    }
+
+    function trapFocus(e) {
+        if (!panel) { return; }
+        var items = Array.prototype.slice.call(panel.querySelectorAll(
+            'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), ' +
+            'textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        )).filter(function (el) {
+            return el.offsetWidth > 0 || el.offsetHeight > 0 || el === document.activeElement;
+        });
+        if (items.length === 0) { e.preventDefault(); panel.focus(); return; }
+        var first = items[0];
+        var last = items[items.length - 1];
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+
+    /* ---------- cargar el carrito real ---------- */
+    function showLoadError() {
+        var loadingEl = root.querySelector('.minicart-loading');
+        if (loadingEl) {
+            loadingEl.classList.add('is-error');
+            loadingEl.innerHTML = '<span>No se ha podido cargar el carrito. Vuelve a intentarlo.</span>';
+        }
+    }
+
+    function loadCart() {
+        if (loadingContent || loaded || !endpointMini) { return; }
+        loadingContent = true;
+        get(endpointMini).then(function (json) {
+            if (json && typeof json.html === 'string' && json.html !== '') {
+                setContent(json.html);
+                if (typeof json.count === 'number') { setCount(json.count); }
+                if (json.dropped && json.dropped.length) {
+                    showToast('Se han quitado del carrito: ' + json.dropped.join(', ') + ' (ya no estan disponibles).', 'error');
+                }
+            } else {
+                showLoadError();
+            }
+        }).catch(function () {
+            showLoadError();
+        }).then(function () {
+            loadingContent = false;
+            root.classList.remove('is-loading');
+        });
+    }
+
+    /* ---------- anadir al carrito ---------- */
+    function flashAdded(btn) {
+        btn.classList.add('is-added');
+        window.setTimeout(function () { btn.classList.remove('is-added'); }, 1200);
+    }
+
+    function submitAdd(form) {
+        var btn = form.querySelector('.btn-cart') || form.querySelector('button[type="submit"]');
+        if (btn && (btn.disabled || btn.classList.contains('is-loading'))) { return; }
+        if (btn) { setBusy(btn, true); }
+
+        post(form.action, new FormData(form)).then(function (json) {
+            if (!json) {
+                showToast('No se ha podido anadir el producto. Intentalo de nuevo.', 'error');
+                return;
+            }
+            if (typeof json.count === 'number') { setCount(json.count); }
+            if (typeof json.html === 'string') { setContent(json.html); }
+
+            if (!json.ok) {
+                // Error real: no se abre el mini-carrito y no se pierde la seleccion.
+                showToast(json.message || 'No se ha podido anadir el producto.', 'error');
+                return;
+            }
+
+            showToast(json.message || 'Producto anadido al carrito.', 'success');
+            if (btn) { flashAdded(btn); }
+            if (json.open) { openCart(); }
+        }).catch(function () {
+            showToast('No se ha podido conectar con la tienda. Intentalo de nuevo.', 'error');
+        }).then(function () {
+            if (btn) { setBusy(btn, false); }
+        });
+    }
+
+    /* ---------- lineas del mini-carrito ---------- */
+    function sendLine(line, qty) {
+        if (!line || line.getAttribute('data-busy') === '1' || !endpointUpdate) { return; }
+        var key = line.getAttribute('data-key');
+        if (!key) { return; }
+
+        line.setAttribute('data-busy', '1');
+        line.classList.add('is-loading');
+
+        var data = new FormData();
+        data.append('_token', token);
+        data.append('qty[' + key + ']', String(qty));
+
+        post(endpointUpdate, data).then(function (json) {
+            if (!json) { showToast('No se ha podido actualizar el carrito.', 'error'); return; }
+            if (typeof json.count === 'number') { setCount(json.count); }
+            if (typeof json.html === 'string') { setContent(json.html); }
+            if (json.message) { showToast(json.message, json.ok ? 'success' : 'error'); }
+        }).catch(function () {
+            showToast('No se ha podido actualizar el carrito.', 'error');
+        }).then(function () {
+            if (line.isConnected) {
+                line.removeAttribute('data-busy');
+                line.classList.remove('is-loading');
+            }
+        });
+    }
+
+    function changeQty(btn) {
+        var line = btn.closest('[data-minicart-line]');
+        if (!line || line.getAttribute('data-busy') === '1') { return; }
+        var input = line.querySelector('[data-minicart-input]');
+        if (!input) { return; }
+
+        var max = parseInt(line.getAttribute('data-max'), 10) || 99;
+        var current = parseInt(input.value, 10) || 1;
+        var delta = parseInt(btn.getAttribute('data-minicart-step'), 10) || 1;
+        var next = Math.max(1, Math.min(max, current + delta));
+
+        if (next === current) {
+            if (delta > 0 && current >= max) {
+                showToast('No hay mas unidades disponibles de este producto.', 'error');
+            }
+            return;
+        }
+        input.value = String(next);
+        sendLine(line, next);
+    }
+
+    function removeLine(btn) {
+        var line = btn.closest('[data-minicart-line]');
+        if (!line || line.getAttribute('data-busy') === '1' || !endpointRemove) { return; }
+        var key = line.getAttribute('data-key');
+        if (!key) { return; }
+
+        line.setAttribute('data-busy', '1');
+        line.classList.add('is-loading');
+
+        var data = new FormData();
+        data.append('_token', token);
+        data.append('key', key);
+
+        post(endpointRemove, data).then(function (json) {
+            if (!json) { showToast('No se ha podido quitar el producto.', 'error'); return; }
+            if (typeof json.count === 'number') { setCount(json.count); }
+            if (typeof json.html === 'string') { setContent(json.html); }
+            showToast(json.message || 'Producto quitado del carrito.', json.ok ? 'success' : 'error');
+        }).catch(function () {
+            showToast('No se ha podido quitar el producto.', 'error');
+        }).then(function () {
+            if (line.isConnected) {
+                line.removeAttribute('data-busy');
+                line.classList.remove('is-loading');
+            }
+        });
+    }
+
+    /* ---------- eventos ---------- */
+    openers.forEach(function (el) {
+        el.addEventListener('click', function (e) {
+            if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) { return; }
+            e.preventDefault();
+            openCart();
+        });
+        // Al pasar el raton o enfocar se precarga (sin coste si no se llega a abrir).
+        el.addEventListener('mouseenter', loadCart);
+        el.addEventListener('focus', loadCart);
+    });
+
+    root.addEventListener('click', function (e) {
+        var target = e.target;
+        if (!target || typeof target.closest !== 'function') { return; }
+
+        if (target.closest('[data-minicart-close]') || target.closest('[data-minicart-overlay]')) {
+            e.preventDefault();
+            closeCart();
+            return;
+        }
+        var step = target.closest('[data-minicart-step]');
+        if (step) { e.preventDefault(); changeQty(step); return; }
+
+        var remove = target.closest('[data-minicart-remove]');
+        if (remove) { e.preventDefault(); removeLine(remove); }
+    });
+
+    // Cantidad escrita a mano: se ajusta al stock y se envia al soltar el campo.
+    root.addEventListener('change', function (e) {
+        var input = e.target && e.target.closest ? e.target.closest('[data-minicart-input]') : null;
+        if (!input) { return; }
+        var line = input.closest('[data-minicart-line]');
+        if (!line) { return; }
+
+        var max = parseInt(line.getAttribute('data-max'), 10) || 99;
+        var value = parseInt(input.value, 10) || 1;
+        value = Math.max(1, Math.min(max, value));
+        input.value = String(value);
+
+        var previous = parseInt(input.defaultValue, 10) || 1;
+        if (value === previous) { return; }
+        sendLine(line, value);
+    });
+
+    root.addEventListener('keydown', function (e) {
+        var input = e.target && e.target.closest ? e.target.closest('[data-minicart-input]') : null;
+        if (input && e.key === 'Enter') {
+            e.preventDefault();
+            input.blur();
+        }
+    });
+
+    document.addEventListener('keydown', function (e) {
+        if (!isOpen) { return; }
+        if (e.key === 'Escape') { e.preventDefault(); closeCart(); return; }
+        if (e.key === 'Tab') { trapFocus(e); }
+    });
+
+    document.addEventListener('submit', function (e) {
+        var form = e.target;
+        if (!form || form.tagName !== 'FORM') { return; }
+        if (!form.classList.contains('product-add') && !form.classList.contains('ficha-buy')) { return; }
+        e.preventDefault();
+        submitAdd(form);
+    });
 })();

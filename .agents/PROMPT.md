@@ -21,6 +21,35 @@ _(vacío — sin petición pendiente)_
 
 Cada petición terminada se anota aquí con la fecha, qué se pidió y qué se hizo.
 
+### 2026-10-05 · Carrito: botón «Agregar al carrito» y mini-carrito lateral (petición por chat)
+
+**Pedido:** actuar como desarrollador senior full-stack de e-commerce y mejorar el botón
+«Agregar al carrito» y crear un **mini-carrito lateral derecho** con una experiencia tipo
+PcComponentes pero con el diseño de Valduran, **reutilizando el carrito real** (sin carrito
+paralelo), con confirmación visual, validación de stock, cierre con X/Escape/clic fuera,
+contenido con imagen/nombre/SKU/precio/cantidad/subtotal/quitar, responsive de escritorio a
+móvil (100 %) y sin tocar menú, categorías, productos ni checkout.
+
+**Decisiones confirmadas:** (1) arreglar el stock real del catálogo en el carrito,
+manteniendo que un producto propio con `stock = 0` signifique «la tienda no lleva stock»;
+(2) el icono del carrito de la cabecera abre el mini-carrito con JS; (3) sin JS sigue
+siendo un enlace a `/carrito`; (4) responsive completo con `100dvh` y safe-areas;
+(5) CTA «Ver artículos del carrito» en escritorio y «Ver carrito» en móvil.
+
+**Auditoría previa (entregada antes de tocar nada):** carrito en `Core/Cart`
+(`$_SESSION['cart'][$storeId]`, claves `c<id>`/`o<id>`), sin tabla ni localStorage; alta por
+`POST /carrito/anadir` (redirect + flash); contador en el layout; ruta real **`/carrito`**;
+sin sistema de variantes; y el hueco de que `Catalog::find()` no traía `stock_total`.
+
+**Qué se hizo:** `Catalog::stockTotal()` + validación de stock en `Cart` (añadir y
+actualizar, con avisos); botón con el texto exacto **«Agregar al carrito»** y estados de
+carga/confirmación en ficha y tarjetas; los endpoints del carrito detectan AJAX y responden
+JSON con el partial `_mini_cart.php` (sin JS, POST y redirección de siempre); ruta de solo
+lectura `GET /carrito/mini`; mini-carrito lateral accesible y responsive con líneas
++/-/cantidad editable/quitar sincronizadas con el backend, contador sin recargar, aviso
+flotante y enlace de respaldo a `/carrito`. `verify.php` 232 → **244** (TODO OK), probado en
+Chrome real por CDP. Detalle en `CHANGELOG.md` y `STATE.md`.
+
 ### 2026-10-04 · Un solo botón en el buscador (petición por chat)
 
 **Pedido:** «sobre el buscador se dibujan dos botones para cerrar,

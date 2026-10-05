@@ -218,11 +218,16 @@ $initial = mb_strtoupper(mb_substr((string) $product['nombre'], 0, 2));
 
                             <div class="ficha-qty">
                                 <button type="button" class="qty-btn" data-step="-1" aria-label="Menos">−</button>
-                                <input type="text" id="ficha-qty" name="qty" value="1" inputmode="numeric" aria-label="Cantidad">
+                                <input type="text" id="ficha-qty" name="qty" value="1" inputmode="numeric"
+                                       min="1" max="<?= $stock > 0 ? min(99, $stock) : 99 ?>"
+                                       data-max="<?= $stock > 0 ? min(99, $stock) : 99 ?>"
+                                       aria-label="Cantidad">
                                 <button type="button" class="qty-btn" data-step="1" aria-label="Más">+</button>
                             </div>
-                            <button class="btn btn-primary btn-lg btn-block" type="submit">
-                                <?= icon_svg('cart') ?> Añadir al carrito
+                            <button class="btn btn-primary btn-lg btn-block btn-cart" type="submit">
+                                <?= icon_svg('cart', 'btn-cart-icon') ?>
+                                <span class="btn-cart-label">Agregar al carrito</span>
+                                <span class="btn-cart-spinner" aria-hidden="true"></span>
                             </button>
                         </form>
                     <?php elseif (!$inStock): ?>

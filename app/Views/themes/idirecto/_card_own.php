@@ -68,8 +68,10 @@ $initial = mb_strtoupper(mb_substr((string) ($p['name'] ?? ''), 0, 2));
                     <input type="hidden" name="source" value="own">
                     <input type="hidden" name="product_id" value="<?= (int) ($p['id'] ?? 0) ?>">
                     <input type="hidden" name="qty" value="1">
-                    <button class="btn btn-primary" type="submit" aria-label="Anadir al carrito" title="Anadir al carrito">
-                        <?= icon_svg('cart') ?>
+                    <button class="btn btn-primary btn-cart" type="submit" title="Agregar al carrito">
+                        <?= icon_svg('cart', 'btn-cart-icon') ?>
+                        <span class="btn-cart-label">Agregar al carrito</span>
+                        <span class="btn-cart-spinner" aria-hidden="true"></span>
                     </button>
                 </form>
             <?php endif; ?>
