@@ -1848,6 +1848,37 @@ try {
     check(false, 'los destacados no lanzan excepciones (' . $e->getMessage() . ')');
 }
 
+// =============================================================================
+// Sin credenciales por defecto
+// El escaparate no enlaza al panel, el login no llega relleno y la semilla no
+// crea el usuario demo. Antes la propia pantalla de acceso publicaba
+// «Demo: admin@demo.test / demo1234» y ese usuario existia en la base de datos.
+// =============================================================================
+echo "\n== Sin credenciales por defecto ==\n";
+$layoutShop = (string) file_get_contents(TIENDA_BASE . '/app/Views/layouts/shop.php');
+$loginView  = (string) file_get_contents(TIENDA_BASE . '/app/Views/panel/login.php');
+$seedSql    = (string) file_get_contents(TIENDA_BASE . '/database/seeds/001_seed.sql');
+$shopCss    = (string) file_get_contents(TIENDA_BASE . '/public/assets/css/shop.css');
+
+check(!str_contains($layoutShop, '/panel"') && !str_contains($layoutShop, 'btn-panel'),
+    'el escaparate no enlaza al panel (ni conserva el boton «Mi panel»)');
+check(!str_contains($shopCss, '.btn-panel'),
+    'el CSS no conserva el boton «Mi panel»');
+check(!str_contains($loginView, 'admin@demo.test') && !str_contains($loginView, 'demo1234')
+    && !preg_match('/name="(email|password)"[^>]*value=/', $loginView),
+    'el login no precarga usuario ni contrasena ni muestra credenciales demo');
+check(!str_contains($seedSql, 'admin@demo.test') && !str_contains($seedSql, 'demo1234'),
+    'la semilla no crea credenciales por defecto');
+try {
+    $demo = (int) Database::scalar(
+        'SELECT COUNT(*) FROM mt_store_users WHERE email = :email',
+        ['email' => 'admin@demo.test']
+    );
+    check($demo === 0, 'la base de datos no tiene el usuario demo (admin@demo.test)');
+} catch (\Throwable $e) {
+    check(false, 'comprobacion del usuario demo en la base de datos (' . $e->getMessage() . ')');
+}
+
 echo "\n==============================================================\n";
 if ($fail === 0) {
     echo " RESULTADO: TODO OK ($ok comprobaciones)\n";

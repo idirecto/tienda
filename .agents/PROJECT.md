@@ -567,7 +567,8 @@ php tools/verify.php                       # 244 comprobaciones
 php -S 127.0.0.1:8099 index.php            # servidor embebido (alternativa)
 ```
 
-Credenciales demo: `admin@demo.test` / `demo1234`.
+No hay credenciales por defecto: el usuario del panel se crea al registrar la
+tienda en `/registro` (o con `php tools/platform-user.php` para el rol `platform`).
 
 El script también deja los permisos correctos: `.env` en `640` con grupo
 `www-data`, y escritura para `www-data` en `storage/{cache,logs}` y

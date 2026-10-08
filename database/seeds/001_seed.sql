@@ -57,13 +57,11 @@ ON DUPLICATE KEY UPDATE
   `name` = VALUES(`name`), `tagline` = VALUES(`tagline`), `about` = VALUES(`about`);
 
 -- -----------------------------------------------------------------------------
--- Usuario demo del panel: admin@demo.test / demo1234
+-- Usuario del panel: NO se siembra ninguno a proposito.
+-- Las instalaciones nuevas crean el suyo al registrar la tienda en `/registro`
+-- (o con `php tools/platform-user.php` para el usuario de plataforma). Asi no
+-- quedan credenciales por defecto escritas en el codigo.
 -- -----------------------------------------------------------------------------
-INSERT INTO `mt_store_users` (`store_id`, `name`, `email`, `password_hash`, `role`, `active`)
-SELECT s.id, 'Administrador', 'admin@demo.test',
-       '$2y$12$t813uLbZUzNiGUr6Ox86GOyOr5KwpzygJrNn6HGPSCPDNSVIhqhIS', 'owner', 1
-FROM mt_stores s WHERE s.slug = 'idirecto-demo'
-ON DUPLICATE KEY UPDATE `name` = VALUES(`name`);
 
 -- -----------------------------------------------------------------------------
 -- Contenido de ejemplo para la demo

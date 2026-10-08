@@ -15,7 +15,7 @@ php -S 127.0.0.1:8099 index.php
 |---|---|
 | http://local.tienda/ | Portada de la tienda demo |
 | http://local.tienda/catalogo | Catálogo (39.437 productos con stock) |
-| http://local.tienda/panel | Panel — `admin@demo.test` / `demo1234` |
+| http://local.tienda/panel | Panel (entra con el usuario que creaste en `/registro`) |
 | http://idirecto-demo.local.tienda/ | La misma tienda por subdominio |
 | http://local.tienda/?__store=<slug> | Cambiar de tienda **solo en desarrollo** |
 

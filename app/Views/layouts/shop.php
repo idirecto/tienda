@@ -183,8 +183,6 @@ $headerStyle = preg_replace('/[^a-z0-9_\-]/i', '', $tenant->headerStyle()) ?: 'c
                 <?= icon_svg('cart') ?>
                 <span class="shop-cart-count" data-cart-count<?= $cartUnits > 0 ? '' : ' hidden' ?>><?= (int) $cartUnits ?></span>
             </a>
-
-            <a class="btn-panel" href="<?= e($base) ?>/panel">Mi panel</a>
         </div>
     </div>
 

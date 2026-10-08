@@ -74,7 +74,7 @@ systemctl reload apache2
 echo
 echo "LISTO. Abre en el navegador:"
 echo "    http://${DOMAIN}/                    (tienda demo)"
-echo "    http://${DOMAIN}/panel               (admin@demo.test / demo1234)"
+echo "    http://${DOMAIN}/panel               (entra con tu usuario de /registro)"
 echo "    http://idirecto-demo.${DOMAIN}/      (acceso por subdominio)"
 echo
 echo "Logs: /var/log/apache2/${DOMAIN}-error.log"

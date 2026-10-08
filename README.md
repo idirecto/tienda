@@ -52,7 +52,7 @@ php tools/verify.php
 php -S 127.0.0.1:8099 index.php
 # Portada:      http://127.0.0.1:8099/
 # Panel:        http://127.0.0.1:8099/panel
-# Demo:         admin@demo.test / demo1234
+# Registro:     http://127.0.0.1:8099/registro   (crea tu tienda y tu usuario)
 ```
 
 ### Dominio de pruebas con Apache: `http://local.tienda`
@@ -80,7 +80,7 @@ URLs resultantes:
 | URL | Contenido |
 |---|---|
 | http://local.tienda/ | Tienda demo (portada) |
-| http://local.tienda/panel | Panel — `admin@demo.test` / `demo1234` |
+| http://local.tienda/panel | Panel (entra con el usuario que creaste en `/registro`) |
 | http://local.tienda/catalogo | Catálogo central |
 | http://idirecto-demo.local.tienda/ | Acceso por subdominio |
 

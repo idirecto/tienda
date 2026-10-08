@@ -21,6 +21,27 @@ _(vacío — sin petición pendiente)_
 
 Cada petición terminada se anota aquí con la fecha, qué se pidió y qué se hizo.
 
+### 2026-10-08 · Fuera el botón «Mi panel» y las credenciales demo del login (petición por chat)
+
+**Pedido:** «Retira el botón que lleva a /panel en la web y los datos de usuario por
+defecto que aparece en el login con este mensaje: Demo: `admin@demo.test` / `demo1234`
+y por supuesto habría que borrar esos datos de la base de datos si es que están en la
+base de datos».
+
+**Decisión confirmada:** borrar **solo el usuario demo**, no la tienda demo (la tienda
+`idirecto-demo` sigue como escaparate y su contenido de ejemplo).
+
+**Hecho:** se quita el botón «Mi panel» de `layouts/shop.php` y sus reglas `.btn-panel`
+de `shop.css`; el login (`panel/login.php`) deja de traer los campos rellenos y
+desaparece el aviso «Demo: …» (queda el enlace a `/registro`); se borra la fila
+`admin@demo.test` de `mt_store_users` (se conserva `plataforma@local.test`); la semilla
+`001_seed.sql` ya no crea ese usuario, para que una instalación nueva no recupere
+credenciales por defecto; y `README.md`, `PROJECT.md`, `deploy/setup-local-domain.sh` y
+la skill dejan de anunciarlas. `verify.php` 250 → **255** (TODO OK) con 5 comprobaciones
+de regresión; probado en HTTP real (la portada y el login no muestran credenciales y
+entrar con `admin@demo.test / demo1234` responde «Credenciales incorrectas»). Detalle en
+`CHANGELOG.md` y `STATE.md`.
+
 ### 2026-10-05 · Catálogo: 40 productos por página y tarjeta entera enlazada (petición por chat)
 
 **Pedido:** como desarrollador senior full-stack de e-commerce, rendimiento web, catálogos,

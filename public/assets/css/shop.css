@@ -159,14 +159,6 @@ svg { flex: 0 0 auto; }
     :root[data-color-scheme="auto"] .scheme-toggle .icon-moon { display: block; }
 }
 
-.btn-panel {
-    border: 1px solid var(--c-primary); color: var(--c-primary);
-    padding: .5rem .9rem; border-radius: var(--c-radius-md);
-    font-weight: 700; font-size: .88rem;
-    transition: background .18s ease, color .18s ease;
-}
-.btn-panel:hover { background: var(--c-primary); color: var(--c-primary-contrast); }
-
 @media (max-width: 900px) {
     .topbar-inner { min-height: 34px; flex-wrap: wrap; gap: .25rem 1rem; padding: .3rem 0; }
     .topbar-hide-sm { display: none; }

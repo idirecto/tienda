@@ -5,7 +5,56 @@ El detalle línea a línea está en `git log`.
 
 ---
 
-## 2026-10-05 · Catálogo: 40 productos por página y tarjeta entera enlazada
+## 2026-10-08 · Fuera el botón «Mi panel» y las credenciales demo del login
+
+**Motivo (petición por chat):** retirar el botón del escaparate que lleva a `/panel`,
+quitar del login los datos de usuario por defecto («Demo: `admin@demo.test` /
+`demo1234`») y **borrar ese usuario de la base de datos** si existía. Es limpieza de
+andamiaje de demo antes de publicar: la pantalla de acceso no debe enseñar
+credenciales ni traerlas rellenas.
+
+**Qué había:** el botón `<a class="btn-panel" href="…/panel">Mi panel</a>` en la
+cabecera de `layouts/shop.php`; en `panel/login.php` los dos campos venían con
+`value="admin@demo.test"` / `value="demo1234"` y un aviso con las mismas
+credenciales; el usuario existía en `mt_store_users` (id 1, rol `owner`) y la
+semilla `001_seed.sql` lo recreaba al aplicar `--seed`. También lo anunciaban
+`README.md`, `.agents/PROJECT.md`, `deploy/setup-local-domain.sh` y la skill.
+
+**Decisión confirmada (por el dueño):** borrar **solo el usuario demo**, no la
+tienda demo. La tienda `idirecto-demo` sigue como escaparate y su contenido de
+ejemplo, pero ya no se entra al panel con esas credenciales: el usuario del panel
+se crea al registrar la tienda en `/registro` (o con
+`php tools/platform-user.php` para el rol `platform`, que sigue existiendo).
+
+**Qué se hizo**
+
+- **Escaparate:** se quita el botón «Mi panel» de `layouts/shop.php` y las reglas
+  `.btn-panel` de `shop.css` (quedaban huérfanas). No hay ningún otro enlace al
+  panel en el storefront.
+- **Login del panel:** los campos van sin `value` (con `autocomplete="username"` /
+  `current-password`) y desaparece el bloque «Demo: …». Queda solo el acceso a
+  `/registro` para quien no tenga tienda todavía.
+- **Base de datos:** `DELETE FROM mt_store_users WHERE email = 'admin@demo.test'`
+  (1 fila). Se conserva `plataforma@local.test` (rol `platform`) y la tienda demo.
+- **Semilla:** se elimina el `INSERT` del usuario demo y se documenta en su lugar
+  que **no se siembra ningún usuario a propósito**; así una instalación nueva
+  (o un `--seed`) no vuelve a crear credenciales publicadas en el código.
+- **Documentación:** `README.md`, `.agents/PROJECT.md`,
+  `deploy/setup-local-domain.sh` y `references/operacion.md` dejan de anunciar
+  `admin@demo.test / demo1234` y explican que el usuario sale de `/registro`.
+- **Pruebas:** 5 comprobaciones nuevas en `verify.php` (250 → **255**, TODO OK)
+  que vigilan la regresión: el layout no enlaza al panel, el CSS no conserva el
+  botón, el login no precarga ni publica credenciales, la semilla no las crea y
+  la base de datos no tiene el usuario demo. Probado en **HTTP real**: portada y
+  `/panel/login` responden 200 sin rastro de las credenciales, `/panel` sin sesión
+  redirige a `/panel/login` y entrar con `admin@demo.test / demo1234` responde
+  «Credenciales incorrectas».
+
+**Nota de despliegue:** si en otro entorno (p. ej. producción) existe el mismo
+usuario demo, hay que borrarlo allí también:
+`DELETE FROM mt_store_users WHERE email = 'admin@demo.test';`
+
+---
 
 **Motivo (petición por chat):** en `/telefonia/moviles-smartphone` (448 productos) solo
 se veían **12 productos por página** y la **imagen y la parte superior de la tarjeta no
