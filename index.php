@@ -49,6 +49,7 @@ use Tienda\Controllers\CheckoutController;
 use Tienda\Controllers\CustomerController;
 use Tienda\Controllers\RegistrationController;
 use Tienda\Controllers\StorefrontController;
+use Tienda\Controllers\FaviconController;
 use Tienda\Core\Logger;
 use Tienda\Core\Router;
 use Tienda\Core\TenantResolver;
@@ -59,6 +60,10 @@ $router = new Router();
 // STOREFRONT (tienda publica)
 // -----------------------------------------------------------------------------
 $router->get('/',                      [StorefrontController::class, 'home']);
+// Favicon a URL fija: resuelve el de la tienda y, si falta, el predeterminado
+// de Valduran. Va ANTES del catch-all SEO (que si no se traga /favicon.ico).
+$router->get('/favicon.ico',           [FaviconController::class, 'ico']);
+$router->get('/favicon.svg',           [FaviconController::class, 'svg']);
 $router->get('/catalogo',              [StorefrontController::class, 'catalog']);
 // URL SEO tipo idirecto: /producto/{nombre-slug}/{id}
 $router->get('/producto/{slug}/{id}',  [StorefrontController::class, 'product']);

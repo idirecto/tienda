@@ -516,17 +516,56 @@ completo se mantiene relevancia y nombre.
 
 ---
 
+## 3.ter Favicon (el de la tienda y el de Valduran)
+
+El icono de la pestaña del navegador lo resuelve **una sola clase**,
+`Tienda\Core\Favicon`, con esta regla:
+
+1. Si la tienda ha subido su favicon **y el fichero está disponible**, se muestra el suyo
+   (su URL lleva `?v=<version>` para que el navegador detecte el cambio).
+2. Si no lo ha configurado, está vacío, la URL no es válida o el fichero ha desaparecido,
+   se muestra el **favicon predeterminado de Valduran**.
+3. Nunca se pinta una URL vacía ni un icono roto: como último recurso hay un SVG en línea.
+
+El predeterminado es **de la plataforma** y se configura en `config/brand.php` con las
+claves del `.env` (documentadas en `.env.example`):
+
+```bash
+# Ruta relativa a public/ o URL absoluta (CDN)
+BRAND_FAVICON=assets/img/favicon-valduran.ico        # icono principal (ICO)
+BRAND_FAVICON_EXTRA=assets/img/favicon-valduran.svg  # SVG para pantallas de alta densidad
+BRAND_FAVICON_APPLE=assets/img/favicon-valduran-180.png  # pantalla de inicio en iOS
+BRAND_FAVICON_VERSION=                               # vacío = usa la fecha del fichero
+FAVICON_MAX_BYTES=524288                             # tamaño máximo del favicon de una tienda
+```
+
+El recurso que viene en el proyecto es `public/assets/img/favicon-valduran.*` (la «V»
+blanca sobre el rojo de marca). Deja una clave **vacía** para no emitir ese icono.
+
+**La tienda solo cambia el suyo.** En **Panel > Diseño > Favicon** puede subir una imagen
+(PNG, SVG, WebP, JPG o GIF; cuadrado, 48x48 px mínimo) o pulsar «Quitar mi favicon y usar
+el predeterminado». El predeterminado no aparece como campo editable y el panel avisa de
+que es global. Al sustituir un favicon se borra el fichero anterior; al quitarlo, la
+tienda vuelve al predeterminado.
+
+Los navegadores piden además `/favicon.ico` por su cuenta: las rutas `/favicon.ico` y
+`/favicon.svg` resuelven el favicon efectivo y **redirigen (302)** al recurso real, de
+modo que ese sondeo nunca recibe un 404.
+
+---
+
 ## 4. Estructura
 
 ```
 tienda/
 ├── index.php                Front controller (rutas)
-├── config/                  app.php, appearance.php, database.php, storage.php, tenant.php, catalog.php, idirecto.php, cache.php
+├── config/                  app.php, appearance.php, brand.php, database.php, storage.php,
+│                            tenant.php, catalog.php, idirecto.php, cache.php
 ├── app/
 │   ├── bootstrap.php        Autoload, entorno, sesion, helpers
 │   ├── Core/                Env, Config, Appearance, Database, Router, View, Controller, Model,
 │   │   │                    Auth, Csrf, Session, Tenant, TenantResolver, Dns, Specs, Str,
-│   │   │                    Cache, Registration, Cart, Checkout, Shipping, CustomerAuth
+│   │   │                    Favicon, Cache, Registration, Cart, Checkout, Shipping, CustomerAuth
 │   │   ├── Cache/           CacheInterface, FileCache, ApcuCache (driver de la cache de datos)
 │   │   ├── Idirecto/        Account, Pricing, OrderGateway (envio de pedidos al mayorista)
 │   │   └── Storage/         StorageInterface, LocalStorage, S3Storage, StorageManager
@@ -538,14 +577,14 @@ tienda/
 │   └── Views/               register.php, layouts/, panel/ (pedidos, clientes, diseno...),
 │                            themes/idirecto/ (home, _hero, _card, cart, checkout, thanks,
 │                            account/*), errors/
-├── public/assets/           css/ y js/ del storefront y del panel
+├── public/assets/           css/ y js/ del storefront y del panel (img/: favicon de Valduran)
 ├── public/uploads/          destino del driver local (no versionado)
 ├── database/
 │   ├── migrations/          001_schema.sql · 002_design_tokens.sql · 003_orders.sql ·
-│   │                        004_checkout.sql (mt_)
+│   │                        004_checkout.sql · 005..009 menu · 010_favicon.sql (mt_)
 │   ├── seeds/               001_seed.sql (planes, temas, tienda demo)
 │   └── migrate.php          Ejecutor de migraciones y semillas
-├── tools/verify.php         Comprobacion automatica (290)
+├── tools/verify.php         Comprobacion automatica (312)
 ├── tools/cache-clear.php    Gestion de la cache de datos (estado, vaciar, patrones, gc)
 ├── tools/logs.php           Consulta los logs por consola (filtros, resumen, dias, gc)
 └── deploy/                  Vhosts/plantillas de Apache y nginx + scripts
@@ -560,6 +599,7 @@ tienda/
 | Ruta | Descripción |
 |---|---|
 | `/` | Portada: banner, avisos, destacados y productos propios |
+| `/favicon.ico` `/favicon.svg` | Favicon de la tienda (o el predeterminado de Valduran); 302 al recurso real |
 | `/catalogo` | Catálogo con buscador, filtro por categoría y paginación |
 | `/buscar/live` | Buscador en vivo (JSON): catálogo visible en el menú de la tienda + sus productos propios, con facetas de subcategoría y marca |
 | `/producto/{slug}/{id}` | Ficha de producto central (URL SEO, ver más abajo) |

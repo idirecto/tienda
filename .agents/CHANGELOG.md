@@ -5,6 +5,69 @@ El detalle línea a línea está en `git log`.
 
 ---
 
+## 2026-10-09 · Favicon predeterminado de Valduran (multi-tienda)
+
+**Motivo (petición por chat):** el sistema debe tener un **favicon predeterminado de Valduran**
+como respaldo de todas las tiendas: si una tienda sube el suyo se muestra el suyo; si todavía no lo
+ha configurado (o está vacío, falta o no se puede cargar) se muestra el predeterminado; **nunca** un
+favicon roto ni una URL vacía. El predeterminado debe ser configurable o usar un recurso que ya
+exista en el proyecto, y la tienda **solo** puede cambiar su favicon propio, nunca el global. Al
+cambiar el de una tienda hay que versionar la URL para que el navegador detecte el fichero nuevo.
+
+**Auditoría (solo lectura):** `mt_stores.favicon_url` ya existía desde el esquema `001`, pero
+**nadie lo gestionaba**: el único uso era `layouts/shop.php`, que pintaba el `<link rel="icon">`
+**solo si la columna traía algo** — sin respaldo, así que hoy **ninguna tienda tiene favicon**
+(podían quedar `href` vacíos o rotos). No existía **ningún** recurso de favicon en el proyecto
+(`git ls-files` no tiene `.ico/.svg/.png`), ni ajuste, ni ruta, ni columna de versión. Los iconos
+`favicon.ico` de `idirecto/`, `puntobyze/` o `cat/` son de **otros** proyectos y no se han tocado.
+
+**Qué se hizo**
+
+- **Recurso predeterminado nuevo + configurable**: `public/assets/img/favicon-valduran.{ico,svg}` y
+  `favicon-valduran-180.png` (la «V» blanca sobre el rojo de marca `#e30613`; el ICO es
+  multi-tamaño 16/32/48/64 con payload PNG). Se resuelve desde `config/brand.php`, que lee
+  `BRAND_FAVICON`, `BRAND_FAVICON_EXTRA`, `BRAND_FAVICON_APPLE` y `BRAND_FAVICON_VERSION` del
+  `.env` (documentadas en `.env.example`): admite **ruta relativa a `public/` o URL absoluta**.
+- **`Tienda\Core\Favicon`**: la única fuente de verdad. Resuelve el favicon **efectivo** de una
+  tienda (el suyo si está disponible; si no, el predeterminado) y emite las etiquetas `<link>`.
+  Nunca devuelve `href` vacío: si la configuración y el recurso fallan, cae a un **SVG en línea**.
+  - **Validación**: solo rutas del sitio (`/…`, sin `..`) y URLs `http(s)`/protocol-relative; se
+    rechaza `javascript:`, `data:` y los caracteres de control.
+  - **Disponibilidad**: con almacenamiento local se comprueba `favicon_key`/ruta en disco y, si el
+    fichero ya no está, se vuelve al predeterminado. Con un favicon remoto (S3) el servidor no
+    puede comprobarlo: el `<link>` lleva un pequeño `onerror` que lo cambia por el predeterminado.
+  - **Versionado**: `?v=<favicon_version>` (sello de tiempo **monótono**) para invalidar la caché
+    del navegador al cambiar; la versión no se inventa si no hay cambio y no se duplica un `?v=`.
+- **Migración `010_favicon.sql`** (idempotente): `mt_stores.favicon_key` (clave en el
+  almacenamiento, para comprobar existencia y poder borrar el fichero) y
+  `mt_stores.favicon_version`. Nada más: `favicon_url` ya existía.
+- **Layouts**: `layouts/shop.php` sustituye su `<link>` condicional por `Favicon::linkTags()`; el
+  **panel** (`panel.php`) y el **login** (`panel_blank.php`) también lo emiten, con el
+  predeterminado si no hay tienda.
+- **Red de seguridad en HTTP**: rutas `GET /favicon.ico` y `/favicon.svg`
+  (`Controllers/FaviconController`) que resuelven el favicon efectivo y **redirigen (302, cache 5
+  min)** al recurso real, así un navegador que pida `/favicon.ico` **nunca** recibe un 404. Van
+  declaradas antes del catch-all SEO.
+- **Panel > Diseno > Favicon**: tarjeta nueva con vista previa (la suya o la del predeterminado,
+  con `onerror` a la del predeterminado), subida por el uploader de siempre (tipo `favicon`:
+  512 KB, lado máximo 512 px, calidad 92) y botón **«Quitar mi favicon y usar el predeterminado»**.
+  El predeterminado **no** aparece como campo editable: el panel avisa de que es global y que no se
+  puede cambiar ni borrar desde la tienda. Al sustituir un favicon se borra el fichero anterior (y
+  su fila de `mt_media`); al quitarlo, la tienda vuelve al predeterminado.
+- **Caché razonable**: `.htaccess` añade `ExpiresByType` (30 días) para imágenes, igual que
+  `nginx-site.conf.tpl` (`expires 30d`); las URLs llevan versión cuando hace falta.
+- **Pruebas**: `verify.php` 290 → **312** (TODO OK) con 22 comprobaciones (los cuatro casos
+  pedidos, validación de URLs, versionado, aislamiento en `mt_stores` y esquema). Además, **QA en
+  HTTP real** con dos tiendas y un usuario temporales (borrados): 27 comprobaciones del flujo
+  completo — subida por el panel, versión nueva, borrado del fichero anterior, favicon que
+  desaparece del disco, «quitar mi favicon», `/favicon.ico`, y que la otra tienda y el
+  predeterminado global no cambian.
+
+**No se toca** ninguna tabla del mayorista ni el favicon de otras tiendas: el `store_id` sale de la
+sesión y el predeterminado de `config/brand.php`.
+
+---
+
 ## 2026-10-08 · Sistema de logs por día y por tienda (con las compras instrumentadas)
 
 **Motivo (petición por chat):** «crea un sistema de logs, sobre todo para la web en las compras

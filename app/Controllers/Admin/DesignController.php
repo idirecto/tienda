@@ -7,8 +7,12 @@ namespace Tienda\Controllers\Admin;
 use Tienda\Core\Appearance;
 use Tienda\Core\Auth;
 use Tienda\Core\Controller;
+use Tienda\Core\Favicon;
+use Tienda\Core\Logger;
 use Tienda\Core\Session;
+use Tienda\Core\Storage\StorageManager;
 use Tienda\Core\Tenant;
+use Tienda\Models\Media;
 use Tienda\Models\Store;
 use Tienda\Models\Theme;
 
@@ -33,14 +37,21 @@ final class DesignController extends Controller
         $this->requireAuth();
         $storeId = $this->requireStoreId();
 
+        $store = Store::findWithPlan($storeId) ?? [];
+
         return $this->view('panel/design', [
             'pageTitle' => 'Diseno',
-            'store'     => Store::findWithPlan($storeId),
+            'store'     => $store,
             'themes'    => Theme::active(),
             'presets'   => Appearance::presets(),
             'schemes'   => Appearance::schemes(),
             'radii'     => Appearance::radiusScales(),
             'fonts'     => Appearance::fonts(),
+            // Favicon: el de ESTA tienda si lo tiene (y su fichero sigue ahi);
+            // si no, el predeterminado de Valduran. El predeterminado es de la
+            // plataforma y aqui solo se muestra como referencia.
+            'favicon'        => Favicon::resolve(new Tenant($store)),
+            'faviconDefault' => Favicon::defaultHref(),
         ], 'panel');
     }
 
@@ -147,6 +158,13 @@ final class DesignController extends Controller
             $data['logo_key'] = $logoKey !== '' ? $logoKey : null;
         }
 
+        // Favicon propio. La tienda solo puede cambiar EL SUYO: si lo quita, la
+        // web vuelve al predeterminado de Valduran (config/brand.php), que nunca
+        // se toca desde aqui.
+        foreach ($this->faviconData($storeId) as $columna => $valor) {
+            $data[$columna] = $valor;
+        }
+
         Store::updateById($storeId, $data);
 
         Session::flash('success', $preset !== null
@@ -154,6 +172,87 @@ final class DesignController extends Controller
             : 'Diseno actualizado correctamente.');
 
         $this->redirect('panel/diseno');
+    }
+
+    /**
+     * Cambios del favicon propio a guardar en `mt_stores`.
+     *
+     *   - Sin favicon (el tendero pulsa «volver al predeterminado», o el campo
+     *     llega vacio): se borra el propio y la tienda usa el de Valduran.
+     *   - Con favicon distinto del guardado: se guarda, se **borra el fichero
+     *     anterior** y se sube `favicon_version` (sello de tiempo) para que el
+     *     navegador no sirva el icono viejo de su cache.
+     *   - Sin cambios: no se toca nada (no se invalida la cache sin motivo).
+     *
+     * @return array<string, mixed>
+     */
+    private function faviconData(int $storeId): array
+    {
+        $actual = Store::findWithPlan($storeId) ?? [];
+        $keyActual = trim((string) ($actual['favicon_key'] ?? ''));
+        $urlActual = trim((string) ($actual['favicon_url'] ?? ''));
+        $versionActual = (int) ($actual['favicon_version'] ?? 0);
+
+        $reset = (string) $this->input('favicon_action', '') === 'reset';
+        $url = $reset ? '' : trim((string) $this->input('favicon_url', ''));
+        $key = $reset ? '' : trim((string) $this->input('favicon_key', ''));
+
+        if ($url === '') {
+            if ($keyActual !== '') {
+                $this->deleteFaviconFile($keyActual, $storeId);
+            }
+
+            return ['favicon_url' => null, 'favicon_key' => null, 'favicon_version' => null];
+        }
+
+        $segura = Favicon::safeStoreUrl($url);
+        if ($segura === null) {
+            Session::flash('warning', 'La direccion del favicon no es valida: se ha conservado el anterior.');
+
+            return [];
+        }
+
+        if ($segura === $urlActual && $key === $keyActual) {
+            return [];
+        }
+
+        // Favicon nuevo: fuera el anterior y version nueva. La version es
+        // monotona (nunca repite la anterior) para que dos cambios seguidos
+        // dentro del mismo segundo no dejen la misma URL en la cache.
+        if ($keyActual !== '' && $keyActual !== $key) {
+            $this->deleteFaviconFile($keyActual, $storeId);
+        }
+
+        return [
+            'favicon_url'     => $segura,
+            'favicon_key'     => $key !== '' ? $key : null,
+            'favicon_version' => max(time(), $versionActual + 1),
+        ];
+    }
+
+    /**
+     * Borra el fichero de un favicon propio (y su fila de `mt_media`).
+     *
+     * Nunca puede tocar el favicon predeterminado de la plataforma: solo se
+     * llama con claves guardadas en `mt_stores.favicon_key` de esta tienda. Si
+     * el borrado fisico falla, no se rompe el guardado: la tienda ya apunta al
+     * predeterminado y el fichero huerfano no molesta.
+     */
+    private function deleteFaviconFile(string $key, int $storeId): void
+    {
+        try {
+            $media = Media::findByKeyForStore($key, $storeId);
+            if ($media !== null) {
+                Media::deleteById((int) $media['id']);
+            }
+            StorageManager::driver()->delete($key);
+        } catch (\Throwable $e) {
+            Logger::warning('panel', 'No se ha podido borrar el favicon anterior de la tienda.', [
+                'store_id' => $storeId,
+                'key'      => $key,
+                'error'    => $e->getMessage(),
+            ]);
+        }
     }
 
     /**

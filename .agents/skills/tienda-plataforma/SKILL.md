@@ -57,7 +57,7 @@ Esquema de tablas `mt_` al detalle: [`references/esquema-bd.md`](references/esqu
 ## Verificación obligatoria antes de decir "hecho"
 
 ```bash
-php tools/verify.php          # debe terminar en: TODO OK (290 comprobaciones)
+php tools/verify.php          # debe terminar en: TODO OK (312 comprobaciones)
 php -l <fichero-modificado>   # sintaxis de cada PHP que toques
 node --check public/assets/js/shop.js   # si tocas JS
 curl -s -o /dev/null -w '%{http_code}\n' http://local.tienda/catalogo

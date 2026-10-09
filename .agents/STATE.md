@@ -1,7 +1,7 @@
 # STATE — Estado del proyecto
 
 > **El agente actualiza este fichero al terminar cada sesión.**
-> Última actualización: **2026-10-08**
+> Última actualización: **2026-10-09**
 
 ---
 
@@ -58,6 +58,7 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
 | Dominios propios + verificación DNS | ✅ Completo |
 | Almacenamiento (local / S3) | ✅ Completo (S3 sin probar contra bucket real) |
 | Subida de imágenes (carpetas `tienda_<tipo>`, id en el nombre, WebP) | ✅ Completo |
+| **Favicon: el de cada tienda con el predeterminado de Valduran de respaldo** | ✅ Completo (configurable por `BRAND_FAVICON*`; la tienda solo cambia el suyo) |
 | Entorno local (`http://local.tienda`) | ✅ Completo |
 | **Despliegue Apache y nginx** | ✅ Completo (nginx verificado con binario real) |
 | **Checkout: carrito, pago y envío** | ✅ Completo (cobro **sin pasarela**: transferencia, contra reembolso y recogida) |
@@ -80,6 +81,31 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
 - Sesión, CSRF y `password_hash` en el panel.
 - Almacenamiento conmutable local/S3 (en BD solo claves y URLs).
 - Verificación DNS (A/CNAME) con *lookup* inyectable para poder testear sin red.
+
+### Favicon: el de la tienda con el predeterminado de Valduran de respaldo (2026-10-09)
+- **`Core/Favicon` es la única fuente de verdad.** Resuelve el favicon **efectivo**: el propio de la
+  tienda si existe y está disponible; si no (vacío, URL no válida, fichero borrado o remoto que no
+  carga), el **predeterminado de Valduran**. Nunca devuelve `href` vacío ni roto: como último
+  recurso usa un SVG en línea. Emite las etiquetas `<link>` y valida las URLs (solo rutas del sitio
+  sin `..` y `http(s)`; nada de `javascript:`/`data:`).
+- **Predeterminado configurable** en `config/brand.php` + `.env`: `BRAND_FAVICON`,
+  `BRAND_FAVICON_EXTRA`, `BRAND_FAVICON_APPLE`, `BRAND_FAVICON_VERSION` (ruta relativa a `public/` o
+  URL absoluta). Se acompaña de un recurso nuevo en el proyecto
+  (`public/assets/img/favicon-valduran.{ico,svg}` + `-180.png`, ICO multi-tamaño).
+- **Migración `010`**: `mt_stores.favicon_key` (para comprobar que el fichero sigue ahí y poder
+  borrarlo) y `mt_stores.favicon_version` (sello de tiempo **monótono** que se añade como `?v=`).
+- **La tienda solo cambia el suyo**: en **Panel > Diseño** hay una tarjeta con vista previa,
+  subida (tipo `favicon`, 512 KB / 512 px / calidad 92) y «Quitar mi favicon y usar el
+  predeterminado». Al sustituir se borra el fichero anterior (y su fila de `mt_media`). El
+  predeterminado no aparece como campo editable y el panel avisa de que es global.
+- **Layouts y red de seguridad**: el storefront, el panel y el login emiten el favicon resuelto; y
+  `GET /favicon.ico` / `/favicon.svg` (302 con caché de 5 min) garantizan que ese sondeo del
+  navegador **nunca** devuelve 404.
+- **Caché razonable**: la versión en la URL invalida solo lo que cambia; `.htaccess` añade
+  `ExpiresByType` de 30 días para imágenes, igual que la plantilla de nginx.
+- **Pruebas**: `verify.php` 290 → **312** (TODO OK) y QA en **HTTP real** con dos tiendas y un
+  usuario temporales (borrados): 27 comprobaciones del flujo completo (casos 1-4, sustitución, ver
+  desaparecer el fichero, quitar el favicon y aislamiento con la otra tienda y el global).
 
 ### Registro de logs por día y por tienda (2026-10-08)
 - **Todo en ficheros, sin tabla nueva**: una línea JSON por evento en
@@ -497,11 +523,11 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
   en **nginx + PHP-FPM** (`sudo bash deploy/setup-nginx-domain.sh valduran.com`).
 - La app detecta el servidor (`app/Core/Server.php`): ruta pública de `/public`,
   esquema real (incluido proxy) y host de las URLs canónicas.
-- `tools/verify.php`: 261 comprobaciones automáticas (diseño, facetas, filtros
+- `tools/verify.php`: 312 comprobaciones automáticas (diseño, facetas, filtros
   estructurados del mayorista, catálogo, paginación y enlaces de las tarjetas, caché y
-  precios en vivo, carrito y mini-carrito, almacenamiento, DNS, servidor, registro de
-  tiendas, pedidos, envío al mayorista, ausencia de credenciales por defecto y
-  diagnóstico del nivel de cliente).
+  precios en vivo, carrito y mini-carrito, favicon de la tienda y predeterminado de
+  Valduran, almacenamiento, DNS, servidor, registro de tiendas, pedidos, envío al
+  mayorista, ausencia de credenciales por defecto y diagnóstico del nivel de cliente).
 - Documentación interna en `.agents/`, blindada frente a la web.
 - Repositorio publicado en GitHub (`main`).
 

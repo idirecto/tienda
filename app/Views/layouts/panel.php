@@ -9,6 +9,7 @@
  * @var string $base
  */
 use Tienda\Core\Auth;
+use Tienda\Core\Favicon;
 use Tienda\Core\Session;
 
 $current = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
@@ -49,6 +50,8 @@ $isActive = static function (string $path) use ($current, $base): bool {
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title><?= e($pageTitle ?? 'Panel') ?> · <?= e($tenant->name()) ?></title>
+    <?php /* Mismo favicon que la tienda publica (el suyo o el de Valduran). */ ?>
+    <?= Favicon::linkTags($tenant) ?>
     <link rel="stylesheet" href="<?= e(asset('assets/css/panel.css')) ?>">
     <style>:root{--brand: <?= e($tenant->colorPrimary()) ?>;}</style>
 </head>

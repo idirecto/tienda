@@ -34,6 +34,26 @@ DirectoryIndex index.php
 <IfModule mod_mime.c>
     AddType image/webp .webp
     AddType image/avif .avif
+    AddType image/x-icon .ico
+</IfModule>
+
+# -----------------------------------------------------------------------------
+# CACHE DE IMAGENES
+# Los ficheros subidos llevan nombre unico (fecha + aleatorio) y el logotipo y
+# el favicon se referencian con ?v=..., asi que se pueden cachear sin miedo: un
+# cambio genera una URL nueva. nginx ya los sirve con "expires 30d" (ver
+# deploy/nginx-site.conf.tpl); esto lo iguala en Apache. El CSS y el JS ya
+# llevan su propio ?v=<fecha> (helper asset()).
+# -----------------------------------------------------------------------------
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType image/webp        "access plus 30 days"
+    ExpiresByType image/avif        "access plus 30 days"
+    ExpiresByType image/svg+xml     "access plus 30 days"
+    ExpiresByType image/x-icon      "access plus 30 days"
+    ExpiresByType image/png         "access plus 30 days"
+    ExpiresByType image/jpeg        "access plus 30 days"
+    ExpiresByType image/gif         "access plus 30 days"
 </IfModule>
 
 <IfModule mod_rewrite.c>

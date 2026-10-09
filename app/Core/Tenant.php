@@ -179,6 +179,38 @@ final class Tenant
         return $logo !== '' ? $logo : null;
     }
 
+    // ----- Favicon ------------------------------------------------------
+
+    /**
+     * Favicon propio de la tienda (null si no lo ha configurado).
+     *
+     * Ojo: esto es lo que la tienda ha subido, no lo que se pinta. El favicon
+     * efectivo (con el predeterminado de Valduran de respaldo) lo resuelve
+     * `Tienda\Core\Favicon`.
+     */
+    public function faviconUrl(): ?string
+    {
+        $favicon = trim((string) ($this->store['favicon_url'] ?? ''));
+
+        return $favicon !== '' ? $favicon : null;
+    }
+
+    /** Clave del fichero del favicon propio en el almacenamiento (o null). */
+    public function faviconKey(): ?string
+    {
+        $key = trim((string) ($this->store['favicon_key'] ?? ''));
+
+        return $key !== '' ? $key : null;
+    }
+
+    /** Version del favicon propio: se usa para invalidar la cache del navegador. */
+    public function faviconVersion(): ?int
+    {
+        $version = (int) ($this->store['favicon_version'] ?? 0);
+
+        return $version > 0 ? $version : null;
+    }
+
     public function tagline(): string
     {
         return (string) ($this->store['tagline'] ?? '');

@@ -66,6 +66,15 @@ return [
             'max_bytes' => (int) Env::get('STORAGE_MAX_BYTES_BANNERS', 8 * 1024 * 1024),
             'quality'   => (int) Env::get('IMAGE_QUALITY_BANNERS', 86),
         ],
+        // El favicon es un icono pequeno: 512 KB de sobra y 512 px de lado. Un
+        // PNG/SVG plano se queda tal cual (ver ImageOptimizer); una foto se
+        // convierte a WebP con algo mas de calidad para que no se pixele.
+        'favicon' => [
+            'max_bytes'  => (int) Env::get('FAVICON_MAX_BYTES', 512 * 1024),
+            'quality'    => (int) Env::get('IMAGE_QUALITY_FAVICON', 92),
+            'max_width'  => 512,
+            'max_height' => 512,
+        ],
     ],
 
     // Formatos de entrada aceptados (mime real detectado por contenido).

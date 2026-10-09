@@ -1,14 +1,21 @@
 <?php
 /**
- * Diseno de la tienda: identidad visual (design tokens), plantilla, textos.
+ * Diseno de la tienda: identidad visual (design tokens), plantilla, textos y
+ * favicon.
  *
  * Los colores no se guardan "a pelo": se guardan como los tokens que
  * `Tienda\Core\Appearance` convierte en variables CSS del storefront. El panel
  * ofrece presets para tener una identidad completa en un clic y una vista
  * previa en vivo (iframe) que usa el mismo generador que la web publica.
  *
+ * El favicon se gestiona aqui, pero solo el de ESTA tienda: el predeterminado
+ * de Valduran lo resuelve `Tienda\Core\Favicon` desde `config/brand.php` y no
+ * se toca desde el panel.
+ *
  * @var array $store @var array $themes @var string $base
  * @var array $presets @var array $schemes @var array $radii @var array $fonts
+ * @var array{href:string,type:string,custom:bool} $favicon
+ * @var string $faviconDefault
  */
 use Tienda\Core\Csrf;
 use Tienda\Core\Media\MediaRules;
@@ -168,6 +175,55 @@ $optionalColors = [
                         <small class="muted">PNG, JPG o SVG. Se convierte a WebP si pesa menos.</small>
                     </div>
                 </label>
+            </section>
+
+            <section class="card" id="favicon">
+                <h2>Favicon</h2>
+                <p class="muted">El icono que aparece en la pesta&ntilde;a del navegador y en los
+                   marcadores. Si no subes uno, la tienda muestra el
+                   <strong>favicon predeterminado de Valduran</strong>.</p>
+
+                <div class="favicon-box">
+                    <div class="favicon-preview">
+                        <img id="favicon-preview-img"
+                             src="<?= e($favicon['custom'] ? (string) $favicon['href'] : (string) $faviconDefault) ?>"
+                             alt="Favicon actual" width="48" height="48"
+                             onerror="this.onerror=null;this.src='<?= e((string) $faviconDefault) ?>'">
+                        <span id="favicon-label" class="favicon-label">
+                            <?= $favicon['custom'] ? 'Tu favicon' : 'Predeterminado de Valduran' ?>
+                        </span>
+                    </div>
+
+                    <div class="uploader" data-folder="favicon">
+                        <input type="file" accept="image/png,image/svg+xml,image/webp,image/jpeg,image/gif,image/avif"
+                               data-upload data-folder="favicon"
+                               data-max-bytes="<?= MediaRules::maxBytes('favicon') ?>"
+                               data-url-target="#favicon_url" data-key-target="#favicon_key"
+                               data-preview="#favicon-preview-img" data-preview-label="#favicon-label">
+                        <input type="hidden" name="favicon_url" id="favicon_url" value="<?= $v('favicon_url') ?>">
+                        <input type="hidden" name="favicon_key" id="favicon_key" value="<?= $v('favicon_key') ?>">
+                        <small class="muted">PNG, SVG, JPG o WebP. Cuadrado y de al menos 48x48 px
+                           (mejor 512x512). Los PNG y SVG planos se guardan tal cual; el resto se
+                           convierte a WebP.</small>
+                    </div>
+                </div>
+
+                <p class="muted small">
+                    El favicon predeterminado de Valduran es <strong>global</strong>: lo usa toda la
+                    plataforma y no se puede cambiar ni borrar desde el panel de la tienda. Aqui solo
+                    gestionas el de tu tienda.
+                    <?php if (!empty($store['favicon_url']) || $favicon['custom']): ?>
+                        Si lo quitas, la tienda vuelve automaticamente al predeterminado.
+                    <?php endif; ?>
+                </p>
+
+                <?php if (!empty($store['favicon_url']) || $favicon['custom']): ?>
+                    <div class="actions">
+                        <button class="btn btn-ghost" type="submit" name="favicon_action" value="reset">
+                            Quitar mi favicon y usar el predeterminado
+                        </button>
+                    </div>
+                <?php endif; ?>
             </section>
 
             <section class="card">

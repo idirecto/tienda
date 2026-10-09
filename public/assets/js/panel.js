@@ -78,8 +78,24 @@
             if (opts.preview) {
                 var preview = document.querySelector(opts.preview);
                 if (preview) {
-                    preview.innerHTML = '<img src="' + data.media.url + '" alt="">';
+                    // El destino puede ser la propia <img> (favicon) o un contenedor
+                    // (logo). Se conserva lo que ya hubiera: asi el aviso del favicon
+                    // no desaparece al subir la imagen.
+                    if (preview.tagName === 'IMG') {
+                        preview.src = data.media.url;
+                    } else {
+                        var previewImg = preview.querySelector('img');
+                        if (previewImg) {
+                            previewImg.src = data.media.url;
+                        } else {
+                            preview.innerHTML = '<img src="' + data.media.url + '" alt="">';
+                        }
+                    }
                 }
+            }
+            if (opts.label) {
+                var label = document.querySelector(opts.label);
+                if (label) { label.textContent = 'Imagen subida: guarda los cambios para aplicarla.'; }
             }
             if (status) { status.textContent = 'Imagen subida correctamente' + detalleOptimizacion(data.media) + '.'; }
             return data.media;
@@ -102,7 +118,8 @@
             urlTarget: input.getAttribute('data-url-target'),
             keyTarget: input.getAttribute('data-key-target'),
             idTarget: input.getAttribute('data-url-id'),
-            preview: input.getAttribute('data-preview')
+            preview: input.getAttribute('data-preview'),
+            label: input.getAttribute('data-preview-label')
         };
 
         input.addEventListener('change', function () {

@@ -17,6 +17,7 @@
 use Tienda\Core\Appearance;
 use Tienda\Core\Cart;
 use Tienda\Core\CustomerAuth;
+use Tienda\Core\Favicon;
 use Tienda\Core\Session;
 use Tienda\Models\Catalog;
 use Tienda\Models\Menu;
@@ -59,9 +60,9 @@ $headerStyle = preg_replace('/[^a-z0-9_\-]/i', '', $tenant->headerStyle()) ?: 'c
     <?php if (!empty($canonical)): ?>
         <link rel="canonical" href="<?= e($canonical) ?>">
     <?php endif; ?>
-    <?php if ($tenant->get('favicon_url')): ?>
-        <link rel="icon" href="<?= e((string) $tenant->get('favicon_url')) ?>">
-    <?php endif; ?>
+    <?php /* Favicon: el de la tienda si lo tiene y esta disponible; si no (o si
+             falta el fichero), el predeterminado de Valduran. Nunca queda vacio. */ ?>
+    <?= Favicon::linkTags($tenant) ?>
 
     <?php if ($imageHost): ?>
         <link rel="preconnect" href="https://<?= e($imageHost) ?>" crossorigin>

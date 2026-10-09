@@ -21,6 +21,38 @@ _(vacío — sin petición pendiente)_
 
 Cada petición terminada se anota aquí con la fecha, qué se pidió y qué se hizo.
 
+### 2026-10-09 · Favicon predeterminado de Valduran para todas las tiendas (petición por chat)
+
+**Pedido:** como desarrollador senior full-stack especializado en multi-tenant, gestión de
+archivos, favicons, PHP, seguridad web y configuración dinámica de marcas por tienda: que haya un
+**favicon predeterminado de Valduran** como respaldo de todas las tiendas (si la tienda sube el
+suyo se muestra el suyo; si no, el predeterminado; si está vacío, falta o no se puede cargar,
+vuelve al predeterminado, **nunca** un favicon roto ni una URL vacía); que ese predeterminado sea
+configurable o use un recurso que ya exista en el proyecto (**localizándolo** durante la
+auditoría, sin inventar rutas); que la tienda **solo** pueda cambiar su favicon propio y no el
+global; y que al cambiar el de una tienda se **versione la URL** para que el navegador detecte el
+fichero nuevo, con una caché razonable. Pruebas: tienda nueva (predeterminado), tienda con el suyo,
+favicon propio eliminado (vuelve al predeterminado) y que el cambio de una tienda no afecte a otra
+ni al global.
+
+**Auditoría:** `mt_stores.favicon_url` ya existía desde el esquema `001` pero **nadie lo
+gestionaba** (solo `layouts/shop.php` lo pintaba de forma condicional, sin respaldo: hoy ninguna
+tienda tiene favicon). No existía **ningún** recurso de favicon en el proyecto ni ajuste, ruta o
+columna de versión. Los `favicon.ico` de `idirecto/`, `puntobyze/` o `cat/` son de otros
+proyectos y no se han tocado.
+
+**Hecho:** `Core/Favicon` (la única fuente de verdad: resuelve el favicon efectivo, valida la URL,
+comprueba el fichero local, versiona con `?v=` y emite los `<link>`; nunca deja `href` vacío, con
+SVG en línea como último recurso); **recurso por defecto nuevo y configurable**
+(`public/assets/img/favicon-valduran.{ico,svg,-180.png}` + `config/brand.php` con
+`BRAND_FAVICON*`); migración `010` (`favicon_key`, `favicon_version`); tarjeta **Panel > Diseño >
+Favicon** con vista previa, subida (tipo `favicon`) y «Quitar mi favicon y usar el
+predeterminado» (el global no es editable desde la tienda); rutas `/favicon.ico` y `/favicon.svg`
+(302, nunca 404); caché de 30 días para imágenes en Apache (nginx ya la tenía). `verify.php`
+290 → **312** (TODO OK) y **QA en HTTP real** con dos tiendas y un usuario temporales (borrados):
+27 comprobaciones de los cuatro casos, la sustitución con borrado del fichero anterior y el
+aislamiento. Detalle en `CHANGELOG.md` y `STATE.md`.
+
 ### 2026-10-08 · Sistema de logs por día y por tienda (petición por chat)
 
 **Pedido:** «actúa como desarrollador senior full-stack experto en PHP 8.4 y MySQL/MariaDB, crea

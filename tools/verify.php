@@ -27,6 +27,7 @@ use Tienda\Core\Cart;
 use Tienda\Core\Checkout;
 use Tienda\Core\Database;
 use Tienda\Core\Dns;
+use Tienda\Core\Favicon;
 use Tienda\Core\Idirecto\Account;
 use Tienda\Core\Idirecto\OrderGateway;
 use Tienda\Core\Idirecto\Pricing;
@@ -2138,6 +2139,249 @@ check(
 );
 
 rmdirRecursivo($logsTmp);
+
+// =============================================================================
+// FAVICON PREDETERMINADO DE VALDURAN (multi-tienda)
+//
+// Comprueba los cuatro casos que pidio el dueño:
+//   1. Una tienda nueva, sin favicon, muestra el predeterminado de Valduran.
+//   2. Una tienda con favicon propio (y fichero disponible) muestra el suyo.
+//   3. Si el favicon propio desaparece o la URL no vale, vuelve al predeterminado.
+//   4. Cambiar el favicon de una tienda no toca el de otra ni el global.
+//
+// Todo se resuelve con `Core\Favicon` (la unica fuente de verdad), sin red y
+// sin escribir ficheros: para el caso "disponible" se usa un recurso real del
+// proyecto y para el caso "desaparecido", una ruta de uploads que no existe.
+// =============================================================================
+echo "\n== Favicon predeterminado de Valduran ==\n";
+
+// --- Recursos por defecto: existen y no estan vacios -------------------------
+$defecto = Favicon::defaultHref();
+check(
+    $defecto !== '' && !str_contains($defecto, ' '),
+    'el favicon predeterminado resuelve una URL (nunca vacia): ' . $defecto
+);
+check(
+    is_file(TIENDA_BASE . '/public/assets/img/favicon-valduran.ico')
+        && filesize(TIENDA_BASE . '/public/assets/img/favicon-valduran.ico') > 500
+        && is_file(TIENDA_BASE . '/public/assets/img/favicon-valduran.svg')
+        && is_file(TIENDA_BASE . '/public/assets/img/favicon-valduran-180.png'),
+    'el recurso predeterminado (ICO + SVG + apple-touch) existe en el proyecto'
+);
+check(
+    config('brand.favicon.default') !== null && config('brand.favicon.extra') !== null
+        && str_contains((string) file_get_contents(TIENDA_BASE . '/.env.example'), 'BRAND_FAVICON'),
+    'el favicon predeterminado es configurable (config/brand.php + claves BRAND_FAVICON* en .env.example)'
+);
+
+$iconosDefecto = Favicon::defaultSources();
+$tiposDefecto = array_column($iconosDefecto, 'type');
+check(
+    count($iconosDefecto) >= 2
+        && in_array('image/x-icon', $tiposDefecto, true)
+        && in_array('image/svg+xml', $tiposDefecto, true)
+        && in_array('apple-touch-icon', array_column($iconosDefecto, 'rel'), true),
+    'el predeterminado emite ICO, SVG y apple-touch-icon con su tipo MIME'
+);
+
+// --- Caso 1: tienda nueva, sin favicon -> predeterminado ---------------------
+$nueva = new Tenant(['id' => 9001, 'slug' => 'verificacion-nueva', 'name' => 'Verificacion']);
+$resNueva = Favicon::resolve($nueva);
+check(
+    $resNueva['custom'] === false
+        && $resNueva['href'] === $defecto
+        && $resNueva['href'] !== '',
+    'caso 1: una tienda sin favicon muestra el predeterminado de Valduran'
+);
+
+// --- Caso 2: tienda con favicon propio disponible -> el suyo ----------------
+// Se usa un recurso real del proyecto como "fichero propio disponible".
+$propioUrl = '/public/assets/img/favicon-valduran-180.png';
+$conPropio = new Tenant([
+    'id' => 9002, 'slug' => 'verificacion-propia',
+    'favicon_url' => $propioUrl,
+    'favicon_key' => '',
+    'favicon_version' => 1760000000,
+]);
+$resPropio = Favicon::resolve($conPropio);
+check(
+    $resPropio['custom'] === true
+        && $resPropio['href'] === $propioUrl . '?v=1760000000'
+        && $resPropio['type'] === 'image/png',
+    'caso 2: una tienda con favicon propio muestra el suyo, con su version en la URL'
+);
+
+// El versionado no duplica un ?v= que ya venga en la URL.
+check(
+    Favicon::withVersion('/x/y.ico?v=7', 9) === '/x/y.ico?v=7'
+        && Favicon::withVersion('/x/y.ico', 9) === '/x/y.ico?v=9'
+        && Favicon::withVersion('/x/y.ico?a=1', 9) === '/x/y.ico?a=1&v=9'
+        && Favicon::withVersion('/x/y.ico', 0) === '/x/y.ico',
+    'la version se anyade a la URL sin duplicarla y sin inventarla si no hay'
+);
+
+// --- Caso 3: favicon propio que ya no existe -> predeterminado --------------
+$desaparecido = new Tenant([
+    'id' => 9003, 'slug' => 'verificacion-rota',
+    'favicon_url' => '/public/uploads/verificacion/9003_favicon_no_existe.webp',
+    'favicon_key' => 'tenants/tienda_favicon/9003_favicon_no_existe.webp',
+    'favicon_version' => 1760000000,
+]);
+$resRota = Favicon::resolve($desaparecido);
+check(
+    $resRota['custom'] === false
+        && $resRota['href'] === $defecto
+        && $resRota['reason'] === 'no_disponible',
+    'caso 3: si el fichero del favicon propio ya no esta, se vuelve al predeterminado'
+);
+
+// Una URL con esquema ejecutable o con `..` tampoco se pinta.
+$insegura = new Tenant(['id' => 9004, 'slug' => 'verificacion-insegura', 'favicon_url' => 'javascript:alert(1)']);
+$resInsegura = Favicon::resolve($insegura);
+check(
+    $resInsegura['custom'] === false
+        && $resInsegura['href'] === $defecto
+        && $resInsegura['reason'] === 'url_invalida',
+    'una URL de favicon no valida (javascript:, data:, ..) cae al predeterminado'
+);
+check(
+    Favicon::safeStoreUrl('javascript:alert(1)') === null
+        && Favicon::safeStoreUrl('data:image/svg+xml,<svg/>') === null
+        && Favicon::safeStoreUrl('/public/uploads/a/../../etc/passwd') === null
+        && Favicon::safeStoreUrl('/public/uploads/a/b.webp') === '/public/uploads/a/b.webp'
+        && Favicon::safeStoreUrl('https://cdn.ejemplo.com/f.ico') === 'https://cdn.ejemplo.com/f.ico',
+    'safeStoreUrl acepta rutas del sitio y http(s) y rechaza esquemas y saltos de ruta'
+);
+
+// Un favicon remoto no se puede comprobar en disco: se respeta (lo cubre el
+// onerror del <link> en el navegador) y queda documentado en el resolver.
+check(
+    Favicon::localAvailability('https://cdn.ejemplo.com/f.ico') === null
+        && Favicon::localAvailability('/public/assets/img/favicon-valduran.ico') === true
+        && Favicon::localAvailability('/public/uploads/no/existe.webp') === false,
+    'localAvailability distingue disponible / desaparecido / remoto'
+);
+
+// --- Caso 4: el favicon de una tienda no afecta a las demas ni al global ----
+$otra = new Tenant(['id' => 9005, 'slug' => 'verificacion-otra', 'name' => 'Otra']);
+$globalAntes = Favicon::defaultHref();
+$resOtraAntes = Favicon::resolve($otra);
+// Cambiar el favicon de la tienda 9002 (simulado) no cambia el de la 9005 ni el global.
+$resGlobalDespues = Favicon::resolve(new Tenant(['id' => 9006, 'slug' => 'verificacion-nueva-2']));
+check(
+    Favicon::resolve($otra) === $resOtraAntes
+        && $resGlobalDespues['href'] === $globalAntes
+        && Favicon::defaultHref() === $globalAntes
+        && $resPropio['href'] !== $resOtraAntes['href'],
+    'caso 4: el favicon de una tienda no cambia el de otra tienda ni el predeterminado global'
+);
+
+// El enlace de la tienda con favicon propio lleva el respaldo al predeterminado
+// (por si el navegador no puede cargarlo: S3 caido, etc.).
+$htmlPropio = Favicon::linkTags($conPropio);
+check(
+    str_contains($htmlPropio, 'data-favicon-tienda')
+        && str_contains($htmlPropio, $propioUrl)
+        && str_contains($htmlPropio, json_encode($defecto, JSON_UNESCAPED_SLASHES))
+        && !str_contains(Favicon::linkTags($nueva), 'data-favicon-tienda'),
+    'el <link> del favicon propio trae el predeterminado como respaldo en el navegador'
+);
+check(
+    substr_count(Favicon::linkTags($nueva), '<link') === count($iconosDefecto)
+        && !str_contains(Favicon::linkTags($nueva), 'data-favicon-tienda'),
+    'sin favicon propio se emiten los iconos de la plataforma, sin respaldo JS'
+);
+
+// --- La tienda no puede tocar el global --------------------------------------
+check(
+    !str_contains((string) file_get_contents(TIENDA_BASE . '/app/Controllers/Admin/DesignController.php'), 'brand.favicon')
+        && !str_contains((string) file_get_contents(TIENDA_BASE . '/app/Views/panel/design.php'), 'name="brand_'),
+    'el panel de la tienda no puede escribir el favicon predeterminado de la plataforma'
+);
+check(
+    str_contains((string) file_get_contents(TIENDA_BASE . '/app/Views/panel/design.php'), 'name="favicon_action"')
+        && str_contains((string) file_get_contents(TIENDA_BASE . '/app/Controllers/Admin/DesignController.php'), 'favicon_version')
+        && str_contains((string) file_get_contents(TIENDA_BASE . '/app/Controllers/Admin/DesignController.php'), "'favicon_action', ''") ,
+    'la tienda solo puede subir o quitar SU favicon (y al quitarlo vuelve al predeterminado)'
+);
+
+// --- Layouts y rutas ---------------------------------------------------------
+check(
+    str_contains((string) file_get_contents(TIENDA_BASE . '/app/Views/layouts/shop.php'), 'Favicon::linkTags')
+        && str_contains((string) file_get_contents(TIENDA_BASE . '/app/Views/layouts/panel.php'), 'Favicon::linkTags')
+        && str_contains((string) file_get_contents(TIENDA_BASE . '/app/Views/layouts/panel_blank.php'), 'Favicon::linkTags'),
+    'el storefront, el panel y el login emiten el favicon resuelto (no un href suelto)'
+);
+check(
+    str_contains((string) file_get_contents(TIENDA_BASE . '/index.php'), "'/favicon.ico'")
+        && str_contains((string) file_get_contents(TIENDA_BASE . '/index.php'), "'/favicon.svg'")
+        && is_file(TIENDA_BASE . '/app/Controllers/FaviconController.php'),
+    'hay ruta /favicon.ico y /favicon.svg (red de seguridad: nunca 404)'
+);
+
+// --- Esquema -----------------------------------------------------------------
+try {
+    $cols = [];
+    foreach (Database::select(
+        'SELECT COLUMN_NAME FROM information_schema.COLUMNS
+          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :t',
+        ['t' => 'mt_stores']
+    ) as $c) {
+        $cols[] = $c['COLUMN_NAME'];
+    }
+    check(
+        in_array('favicon_url', $cols, true)
+            && in_array('favicon_key', $cols, true)
+            && in_array('favicon_version', $cols, true),
+        'mt_stores guarda favicon_url, favicon_key y favicon_version (migracion 010)'
+    );
+} catch (\Throwable $e) {
+    check(false, 'columnas del favicon en mt_stores (' . $e->getMessage() . ')');
+}
+
+// --- Aislamiento real en la base de datos (transaccion que se deshace) -------
+$pdoFav = Database::pdo();
+$pdoFav->beginTransaction();
+try {
+    $slugA = 'verificacion-fav-a-' . bin2hex(random_bytes(3));
+    $slugB = 'verificacion-fav-b-' . bin2hex(random_bytes(3));
+    Database::execute('INSERT INTO mt_stores (slug, name) VALUES (:s, :n)', ['s' => $slugA, 'n' => 'Fav A']);
+    Database::execute('INSERT INTO mt_stores (slug, name) VALUES (:s, :n)', ['s' => $slugB, 'n' => 'Fav B']);
+    $idA = (int) Database::scalar('SELECT id FROM mt_stores WHERE slug = :s', ['s' => $slugA]);
+    $idB = (int) Database::scalar('SELECT id FROM mt_stores WHERE slug = :s', ['s' => $slugB]);
+
+    Database::update('mt_stores', $idA, [
+        'favicon_url'     => '/public/assets/img/favicon-valduran-180.png',
+        'favicon_key'     => 'tenants/tienda_favicon/verificacion.png',
+        'favicon_version' => 1760000001,
+    ]);
+
+    $filaA = Store::findWithPlan($idA) ?? [];
+    $filaB = Store::findWithPlan($idB) ?? [];
+    check(
+        (string) ($filaA['favicon_url'] ?? '') === '/public/assets/img/favicon-valduran-180.png'
+            && (int) ($filaA['favicon_version'] ?? 0) === 1760000001
+            && ($filaB['favicon_url'] ?? null) === null
+            && ($filaB['favicon_version'] ?? null) === null,
+        'cambiar el favicon de una tienda en mt_stores no toca la fila de otra tienda'
+    );
+    check(
+        Favicon::resolve(new Tenant($filaB))['custom'] === false
+            && Favicon::resolve(new Tenant($filaB))['href'] === $globalAntes,
+        'la otra tienda sigue mostrando el predeterminado de Valduran tras el cambio'
+    );
+} catch (\Throwable $e) {
+    check(false, 'aislamiento del favicon en la base de datos (' . $e->getMessage() . ')');
+} finally {
+    $pdoFav->rollBack();
+}
+
+// --- Cache razonable ---------------------------------------------------------
+check(
+    str_contains((string) file_get_contents(TIENDA_BASE . '/.htaccess'), 'ExpiresByType image/x-icon')
+        && str_contains((string) file_get_contents(TIENDA_BASE . '/.htaccess'), 'ExpiresByType image/svg+xml'),
+    'las imagenes se sirven con cache razonable (Apache; nginx ya usa expires 30d)'
+);
 
 echo "\n==============================================================\n";
 if ($fail === 0) {

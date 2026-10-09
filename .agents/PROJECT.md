@@ -74,21 +74,24 @@ app/
                            design_preview.php)
     themes/idirecto/       Tema público (home, _hero, catalog, product, page, _card, cart,
                            checkout, thanks, account/*)
-config/                    app, appearance, database, storage, tenant, catalog, idirecto, cache
+config/                    app, appearance, brand, database, storage, tenant, catalog, idirecto, cache
 database/
   migrations/001_schema.sql      13 tablas mt_ (idempotente)
   migrations/002_design_tokens.sql  Columnas de identidad visual en mt_stores
   migrations/003_orders.sql      Cuenta del mayorista en mt_stores + mt_orders/mt_order_items
   migrations/004_checkout.sql    mt_customers/mt_customer_addresses + venta y cobro
+  migrations/005..009_*.sql      Menú (árbol, editor, filtros y visibilidad por tienda)
+  migrations/010_favicon.sql     favicon_key + favicon_version en mt_stores
   seeds/001_seed.sql             Planes, temas y tienda demo
   migrate.php                    Ejecutor de migraciones + semillas
 deploy/                    Vhosts de Apache, plantilla de nginx y scripts
 public/                    ÚNICO directorio servido como estático
   assets/css|js            shop.css, panel.css, shop.js, panel.js
+  assets/img/              Recursos de la plataforma (favicon predeterminado de Valduran)
   uploads/                 Archivos locales (si STORAGE_DRIVER=local)
 storage/                   cache/ y logs/ (escritura de la app; la caché se limpia sola)
   logs/<canal>/<día>/       Un fichero JSON-lines por día y tienda (`Logger`)
-tools/verify.php           290 comprobaciones automáticas
+tools/verify.php           312 comprobaciones automáticas
 tools/cache-clear.php      Gestiona la caché de datos (estado, vaciar, patrones, gc)
 tools/logs.php             Consulta los logs por consola (filtros, resumen, días, tiendas, gc)
 ```
@@ -102,6 +105,7 @@ tools/logs.php             Consulta los logs por consola (filtros, resumen, día
 | `Env` | Lee `.env` a `$_ENV` (sin dependencias) |
 | `Config` | Carga `config/*.php` con acceso por punto: `Config::get('catalog.markup')` |
 | `Appearance` | **Sistema de diseño**: resuelve los tokens (config + tienda + `theme_tokens`), deriva hover/suave/contraste y emite el CSS de variables `--c-*` |
+| `Favicon` | **Favicon de cada tienda**: usa el de la tienda si existe y está disponible y, si no, el **predeterminado de Valduran** (`config/brand.php` + `BRAND_FAVICON*`). Valida la URL, comprueba el fichero local, versiona con `?v=` y emite los `<link>`. Nunca devuelve una URL vacía |
 | `Database` | PDO singleton; `select/first/scalar/execute/insert/update/delete/transaction/tableExists` |
 | `Cache` | **Caché de datos**: `get/set/delete/remember/flush/forgetPattern/gc` con driver `Cache/FileCache` o `Cache/ApcuCache` (`config/cache.php`). Memo por petición + bloqueo antiestampida. **Nunca guarda precios** |
 | `Logger` | **Registro de actividad en ficheros por día y tienda**: `debug/info/notice/warning/error/critical` → `storage/logs/<canal>/<AAAA-MM-DD>/<id-tienda>_<slug>.log` (JSON-lines), redacción de secretos, captura de errores fatales y limpieza por retención (`config/log.php`) |
@@ -205,6 +209,13 @@ Todas con `utf8mb4_unicode_ci` y FK a `mt_stores(id) ON DELETE CASCADE`.
 Se editan en Ajustes; la tarifa vacía cae a la de la cuenta y, si no hay, a
 `IDIRECTO_DEFAULT_ID_MARGEN`.
 
+`mt_stores` guarda el **favicon propio** (migración `010`): `favicon_url` (ya venía
+del esquema `001`), `favicon_key` (clave en el almacenamiento, para comprobar que el
+fichero sigue ahí y poder borrarlo) y `favicon_version` (sello de tiempo que se añade
+como `?v=` a la URL). En `NULL` la tienda usa el **favicon predeterminado de Valduran**,
+que es de la plataforma (`config/brand.php`) y el panel de la tienda no puede tocar.
+Ver §7quater.
+
 `mt_orders` / `mt_order_items` (migración `003`): el pedido (cliente, entrega,
 importes que paga el cliente, estado, papelera) y sus líneas (`source` =
 `catalog|own`, cantidades, precio de cliente, **tarifa y coste del mayorista** y el
@@ -292,6 +303,7 @@ las que dan 404, y reutiliza la imagen grande si solo falta la miniatura.
 | Ruta | Contenido |
 |---|---|
 | `/` | Portada: slider de banners, franja de garantías, accesos rápidos a categorías, destacados, productos propios |
+| `/favicon.ico`, `/favicon.svg` | **Favicon a URL fija**: resuelve el de la tienda (o el predeterminado de Valduran) y redirige 302 con caché de 5 min. Evita el 404 del sondeo del navegador |
 | `/catalogo` | Catálogo con buscador (`?q`), categoría (`?cat`), subcategoría (`?subcat`), **facetas** (`?f[clave][]=valor`), **precio** (`?pmin`/`?pmax`), orden (`?orden`) y paginación |
 | `/buscar/live` | **Buscador en vivo** (JSON): resultados del catálogo visible de la tienda + sus productos propios, con facetas de subcategoría y marca. Parámetros `q`, `s[]`, `m[]`, `pmin`, `pmax`. Devuelve las tarjetas ya envueltas en `.grid-products` (rejilla adaptativa: 1 por línea en móvil, 5-7 en monitor grande). El panel lo pinta `shop.js` desde el campo de la cabecera |
 | `/producto/{slug}/{id}` | Ficha (**URL SEO**); `/producto/{id}` redirige 301 |
@@ -427,7 +439,8 @@ atrás. Solo entran categorías **con stock** y el árbol se cachea 30 min con
 ### Rutas del panel (`/panel/*`)
 
 `login`, `logout`, `dashboard`, `diseno` (+ `diseno/tokens` y `diseno/previa`
-para la vista previa), `banners`, `avisos`, `productos` (CRUD), `dominios` (alta,
+para la vista previa; el **favicon** de la tienda se sube o se quita desde aquí),
+`banners`, `avisos`, `productos` (CRUD), `dominios` (alta,
 verificar, borrar), `ajustes`, `logs`, `media/subir` y `media/{id}/borrar`. Todas
 exigen sesión + CSRF, y filtran por el `store_id` de la sesión.
 
@@ -518,6 +531,31 @@ storage/logs/sistema/2026-10-08/_plataforma.log
   `platform` ve todas y puede limpiar. Ajustes en `config/log.php` / `LOG_*`:
   interruptor, nivel, carpeta, retención (30 días) e intervalo de limpieza.
 
+### 7quater. Favicon (el de cada tienda + el predeterminado de Valduran)
+
+**La regla vive en un solo sitio**: `Tienda\Core\Favicon::resolve()`. En orden:
+
+1. Si `mt_stores.favicon_url` tiene una URL **válida** y el recurso está **disponible**,
+   se usa el favicon **de la tienda** (con `?v=<favicon_version>`).
+2. Si no (vacío, `javascript:`/`data:`, ruta con `..`, fichero local borrado o que el
+   navegador no puede cargar), se usa el **predeterminado de Valduran**.
+3. Nunca se emite un `href` vacío: si hasta el recurso predeterminado desaparece, se
+   usa un **SVG en línea**.
+
+El predeterminado es **de la plataforma**: `config/brand.php` (`BRAND_FAVICON`,
+`BRAND_FAVICON_EXTRA`, `BRAND_FAVICON_APPLE`, `BRAND_FAVICON_VERSION`) apunta a
+`public/assets/img/favicon-valduran.{ico,svg,-180.png}` o a una URL absoluta. Se emite
+en `layouts/shop.php`, `layouts/panel.php`, `layouts/panel_blank.php` y en las rutas
+`/favicon.ico` y `/favicon.svg`; el `<link>` del favicon propio lleva un `onerror` que
+lo cambia por el predeterminado (cubre un S3 caído, que el servidor no puede comprobar).
+
+**La tienda no puede tocar el global**: su panel (`/panel/diseno`) solo escribe
+`favicon_url`/`favicon_key`/`favicon_version` de **su** fila (`store_id` de la sesión) y
+ofrece «Quitar mi favicon y usar el predeterminado». Al sustituir se borra el fichero
+anterior y su fila de `mt_media`; al quitarlo, la tienda vuelve al predeterminado. La
+versión es **monótona**, así que dos cambios seguidos nunca dejan la misma URL en la
+caché del navegador.
+
 ### Temas
 
 Catálogo cerrado en `mt_themes`. Implementado: **`idirecto`**.
@@ -575,9 +613,11 @@ Todo pasa por `Tienda\Core\Media\MediaUploader::upload()` (subida HTTP) o
 tipo** (`config/storage.php` → `storage.types`, que pisa a los valores
 generales). Por defecto los **banners admiten 8 MB** (`STORAGE_MAX_BYTES_BANNERS`)
 y se comprimen con **calidad 86** (`IMAGE_QUALITY_BANNERS`) porque son fotos
-grandes de portada donde se notan los degradados; el resto se queda en 5 MB y
-calidad 82. El panel lee el límite del propio tipo (`data-max-bytes`) y avisa
-antes de subir.
+grandes de portada donde se notan los degradados; el **favicon** (carpeta
+`tienda_favicon`) admite 512 KB, se limita a 512 px de lado y se guarda con
+calidad 92 (`FAVICON_MAX_BYTES`, `IMAGE_QUALITY_FAVICON`); el resto se queda en
+5 MB y calidad 82. El panel lee el límite del propio tipo (`data-max-bytes`) y
+avisa antes de subir.
 
 Dos cosas que hay que tener presentes al tocar estos límites:
 
@@ -600,7 +640,7 @@ servidores no los traen en `/etc/mime.types` y servirían la imagen sin
 
 ```bash
 sudo bash deploy/setup-local-domain.sh     # /etc/hosts + VirtualHost + permisos
-php tools/verify.php                       # 290 comprobaciones
+php tools/verify.php                       # 312 comprobaciones
 php -S 127.0.0.1:8099 index.php            # servidor embebido (alternativa)
 ```
 
@@ -628,9 +668,10 @@ con repetir el script con el nuevo nombre y tocar esas tres claves del `.env`.
 ## 10. Verificación antes de dar algo por hecho
 
 ```bash
-php tools/verify.php                 # debe decir: TODO OK (290 comprobaciones)
+php tools/verify.php                 # debe decir: TODO OK (312 comprobaciones)
 curl -s -o /dev/null -w '%{http_code}\n' http://local.tienda/
 curl -s -o /dev/null -w '%{http_code}\n' http://local.tienda/catalogo
+curl -s -o /dev/null -w '%{http_code}\n' http://local.tienda/favicon.ico
 curl -s -o /dev/null -w '%{http_code}\n' "http://local.tienda/catalogo?cat=9&subcat=102&f%5Bsocket%5D%5B0%5D=am5"
 curl -s -o /dev/null -w '%{http_code}\n' http://local.tienda/registro
 curl -s -o /dev/null -w '%{http_code}\n' http://local.tienda/panel/login

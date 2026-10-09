@@ -1,5 +1,10 @@
 <?php
-/** Layout sin menu (login). @var string $content @var string $pageTitle @var string $base */
+/**
+ * Layout sin menu (login).
+ * @var string $content @var string $pageTitle @var string $base
+ * @var \Tienda\Core\Tenant|null $tenant
+ */
+use Tienda\Core\Favicon;
 use Tienda\Core\Session;
 $success = Session::pullFlash('success');
 $error = Session::pullFlash('error');
@@ -10,6 +15,8 @@ $error = Session::pullFlash('error');
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title><?= e($pageTitle ?? 'Acceso') ?> · <?= e($app_name ?? 'Tienda') ?></title>
+    <?php /* Sin tienda resuelta se usa el favicon predeterminado de Valduran. */ ?>
+    <?= Favicon::linkTags($tenant ?? null) ?>
     <link rel="stylesheet" href="<?= e(asset('assets/css/panel.css')) ?>">
 </head>
 <body class="panel panel-auth">

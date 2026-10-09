@@ -26,4 +26,18 @@ final class Media extends Model
             ['id' => $id, 'store_id' => $storeId]
         );
     }
+
+    /**
+     * Registro de un fichero por su clave, acotado a la tienda.
+     *
+     * Se usa al sustituir o quitar una imagen "de un solo uso" (el favicon) para
+     * poder borrar tambien su fila de `mt_media` y no dejar registros huerfanos.
+     */
+    public static function findByKeyForStore(string $key, int $storeId): ?array
+    {
+        return \Tienda\Core\Database::first(
+            'SELECT * FROM mt_media WHERE file_key = :key AND store_id = :store_id LIMIT 1',
+            ['key' => $key, 'store_id' => $storeId]
+        );
+    }
 }
