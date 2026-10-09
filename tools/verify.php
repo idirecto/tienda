@@ -1879,6 +1879,89 @@ try {
     check(false, 'comprobacion del usuario demo en la base de datos (' . $e->getMessage() . ')');
 }
 
+// =============================================================================
+// Nivel de cliente: diagnostico accionable
+// El aviso del menu ya no se limita a decir que falta el nivel: dice QUE falta
+// (cuenta sin enlazar, id inexistente, cuenta sin categoria) y donde se arregla.
+// =============================================================================
+echo "\n== Nivel de cliente: diagnostico accionable ==\n";
+
+// Coherencia en todas las tiendas: si no hay nivel, siempre hay motivo.
+$coherente = true;
+$sinCuenta = null;
+foreach (Database::select('SELECT id, id_tienda_idirecto FROM mt_stores ORDER BY id') as $fila) {
+    $st = Menu::storeLevelStatus((int) $fila['id']);
+    if (($st['level'] === null) !== ($st['reason'] !== null)) {
+        $coherente = false;
+        break;
+    }
+    if ($sinCuenta === null && (int) $fila['id_tienda_idirecto'] <= 0) {
+        $sinCuenta = $st;
+    }
+}
+check($coherente, 'storeLevelStatus: cuando no hay nivel siempre explica el motivo');
+
+// 'sin_cuenta' dice donde se arregla (Ajustes) y lo pinta el editor.
+if ($sinCuenta !== null) {
+    $aviso = Menu::levelWarning($sinCuenta);
+    check(
+        ($sinCuenta['reason'] ?? '') === 'sin_cuenta'
+            && str_contains($aviso, 'Ajustes')
+            && !str_contains($aviso, '<'),
+        'una tienda sin cuenta enlazada dice el motivo y que se arregla en Ajustes (texto plano)'
+    );
+} else {
+    check(true, 'una tienda sin cuenta enlazada dice el motivo y que se arregla en Ajustes (no hay tiendas sin cuenta)');
+}
+
+// Un id de cuenta que no existe ya no se confunde con «cuenta sin categoria».
+// La tienda de prueba se crea en una transaccion que se DESHACE.
+$pdoNivel = Database::pdo();
+$pdoNivel->beginTransaction();
+try {
+    $slugPrueba = 'verificacion-nivel-' . bin2hex(random_bytes(3));
+    // Un id por encima del maximo real de `tiendas` para que no exista (la
+    // columna `mt_stores.id_tienda_idirecto` es smallint unsigned: tope 65535).
+    $cuentaFantasma = min(65535, (int) Database::scalar('SELECT COALESCE(MAX(id), 0) + 1 FROM tiendas'));
+    Database::execute(
+        'INSERT INTO mt_stores (slug, name, id_tienda_idirecto) VALUES (:slug, :name, :cuenta)',
+        ['slug' => $slugPrueba, 'name' => 'Verificacion nivel', 'cuenta' => $cuentaFantasma]
+    );
+    $storePrueba = (int) Database::scalar('SELECT id FROM mt_stores WHERE slug = :s', ['s' => $slugPrueba]);
+    $stPrueba = Menu::storeLevelStatus($storePrueba);
+    check(
+        ($stPrueba['reason'] ?? '') === 'cuenta_inexistente'
+            && str_contains(Menu::levelWarning($stPrueba), 'Ajustes'),
+        'una cuenta que no existe en el mayorista se detecta aparte y manda a Ajustes'
+    );
+} catch (\Throwable $e) {
+    check(false, 'diagnostico de la cuenta inexistente (' . $e->getMessage() . ')');
+} finally {
+    $pdoNivel->rollBack();
+}
+
+// El caso de la cuenta sin categoria explica quien tiene que asignarla.
+$avisoCategoria = Menu::levelWarning(['reason' => 'sin_categoria', 'account_id' => 9363]);
+check(
+    str_contains($avisoCategoria, '9363') && str_contains($avisoCategoria, 'idirecto')
+        && !str_contains($avisoCategoria, '<'),
+    'una cuenta sin categoria de cliente explica que la asigna idirecto (texto plano)'
+);
+
+// Ajustes muestra el nivel y el editor y la plataforma pintan el aviso.
+$settingsView = (string) file_get_contents(TIENDA_BASE . '/app/Views/panel/settings.php');
+$menuView = (string) file_get_contents(TIENDA_BASE . '/app/Views/panel/menu.php');
+$plataformaView = (string) file_get_contents(TIENDA_BASE . '/app/Views/panel/menu_plataforma.php');
+check(
+    str_contains($settingsView, 'Nivel de cliente') && str_contains($settingsView, 'nivelAviso'),
+    'Ajustes muestra el nivel de cliente de la cuenta y el aviso cuando falta'
+);
+check(
+    str_contains($menuView, 'nivelAviso') && str_contains($menuView, '/panel/ajustes')
+        && str_contains($plataformaView, 'storeLevelWarning'),
+    'el editor del menu y el panel de plataforma pintan el aviso accionable'
+);
+
 echo "\n==============================================================\n";
 if ($fail === 0) {
     echo " RESULTADO: TODO OK ($ok comprobaciones)\n";

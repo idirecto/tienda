@@ -601,34 +601,122 @@ final class Menu
     }
 
     /**
+     * Estado del nivel de cliente de la tienda, con el motivo cuando no se puede
+     * resolver. A diferencia de `storeLevel()`, que solo devuelve el nivel o
+     * `null`, esto permite al panel decir QUE falta y donde se arregla.
+     *
+     * `reason` vale:
+     *   - null                 -> hay nivel resuelto
+     *   - 'sin_cuenta'         -> la tienda no esta enlazada con su cuenta del mayorista
+     *   - 'cuenta_inexistente' -> el id guardado en Ajustes no existe en el mayorista
+     *   - 'sin_categoria'      -> la cuenta existe pero no tiene `id_categ_cliente`
+     *   - 'categoria_invalida' -> la categoria asignada ya no existe o esta borrada
+     *
+     * @return array{level:array{id:int,label:string,order:int}|null, account_id:int|null,
+     *               account_level_id:int|null, reason:string|null}
+     */
+    public static function storeLevelStatus(int $storeId): array
+    {
+        $status = [
+            'level'            => null,
+            'account_id'       => null,
+            'account_level_id' => null,
+            'reason'           => null,
+        ];
+
+        if (!Database::tableExists('tiendas')) {
+            $status['reason'] = 'sin_cuenta';
+
+            return $status;
+        }
+
+        // LEFT JOIN: la tienda puede existir sin cuenta enlazada, o con un id que
+        // ya no corresponde a ninguna cuenta del mayorista.
+        $owner = Database::first(
+            'SELECT s.id_tienda_idirecto, t.id AS cuenta_encontrada, t.id_categ_cliente
+               FROM mt_stores s
+               LEFT JOIN tiendas t ON t.id = s.id_tienda_idirecto
+              WHERE s.id = :id LIMIT 1',
+            ['id' => $storeId]
+        );
+
+        $accountId = (int) ($owner['id_tienda_idirecto'] ?? 0);
+        if ($accountId <= 0) {
+            $status['reason'] = 'sin_cuenta';
+
+            return $status;
+        }
+        $status['account_id'] = $accountId;
+
+        if (($owner['cuenta_encontrada'] ?? null) === null) {
+            $status['reason'] = 'cuenta_inexistente';
+
+            return $status;
+        }
+
+        if (!Database::tableExists('categoria_cliente')) {
+            $status['reason'] = 'sin_categoria';
+
+            return $status;
+        }
+
+        $levelId = (int) ($owner['id_categ_cliente'] ?? 0);
+        if ($levelId <= 0) {
+            $status['reason'] = 'sin_categoria';
+
+            return $status;
+        }
+        $status['account_level_id'] = $levelId;
+
+        foreach (self::customerLevels() as $level) {
+            if ($level['id'] === $levelId) {
+                $status['level'] = $level;
+
+                return $status;
+            }
+        }
+
+        $status['reason'] = 'categoria_invalida';
+
+        return $status;
+    }
+
+    /**
      * Nivel de cliente de la tienda, con su nombre, para el panel.
      *
      * @return array{id:int,label:string,order:int}|null
      */
     public static function storeLevel(int $storeId): ?array
     {
-        if (!Database::tableExists('tiendas') || !Database::tableExists('categoria_cliente')) {
-            return null;
-        }
+        return self::storeLevelStatus($storeId)['level'];
+    }
 
-        $owner = Database::first(
-            'SELECT t.id_categ_cliente FROM mt_stores s
-               JOIN tiendas t ON t.id = s.id_tienda_idirecto
-              WHERE s.id = :id LIMIT 1',
-            ['id' => $storeId]
-        );
-        $levelId = (int) ($owner['id_categ_cliente'] ?? 0);
-        if ($levelId <= 0) {
-            return null;
-        }
+    /**
+     * Explica en una frase por que la tienda no tiene nivel de cliente y donde se
+     * arregla. Se usa en los avisos del editor y en el bloque de nivel del panel.
+     *
+     * @param array{level:mixed, account_id:int|null, account_level_id:int|null, reason:string|null} $status
+     */
+    public static function levelWarning(array $status): string
+    {
+        $cuenta = (int) ($status['account_id'] ?? 0);
 
-        foreach (self::customerLevels() as $level) {
-            if ($level['id'] === $levelId) {
-                return $level;
-            }
-        }
-
-        return null;
+        return match ($status['reason'] ?? null) {
+            'sin_cuenta' => 'Esta tienda no esta enlazada con su cuenta del mayorista, asi que '
+                . 'no se puede saber su nivel de cliente y los nodos con nivel minimo no se le '
+                . 'muestran. Pon el id de tu cuenta en Ajustes > Cuenta en idirecto.',
+            'cuenta_inexistente' => 'La cuenta #' . $cuenta . ' guardada en Ajustes no existe en '
+                . 'el mayorista, asi que no se puede saber el nivel de cliente de la tienda y los '
+                . 'nodos con nivel minimo no se le muestran. Revisa el id de la cuenta en '
+                . 'Ajustes > Cuenta en idirecto.',
+            'categoria_invalida' => 'La categoria de cliente de la cuenta #' . $cuenta . ' ya no '
+                . 'existe en el mayorista: los nodos con nivel minimo no se le muestran. Idirecto '
+                . 'tiene que asignarle una categoria valida en la ficha del cliente.',
+            default => 'La cuenta #' . $cuenta . ' no tiene categoria de cliente asignada en el '
+                . 'mayorista (id_categ_cliente), asi que los nodos con nivel minimo no se le '
+                . 'muestran. La asigna idirecto en la ficha del cliente; no se puede cambiar '
+                . 'desde este panel.',
+        };
     }
 
     /**
@@ -815,8 +903,9 @@ final class Menu
         if ($withoutTarget > 0) {
             $warnings[] = $withoutTarget . ' destino(s) de tercer nivel no tienen destino elegido y no se pintaran.';
         }
-        if (self::storeLevel($storeId) === null) {
-            $warnings[] = 'La tienda no tiene nivel de cliente asignado: los nodos con nivel minimo no se le muestran.';
+        $nivel = self::storeLevelStatus($storeId);
+        if ($nivel['level'] === null) {
+            $warnings[] = self::levelWarning($nivel);
         }
         if (!Database::tableExists('mt_menu_items')) {
             $warnings[] = 'Falta la tabla del menu (migracion 005).';

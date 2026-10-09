@@ -9,6 +9,7 @@ use Tienda\Core\Controller;
 use Tienda\Core\Idirecto\Account;
 use Tienda\Core\Session;
 use Tienda\Models\Catalog;
+use Tienda\Models\Menu;
 use Tienda\Models\Store;
 use Tienda\Models\StoreUser;
 
@@ -25,12 +26,18 @@ final class SettingsController extends Controller
 
         $store = Store::findWithPlan($storeId) ?? [];
 
+        // Nivel de cliente del mayorista: se muestra junto a la cuenta, con el
+        // motivo cuando la cuenta no lo tiene asignado.
+        $nivel = Menu::storeLevelStatus($storeId);
+
         return $this->view('panel/settings', [
             'pageTitle' => 'Ajustes',
             'store'     => $store,
             'users'     => StoreUser::forStore($storeId),
             'account'   => Account::forStore($store),
             'idirectoReady' => Account::enabled(),
+            'nivel'     => $nivel,
+            'nivelAviso' => $nivel['level'] === null ? Menu::levelWarning($nivel) : '',
         ], 'panel');
     }
 

@@ -13,6 +13,8 @@
  * @var string|null $publishedAt
  * @var array $destinos @var array $icons @var array $badges @var array $banners @var array $niveles
  * @var array|null $nivelTienda
+ * @var array $nivelEstado estado del nivel (motivo cuando no se resuelve)
+ * @var string $nivelAviso frase accionable cuando no hay nivel
  * @var string $scope @var string $actionBase
  * @var string $base
  */
@@ -108,10 +110,17 @@ use Tienda\Core\Csrf;
                 <?= e((string) $nivelTienda['label']) ?> (nivel <?= (int) $nivelTienda['order'] ?>).
                 Los nodos con nivel minimo igual o menor se te muestran.
             <?php else: ?>
-                Esta tienda no tiene nivel de cliente asignado (falta enlazarla con su cuenta
-                del mayorista), asi que los nodos con nivel minimo no se muestran.
+                <?= e((string) $nivelAviso) ?>
             <?php endif; ?>
         </p>
+        <?php /* El nivel se arregla desde aqui solo si falta la cuenta (o su id no
+                 existe); la categoria de cliente la asigna idirecto en su ficha. */ ?>
+        <?php if ($nivelTienda === null
+                  && in_array($nivelEstado['reason'] ?? null, ['sin_cuenta', 'cuenta_inexistente'], true)): ?>
+            <div class="actions">
+                <a class="btn btn-ghost btn-sm" href="<?= e($base) ?>/panel/ajustes">Ir a Ajustes</a>
+            </div>
+        <?php endif; ?>
     </div>
 </section>
 

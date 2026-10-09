@@ -5,7 +5,51 @@ El detalle línea a línea está en `git log`.
 
 ---
 
-## 2026-10-08 · Fuera el botón «Mi panel» y las credenciales demo del login
+## 2026-10-08 · Nivel de cliente: aviso accionable y nivel visible en Ajustes
+
+**Motivo (petición por chat):** al entrar en el panel de la tienda `xgrabu` el editor del
+menú avisaba «La tienda no tiene nivel de cliente asignado: los nodos con nivel mínimo no
+se le muestran». El aviso no decía **qué** faltaba ni **dónde** arreglarlo, y Ajustes no
+mostraba el nivel. Se pide hacerlo accionable (opción 2; la 1, asignar la categoría en el
+mayorista, la hizo el dueño).
+
+**Diagnóstico (con datos reales):** `mt_stores` estaba correcto
+(`id_tienda_idirecto = 9363`, `id_margen = 12`); el que faltaba era
+`tiendas.id_categ_cliente = NULL` de la cuenta **9363** en el mayorista. El nivel no es un
+campo de nuestra tienda: sale de `mt_stores.id_tienda_idirecto → tiendas.id_categ_cliente →
+categoria_cliente` (10 Informática, 11 Telefonía, 12 Papelería) y `tiendas` es de **solo
+lectura** para la app.
+
+**Qué se hizo**
+
+- **`Menu::storeLevelStatus()`**: nuevo estado con el nivel resuelto, el id de cuenta, su
+  `id_categ_cliente` y un **motivo** cuando no se puede resolver: `sin_cuenta`,
+  `cuenta_inexistente`, `sin_categoria` o `categoria_invalida`. `storeLevel()` ahora es un
+  envoltorio, así que el comportamiento del menú no cambia.
+- **`Menu::levelWarning()`**: frase en texto plano que explica el caso concreto y quién
+  tiene que arreglarlo. Los avisos del editor (`review()`) usan esta frase en vez del
+  mensaje genérico; `storeLevelStatus()` usa LEFT JOIN, así que un id de cuenta que ya no
+  existe se distingue de una cuenta sin categoría (antes se confundían).
+- **Panel de la tienda → Menu**: el bloque «Nivel de cliente de la tienda» muestra el
+  motivo y un botón **«Ir a Ajustes»** cuando el arreglo está en nuestra mano
+  (`sin_cuenta` / `cuenta_inexistente`); si la categoría la tiene que asignar idirecto, lo
+  dice y no ofrece un enlace inútil.
+- **Panel de la tienda → Ajustes → Cuenta en idirecto**: se muestra el **nivel de cliente
+  resuelto** (o «sin asignar») y, cuando falta, el aviso con el motivo.
+- **Panel de plataforma** (`/panel/plataforma/menu`): el «Sin nivel de cliente» pasa a
+  explicar el motivo concreto en vez del texto genérico.
+- **Pruebas:** `verify.php` 255 → **261** (TODO OK) con 6 comprobaciones nuevas: coherencia
+  del estado en todas las tiendas, `sin_cuenta`, `cuenta_inexistente` (tienda de prueba
+  creada y **deshecha** con rollback), el texto de `sin_categoria`, y que Ajustes, el
+  editor y la plataforma pintan el aviso. Probado en **HTTP real** con una tienda y un
+  usuario temporales (borrados después): con la cuenta 9363 sale «La cuenta #9363 no tiene
+  categoría…» sin botón, y sin cuenta enlazada sale el motivo con el botón «Ir a Ajustes».
+
+**Para el dueño:** el nivel de `xgrabu` se arregla en **idirecto → admin → Clientes → ficha
+de la cuenta 9363 → Categoría** (o `UPDATE tiendas SET id_categ_cliente = 10 WHERE id =
+9363`). Con este cambio, el panel ya dice exactamente eso.
+
+---
 
 **Motivo (petición por chat):** retirar el botón del escaparate que lleva a `/panel`,
 quitar del login los datos de usuario por defecto («Demo: `admin@demo.test` /

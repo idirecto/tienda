@@ -177,6 +177,22 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
 - `verify.php` 244 → **250** (TODO OK), con comprobaciones nuevas del límite, de
   la paginación común y del apilado de la tarjeta.
 
+### Nivel de cliente: aviso accionable (2026-10-08)
+- **El aviso del menú ya dice qué falta y dónde arreglarlo**: `Menu::storeLevelStatus()`
+  devuelve el nivel, el id de cuenta y un **motivo** (`sin_cuenta`, `cuenta_inexistente`,
+  `sin_categoria`, `categoria_invalida`); `Menu::levelWarning()` lo traduce a una frase. El
+  bloque «Nivel de cliente de la tienda» del editor del menú enlaza a **Ajustes** cuando el
+  arreglo está en nuestra mano (falta la cuenta o su id no existe).
+- **Ajustes → Cuenta en idirecto** muestra el **nivel resuelto** (o «sin asignar») y, cuando
+  falta, el aviso con el motivo; el panel de plataforma explica el caso concreto.
+- El nivel **no se edita** en nuestro panel: sale de `tiendas.id_categ_cliente` de la cuenta
+  del mayorista (tabla de **solo lectura**), que asigna idirecto en su ficha de cliente.
+  `storeLevel()` pasa a ser un envoltorio de `storeLevelStatus()`, así que el menú se
+  comporta igual que antes.
+- `verify.php` 255 → **261** (TODO OK) con 6 comprobaciones; probado en **HTTP real** con una
+  tienda y un usuario temporales (borrados después) en las dos ramas: cuenta sin categoría
+  (mensaje con `#cuenta`, sin botón) y tienda sin cuenta (mensaje + botón «Ir a Ajustes»).
+
 ### Sin credenciales demo en el acceso (2026-10-08)
 - **El escaparate ya no enlaza al panel**: se retira el botón «Mi panel» de la
   cabecera (`layouts/shop.php`) y sus reglas `.btn-panel` en `shop.css`. Al panel
@@ -454,10 +470,11 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
   en **nginx + PHP-FPM** (`sudo bash deploy/setup-nginx-domain.sh valduran.com`).
 - La app detecta el servidor (`app/Core/Server.php`): ruta pública de `/public`,
   esquema real (incluido proxy) y host de las URLs canónicas.
-- `tools/verify.php`: 255 comprobaciones automáticas (diseño, facetas, filtros
+- `tools/verify.php`: 261 comprobaciones automáticas (diseño, facetas, filtros
   estructurados del mayorista, catálogo, paginación y enlaces de las tarjetas, caché y
   precios en vivo, carrito y mini-carrito, almacenamiento, DNS, servidor, registro de
-  tiendas, pedidos, envío al mayorista y ausencia de credenciales por defecto).
+  tiendas, pedidos, envío al mayorista, ausencia de credenciales por defecto y
+  diagnóstico del nivel de cliente).
 - Documentación interna en `.agents/`, blindada frente a la web.
 - Repositorio publicado en GitHub (`main`).
 

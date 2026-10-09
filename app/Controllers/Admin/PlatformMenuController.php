@@ -33,13 +33,18 @@ final class PlatformMenuController extends Controller
             $storeId = (int) ($stores[0]['id'] ?? 0);
         }
 
+        $storeLevel = $storeId > 0 ? Menu::storeLevelStatus($storeId) : null;
+
         return $this->view('panel/menu_plataforma', [
             'pageTitle'   => 'Menu de la plataforma',
             'stores'      => $stores,
             'storeId'     => $storeId,
             'storeName'   => $this->storeName($storeId, $stores),
             'levels'      => Menu::customerLevels(),
-            'storeLevel'  => $storeId > 0 ? Menu::storeLevel($storeId) : null,
+            'storeLevel'  => $storeLevel['level'] ?? null,
+            'storeLevelStatus'  => $storeLevel,
+            'storeLevelWarning' => $storeLevel !== null && $storeLevel['level'] === null
+                ? Menu::levelWarning($storeLevel) : '',
             'visibility'  => Menu::visibilityModes(),
             'styles'      => Menu::styles(),
             'style'       => $this->tenant->menuStyle(),

@@ -29,6 +29,10 @@ final class MenuController extends Controller
         $this->requireAuth();
         $storeId = $this->storeId();
 
+        // Nivel de cliente: el estado incluye el motivo cuando no se puede
+        // resolver, para que el aviso diga que falta y donde se arregla.
+        $nivel = Menu::storeLevelStatus($storeId);
+
         return $this->view('panel/menu', [
             'pageTitle'   => 'Menu',
             'styles'      => Menu::styles(),
@@ -48,7 +52,9 @@ final class MenuController extends Controller
             'badges'      => Menu::badgePresets(),
             'banners'     => MenuAdmin::bannerOptions($storeId),
             'niveles'     => Menu::customerLevels(),
-            'nivelTienda' => Menu::storeLevel($storeId),
+            'nivelTienda' => $nivel['level'],
+            'nivelEstado' => $nivel,
+            'nivelAviso'  => $nivel['level'] === null ? Menu::levelWarning($nivel) : '',
             'scope'       => 'store',
             'actionBase'  => $this->url('panel/menu'),
             'isPlatform'  => false,

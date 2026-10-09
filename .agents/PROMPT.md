@@ -21,6 +21,26 @@ _(vacío — sin petición pendiente)_
 
 Cada petición terminada se anota aquí con la fecha, qué se pidió y qué se hizo.
 
+### 2026-10-08 · Nivel de cliente: aviso accionable y nivel visible en Ajustes (petición por chat)
+
+**Pedido:** «me da este error en valduran cuando ingreso con los datos de la cuenta: *La
+tienda no tiene nivel de cliente asignado: los nodos con nivel mínimo no se le muestran*.
+Dime qué debo setear y desde qué panel». Después de explicarlo: «aplica el 2 [hacer el aviso
+accionable], el 1 [asignar la categoría en el mayorista] ya lo hice».
+
+**Diagnóstico:** `mt_stores` estaba bien (`id_tienda_idirecto = 9363`, `id_margen = 12`); el
+que faltaba era `tiendas.id_categ_cliente = NULL` de la cuenta **9363** del mayorista. El
+nivel sale de `mt_stores.id_tienda_idirecto → tiendas.id_categ_cliente → categoria_cliente`
+(10 Informática, 11 Telefonía, 12 Papelería) y `tiendas` es de **solo lectura** para la app,
+así que se arregla en el admin de idirecto (Clientes → ficha → Categoría).
+
+**Hecho:** `Menu::storeLevelStatus()` + `Menu::levelWarning()` (motivos `sin_cuenta`,
+`cuenta_inexistente`, `sin_categoria`, `categoria_invalida`); el editor del menú explica el
+motivo y enlaza a **Ajustes** cuando el arreglo está en nuestra mano; **Ajustes → Cuenta en
+idirecto** muestra el nivel resuelto (o «sin asignar») y el aviso; el panel de plataforma
+también da el motivo concreto. `verify.php` 255 → **261** (TODO OK) y probado en HTTP real
+con una tienda y un usuario temporales (borrados). Detalle en `CHANGELOG.md` y `STATE.md`.
+
 ### 2026-10-08 · Fuera el botón «Mi panel» y las credenciales demo del login (petición por chat)
 
 **Pedido:** «Retira el botón que lleva a /panel en la web y los datos de usuario por

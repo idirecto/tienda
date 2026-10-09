@@ -10,6 +10,8 @@
  * @var string $storeName
  * @var array $levels        niveles de cliente del mayorista
  * @var array|null $storeLevel
+ * @var array|null $storeLevelStatus estado del nivel (motivo cuando no se resuelve)
+ * @var string $storeLevelWarning frase accionable cuando no hay nivel
  * @var array $visibility    modos de visibilidad
  * @var array $stats         resumen del arbol global
  * @var array|null $storeStats resumen de la tienda elegida
@@ -74,7 +76,7 @@ use Tienda\Core\Csrf;
                     Nivel de cliente: <?= e((string) $storeLevel['label']) ?> (<?= (int) $storeLevel['order'] ?>).
                 <?php else: ?>
                     <span class="pill pill-warning">Sin nivel de cliente</span>
-                    Los nodos con nivel minimo no se le muestran.
+                    <?= e((string) $storeLevelWarning) ?>
                 <?php endif; ?>
             </p>
 

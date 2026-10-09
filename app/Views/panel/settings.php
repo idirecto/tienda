@@ -2,6 +2,9 @@
 /**
  * Ajustes de la tienda y usuarios.
  * @var array $store @var array $users @var string $base
+ * @var array $account cuenta del mayorista resuelta
+ * @var array $nivel estado del nivel de cliente (nivel, cuenta y motivo)
+ * @var string $nivelAviso frase accionable cuando la cuenta no tiene nivel
  */
 use Tienda\Core\Csrf;
 $v = static fn (string $k, string $d = '') => e($store[$k] ?? $d);
@@ -151,6 +154,24 @@ $v = static fn (string $k, string $d = '') => e($store[$k] ?? $d);
                 <?= e($account['direccion'] ?: 'sin direccion') ?>
                 <?= e(trim(($account['cp'] ?? '') . ' ' . ($account['poblacion'] ?? ''))) ?>
             </p>
+            <p class="muted small">
+                Nivel de cliente de la tienda:
+                <?php if (($nivel['level'] ?? null) !== null): ?>
+                    <strong><?= e((string) $nivel['level']['label']) ?></strong>
+                    (nivel <?= (int) $nivel['level']['order'] ?>).
+                    Los nodos del menu con nivel minimo igual o menor se te muestran.
+                <?php else: ?>
+                    <strong>sin asignar</strong>.
+                <?php endif; ?>
+            </p>
+        </div>
+    <?php endif; ?>
+
+    <?php /* El nivel no se edita aqui: `tiendas.id_categ_cliente` es del
+             mayorista. Se explica el motivo y quien tiene que cambiarlo. */ ?>
+    <?php if (($nivel['level'] ?? null) === null): ?>
+        <div class="alert alert-warning">
+            <?= e((string) $nivelAviso) ?>
         </div>
     <?php endif; ?>
 </section>
