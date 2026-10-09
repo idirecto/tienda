@@ -64,6 +64,7 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
 | **Precio de venta de la tienda** | ✅ Completo: tarifa (`id_margen`) + beneficio (`mt_stores.markup`), con IVA incluido en la web y base sin IVA en el pedido |
 | **Gastos de envío** | ⚠️ Tarifa plana + gratis desde X €; falta el cálculo por **peso y provincia** de puntobyze |
 | **Emails al cliente y a la tienda** | ❌ No existe (no hay envío de correo: ni confirmación ni recuperar contraseña) |
+| **Logs por día y por tienda (compras, accesos y errores)** | ✅ Completo (ficheros en `storage/logs/<canal>/<día>/<tienda>.log` + visor `/panel/logs` + `tools/logs.php`; retención 30 días) |
 | Temas `moderno` y `minimal` | ⚠️ Sembrados, sin maquetar (los tokens valen para cualquiera) |
 | Panel maestro del mayorista | ❌ No existe (el alta pública ya enlaza cada tienda con su cuenta) |
 | Tests automatizados / CI | ❌ No existe |
@@ -79,6 +80,32 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
 - Sesión, CSRF y `password_hash` en el panel.
 - Almacenamiento conmutable local/S3 (en BD solo claves y URLs).
 - Verificación DNS (A/CNAME) con *lookup* inyectable para poder testear sin red.
+
+### Registro de logs por día y por tienda (2026-10-08)
+- **Todo en ficheros, sin tabla nueva**: una línea JSON por evento en
+  `storage/logs/<canal>/<AAAA-MM-DD>/<id-tienda>_<slug>.log`. Así el log no depende de la base de
+  datos que intenta diagnosticar y se puede leer con `tail`, `grep` o `jq`.
+- **`Core/Logger`**: niveles PSR-3 (`debug`…`critical`), canales (`compras`, `pedidos`, `acceso`,
+  `seguridad`, `panel`, `catalogo`, `sistema`), contexto (petición, tienda, IP, método, URL,
+  usuario) y **redacción de secretos**. La tienda del evento manda; si no, la de la sesión del
+  panel; si no, la del hostname. Nunca rompe la petición y captura también los errores **fatales**
+  de PHP.
+- **`Core/Log/LogReader`**: días, canales y tiendas con log; filtros por fecha, canal, nivel
+  mínimo, tienda y texto libre; paginación y conteos. El panel y la consola leen de aquí.
+- **Compras instrumentadas de punta a punta**: carrito (producto no disponible, recorte por
+  stock), checkout (pedido registrado, compra rechazada y fallo inesperado con contexto), envío a
+  idirecto y cambios de estado/cobro. Además: entradas al panel y a la cuenta del cliente,
+  registros de tienda y CSRF inválido.
+- **Visor `Panel > Logs`** (`/panel/logs`): resumen por nivel, filtros, detalle del contexto y
+  ruta del fichero. **Aislamiento**: cada tienda ve solo la suya (el `store_id` sale de la sesión
+  y el parámetro `tienda` se ignora); el rol `platform` ve todas y puede limpiar. Tarjeta
+  «Incidencias hoy» en el panel.
+- **`tools/logs.php`** para consola (`--tienda`, `--fecha`, `--desde/--hasta`, `--canal`,
+  `--nivel`, `--q`, `--limit`, `--resumen`, `--dias`, `--tiendas`, `--gc`).
+- **Configuración**: `config/log.php` y claves `LOG_*` (interruptor, nivel, carpeta, retención de
+  30 días e intervalo de limpieza). `Logger::gc()` borra los días viejos.
+- **Pruebas**: `verify.php` 261 → **290** (TODO OK), en carpeta temporal para no ensuciar los logs
+  reales, y HTTP real (compra, CSRF, visor y aislamiento con una tienda y un usuario temporales).
 
 ### Registro de tiendas (solo clientes del mayorista)
 - **`/registro`** (público): el tendero entra con el email y la contraseña de **su

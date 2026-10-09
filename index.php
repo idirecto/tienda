@@ -36,6 +36,7 @@ use Tienda\Controllers\Admin\CustomerController as CustomerAdminController;
 use Tienda\Controllers\Admin\DashboardController;
 use Tienda\Controllers\Admin\DesignController;
 use Tienda\Controllers\Admin\DomainController;
+use Tienda\Controllers\Admin\LogController;
 use Tienda\Controllers\Admin\MediaController;
 use Tienda\Controllers\Admin\MenuController;
 use Tienda\Controllers\Admin\PlatformMenuController;
@@ -48,6 +49,7 @@ use Tienda\Controllers\CheckoutController;
 use Tienda\Controllers\CustomerController;
 use Tienda\Controllers\RegistrationController;
 use Tienda\Controllers\StorefrontController;
+use Tienda\Core\Logger;
 use Tienda\Core\Router;
 use Tienda\Core\TenantResolver;
 
@@ -219,6 +221,11 @@ $router->post('/panel/dominios/{id}/borrar', [DomainController::class, 'destroy'
 $router->get('/panel/ajustes',         [SettingsController::class, 'index']);
 $router->post('/panel/ajustes',        [SettingsController::class, 'save']);
 
+// Logs: actividad por dia y por tienda. Cada tienda ve solo la suya; el rol
+// `platform` puede ver todas. No hay tabla: se leen los ficheros de storage/logs.
+$router->get('/panel/logs',            [LogController::class, 'index']);
+$router->post('/panel/logs/limpiar',   [LogController::class, 'purge']);
+
 // Subida de imagenes (usada por banners, productos, logo...)
 $router->post('/panel/media/subir',    [MediaController::class, 'upload']);
 $router->post('/panel/media/{id}/borrar', [MediaController::class, 'destroy']);
@@ -240,21 +247,32 @@ $router->get('/{ruta...}',             [StorefrontController::class, 'seoListado
 try {
     \Tienda\Core\View::setBasePath($router->basePath());
     $tenant = TenantResolver::resolve();
+    // Contexto del log: a partir de aqui, todo lo que se registre sabe de que
+    // tienda es (el panel puede afinarlo con la tienda del usuario).
+    Logger::setStore($tenant->id(), $tenant->slug());
     $router->dispatch($tenant);
 } catch (\Throwable $e) {
     http_response_code(500);
+
+    // Pista util en el log: el sintoma tipico de "Error interno" sin mas datos
+    // es que el usuario del servidor web no pueda leer .env (entonces ni hay
+    // credenciales ni se aplica APP_DEBUG). Se registra siempre, en depuracion y
+    // en produccion, para poder diagnosticar desde /panel/logs o por SSH.
+    $envFile = TIENDA_BASE . '/.env';
+    $pista = (is_file($envFile) && !is_readable($envFile))
+        ? ' (.env NO es legible por el usuario del servidor web: revisa permisos, '
+          . 'grupo www-data o ACL; ver deploy/setup-local-domain.sh)'
+        : '';
+    Logger::critical('sistema', 'Error no controlado: ' . $e->getMessage(), [
+        'exception' => get_class($e),
+        'file'      => $e->getFile() . ':' . $e->getLine(),
+        'ruta'      => (string) (parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/'),
+        'pista'     => $pista,
+    ]);
+
     if (config('app.debug', false)) {
-        echo '<h1>Error</h1><pre>' . htmlspecialchars((string) $e, ENT_QUOTES, 'UTF-8') . '</pre>';
+        echo '<h1>Error</h1><pre>' . htmlspecialchars((string) $e . $pista, ENT_QUOTES, 'UTF-8') . '</pre>';
     } else {
         echo '<h1>Error interno</h1>';
-        // Pista util en el log: el sintoma tipico de "Error interno" sin mas
-        // datos es que el usuario del servidor web no pueda leer .env (entonces
-        // ni hay credenciales ni se aplica APP_DEBUG).
-        $envFile = TIENDA_BASE . '/.env';
-        $pista = (is_file($envFile) && !is_readable($envFile))
-            ? ' [.env NO es legible por el usuario del servidor web: revisa permisos, '
-              . 'grupo www-data o ACL; ver deploy/setup-local-domain.sh]'
-            : '';
-        error_log('[tienda] ' . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine() . $pista);
     }
 }

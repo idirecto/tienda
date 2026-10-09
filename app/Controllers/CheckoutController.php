@@ -8,6 +8,7 @@ use Tienda\Core\Cart;
 use Tienda\Core\Checkout;
 use Tienda\Core\Controller;
 use Tienda\Core\CustomerAuth;
+use Tienda\Core\Logger;
 use Tienda\Core\Session;
 use Tienda\Core\ValidationException;
 use Tienda\Models\CustomerAddress;
@@ -78,6 +79,8 @@ final class CheckoutController extends Controller
             $this->redirect('carrito');
         }
 
+        $ship = [];
+        $totals = [];
         try {
             // Direccion de envio: la elegida de la libreta o la escrita a mano.
             $ship = $this->shipAddress($storeId);
@@ -89,13 +92,45 @@ final class CheckoutController extends Controller
                 'comment'        => (string) $this->input('comment', ''),
             ], $items, $totals);
         } catch (ValidationException $e) {
+            // Compra rechazada por datos del cliente (direccion, pago, email...):
+            // queda en el log de compras para poder explicar al cliente que fallo.
+            Logger::warning('compras', 'Compra rechazada: ' . $e->getMessage(), [
+                'store_id' => $storeId,
+                'cliente'  => (string) ($ship['email'] ?? ''),
+                'lineas'   => count($items),
+                'importe'  => (float) ($totals['total'] ?? 0),
+                'pago'     => (string) $this->input('payment_method', ''),
+            ]);
             Session::flash('error', $e->getMessage());
             $this->redirect('checkout');
+        } catch (\Throwable $e) {
+            // Fallo inesperado al registrar el pedido: se anota con el contexto
+            // de negocio y se deja subir (el front controller respondera 500).
+            Logger::critical('compras', 'Fallo al registrar la compra: ' . $e->getMessage(), [
+                'store_id'  => $storeId,
+                'exception' => get_class($e),
+                'file'      => $e->getFile() . ':' . $e->getLine(),
+                'cliente'   => (string) ($ship['email'] ?? ''),
+                'lineas'    => count($items),
+                'importe'   => (float) ($totals['total'] ?? 0),
+            ]);
+            throw $e;
         }
 
         // Solo cuando el pedido ya esta registrado se guarda la direccion en la
         // libreta del cliente (asi no queda una direccion vacia si algo falla).
         Checkout::rememberAddress($storeId, (int) $customer['id'], $ship);
+
+        Logger::info('compras', 'Pedido registrado', [
+            'store_id' => $storeId,
+            'pedido'   => (string) $result['code'],
+            'order_id' => (int) $result['order_id'],
+            'cliente'  => (string) ($customer['email'] ?? ''),
+            'lineas'   => count($items),
+            'unidades' => (int) ($totals['units'] ?? 0),
+            'importe'  => (float) ($totals['total'] ?? 0),
+            'pago'     => (string) $this->input('payment_method', ''),
+        ]);
 
         Cart::clear($storeId);
         Session::flash('success', 'Gracias. Hemos registrado tu pedido ' . $result['code'] . '.');

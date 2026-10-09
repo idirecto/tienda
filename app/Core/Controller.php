@@ -139,6 +139,14 @@ abstract class Controller
         }
 
         if (!Csrf::validate(is_string($token) ? $token : null)) {
+            // Queda en el log de seguridad: un token invalido puede ser una
+            // sesion caducada, pero tambien un intento de manipular el formulario.
+            Logger::warning('seguridad', 'Token CSRF invalido', [
+                'volver' => $redirect,
+                'metodo' => (string) ($_SERVER['REQUEST_METHOD'] ?? ''),
+                'ajax'   => $this->isAjax(),
+            ]);
+
             // En AJAX no tiene sentido redirigir: el carrito espera JSON y, si
             // recibe un 302, el navegador lo sigue y rompe la respuesta.
             if ($this->isAjax()) {

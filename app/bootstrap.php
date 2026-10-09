@@ -220,3 +220,14 @@ function icon_svg(string $name, string $class = '', int $size = 0): string
 
     return '<svg ' . $attrs . '>' . $path . '</svg>';
 }
+
+// -----------------------------------------------------------------------------
+// Registro de actividad de la aplicacion (storage/logs/<canal>/<dia>/<tienda>.log)
+//
+// Aqui solo se engancha la captura de errores FATALES de PHP: los que no se
+// pueden convertir en excepcion (memoria agotada, error de compilacion...) y que,
+// si no, se perderian. Las excepciones normales las registra el front controller
+// (`index.php`), y los eventos de negocio (compras, accesos, pedidos...) los
+// anotan los controladores con `Logger::info()` y compania.
+// -----------------------------------------------------------------------------
+\Tienda\Core\Logger::registerHandlers();

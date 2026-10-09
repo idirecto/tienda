@@ -30,6 +30,8 @@ use Tienda\Core\Dns;
 use Tienda\Core\Idirecto\Account;
 use Tienda\Core\Idirecto\OrderGateway;
 use Tienda\Core\Idirecto\Pricing;
+use Tienda\Core\Log\LogReader;
+use Tienda\Core\Logger;
 use Tienda\Core\Media\ImageOptimizer;
 use Tienda\Core\Media\MediaRules;
 use Tienda\Core\Registration;
@@ -65,6 +67,25 @@ function check(bool $cond, string $msg): void
     if ($cond) { $ok++; echo "  OK    $msg\n"; }
     else { $fail++; echo "  FALLO $msg\n"; }
 }
+
+/** Borra un directorio con su contenido (para la carpeta temporal de logs). */
+function rmdirRecursivo(string $dir): void
+{
+    if (!is_dir($dir)) {
+        return;
+    }
+    foreach (glob($dir . '/*') ?: [] as $item) {
+        is_dir($item) ? rmdirRecursivo($item) : @unlink($item);
+    }
+    @rmdir($dir);
+}
+
+// El sistema de logs se prueba en una CARPETA TEMPORAL: asi la verificacion no
+// ensucia los logs reales de la tienda (que son datos de produccion) ni depende
+// de lo que ya haya en storage/logs.
+$logsTmp = rtrim(sys_get_temp_dir(), '/\\') . '/tienda-logs-verify-' . getmypid();
+rmdirRecursivo($logsTmp);
+Logger::setPath($logsTmp);
 
 echo "==============================================================\n";
 echo " TIENDA - verificacion\n";
@@ -1961,6 +1982,162 @@ check(
         && str_contains($plataformaView, 'storeLevelWarning'),
     'el editor del menu y el panel de plataforma pintan el aviso accionable'
 );
+
+// =============================================================================
+// LOGS POR DIA Y POR TIENDA (canal `compras`, `pedidos`, `acceso`, `sistema`...)
+//
+// Todo se prueba en la carpeta temporal fijada al principio ($logsTmp): no se
+// toca storage/logs para no ensuciar los logs reales.
+// =============================================================================
+echo "\n== Logs por dia y por tienda ==\n";
+
+check(config('log.enabled') === true, 'el registro de actividad esta activado por defecto');
+check((int) config('log.retention_days') > 0, 'la retencion de logs es de ' . (int) config('log.retention_days') . ' dias');
+check(
+    is_array(config('log.channels')) && isset(config('log.channels')['compras']),
+    'hay un canal de compras declarado en config/log.php'
+);
+
+// Ruta: canal / dia / tienda. El slug se sanea para el nombre del fichero.
+$rutaLog = Logger::filePath('compras', '2026-10-08', 7, 'Mi Tienda Ñ');
+check(
+    str_ends_with($rutaLog, '/compras/2026-10-08/7_mi-tienda.log'),
+    'la ruta del log es por canal, dia y tienda (' . $rutaLog . ')'
+);
+check(
+    str_ends_with(Logger::filePath('sistema', '2026-10-08', 0, null), '/sistema/2026-10-08/_plataforma.log'),
+    'sin tienda (plataforma o CLI) el log va a _plataforma.log'
+);
+
+// Escritura real: el evento declara su tienda, se escribe y se puede releer.
+// Se usan ids de tienda que NO existen (y a los que no apunta ninguna prueba
+// anterior) para que el fichero contenga solo lo que se escribe aqui.
+$storeLog = 888888;
+$otraTiendaLog = 999999;
+
+Logger::info('compras', 'Verificacion: pedido registrado', [
+    'store_id' => $storeLog,
+    'pedido'   => 'P26-00000',
+    'password' => 'no-debe-guardarse',
+]);
+Logger::warning('compras', 'Verificacion: otra tienda', ['store_id' => $otraTiendaLog]);
+
+$ficherosLog = glob($logsTmp . '/compras/' . date('Y-m-d') . '/*.log') ?: [];
+check(
+    count(array_filter($ficherosLog, static fn (string $f): bool => preg_match('/(^|\/)(888888|999999)_/', $f) === 1)) === 2,
+    'cada tienda tiene su propio fichero de log del dia'
+);
+$ficheroTienda = glob($logsTmp . '/compras/' . date('Y-m-d') . '/' . $storeLog . '_*.log')[0] ?? '';
+check($ficheroTienda !== '', 'el fichero de la tienda lleva su id delante');
+
+$lineasLog = $ficheroTienda !== '' ? (string) @file_get_contents($ficheroTienda) : '';
+check(
+    str_contains($lineasLog, '"level":"info"') && str_contains($lineasLog, 'Verificacion: pedido registrado'),
+    'la entrada se guarda como una linea JSON con nivel y mensaje'
+);
+check(
+    !str_contains($lineasLog, 'no-debe-guardarse') && str_contains($lineasLog, '"password":"***"'),
+    'las contrasenas y tokens se redactan antes de escribir en el disco'
+);
+check(
+    str_contains($lineasLog, '"store_id":' . $storeLog),
+    'la entrada guarda la tienda del evento, no la del host que la sirve'
+);
+
+// Lector: dias, canales, tiendas, filtros y conteos.
+$lectorLog = new LogReader($logsTmp);
+check(in_array(date('Y-m-d'), $lectorLog->days(), true), 'el lector encuentra el dia de hoy');
+check(in_array('compras', $lectorLog->channels(), true), 'el lector encuentra el canal de compras');
+
+$filtroNivel = $lectorLog->search(['day' => date('Y-m-d'), 'store_id' => $storeLog, 'level' => 'warning'], 10, 0);
+check($filtroNivel['total'] === 0, 'el filtro de nivel es un MINIMO: debajo de el no se muestra nada');
+
+$filtroInfo = $lectorLog->search(['day' => date('Y-m-d'), 'store_id' => $storeLog, 'level' => 'info'], 10, 0);
+check(
+    $filtroInfo['total'] === 1 && ($filtroInfo['entries'][0]['message'] ?? '') === 'Verificacion: pedido registrado',
+    'el lector devuelve la entrada de la tienda y solo la suya'
+);
+
+$filtroTexto = $lectorLog->search(['day' => date('Y-m-d'), 'q' => 'p26-00000'], 10, 0);
+check($filtroTexto['total'] === 1, 'el lector busca texto tambien dentro del contexto (pedido)');
+
+$conteoLog = $lectorLog->countByLevel(['day' => date('Y-m-d')]);
+check(($conteoLog['info'] ?? 0) >= 1 && ($conteoLog['warning'] ?? 0) >= 1, 'el lector cuenta los eventos por nivel');
+
+$saludLog = $lectorLog->health($storeLog, date('Y-m-d'));
+check(($saludLog['error'] ?? 0) === 0 && isset($saludLog['total']), 'el resumen de incidencias del panel funciona');
+
+$tiendasLog = array_column($lectorLog->stores(date('Y-m-d')), 'store_id');
+check(
+    in_array($storeLog, $tiendasLog, true) && in_array($otraTiendaLog, $tiendasLog, true),
+    'el lector lista las tiendas con log de un dia'
+);
+
+// Retencion: un dia viejo se borra con la limpieza.
+$logViejo = $logsTmp . '/compras/2000-01-01/1_viejo.log';
+@mkdir(dirname($logViejo), 0775, true);
+@file_put_contents($logViejo, "{\"level\":\"info\"}\n");
+$borradosLog = Logger::gc(true);
+check(!is_file($logViejo) && $borradosLog >= 1, 'la limpieza borra los dias anteriores a la retencion');
+
+// El log no puede depender de la base de datos que intenta diagnosticar.
+check(
+    str_contains((string) file_get_contents(TIENDA_BASE . '/config/log.php'), 'no hay tabla en la base de datos')
+        || str_contains((string) file_get_contents(TIENDA_BASE . '/config/log.php'), 'no debe depender de'),
+    'el log se guarda en ficheros, no en una tabla que pueda caerse con la web'
+);
+
+// Enganches: errores globales y eventos de negocio.
+$indexPhp = (string) file_get_contents(TIENDA_BASE . '/index.php');
+$bootstrapPhp = (string) file_get_contents(TIENDA_BASE . '/app/bootstrap.php');
+$checkoutPhp = (string) file_get_contents(TIENDA_BASE . '/app/Controllers/CheckoutController.php');
+$orderControllerPhp = (string) file_get_contents(TIENDA_BASE . '/app/Controllers/Admin/OrderController.php');
+$cartPhp = (string) file_get_contents(TIENDA_BASE . '/app/Core/Cart.php');
+
+check(
+    str_contains($indexPhp, "Logger::critical('sistema'") && str_contains($bootstrapPhp, 'Logger::registerHandlers'),
+    'los errores no controlados y los fatales quedan registrados'
+);
+check(
+    str_contains($checkoutPhp, "Logger::info('compras'") && str_contains($checkoutPhp, "Logger::critical('compras'"),
+    'la compra registra el pedido y, si falla, deja un critico con contexto'
+);
+check(
+    str_contains($orderControllerPhp, "Logger::info('pedidos'") && str_contains($orderControllerPhp, "Logger::error('pedidos'"),
+    'el envio a idirecto y sus fallos quedan en el log de pedidos'
+);
+check(
+    !str_contains($cartPhp, 'error_log(') && str_contains($cartPhp, "Logger::warning('compras'"),
+    'el carrito escribe en el log de compras, no en el log suelto de PHP'
+);
+check(
+    str_contains((string) file_get_contents(TIENDA_BASE . '/app/Controllers/Admin/LogController.php'), 'isPlatform')
+        && str_contains((string) file_get_contents(TIENDA_BASE . '/app/Controllers/Admin/LogController.php'), 'gcIfDue'),
+    'el visor aisla por tienda, deja a la plataforma ver todas y limpia al abrirse'
+);
+check(
+    str_contains($indexPhp, "'/panel/logs'") && str_contains($indexPhp, "'/panel/logs/limpiar'"),
+    'las rutas del visor de logs estan declaradas'
+);
+check(
+    str_contains((string) file_get_contents(TIENDA_BASE . '/app/Views/layouts/panel.php'), 'panel/logs')
+        && str_contains((string) file_get_contents(TIENDA_BASE . '/app/Views/panel/dashboard.php'), 'Incidencias hoy'),
+    'el panel da acceso a los logs y resume las incidencias del dia'
+);
+check(
+    is_file(TIENDA_BASE . '/tools/logs.php')
+        && str_contains((string) file_get_contents(TIENDA_BASE . '/.env.example'), 'LOG_RETENTION_DAYS'),
+    'hay herramienta de consola y las claves del log estan en .env.example'
+);
+
+// La documentacion interna no se sirve por web y los logs tampoco.
+check(
+    str_contains((string) file_get_contents(TIENDA_BASE . '/.htaccess'), 'storage')
+        && str_contains((string) file_get_contents(TIENDA_BASE . '/.gitignore'), '/storage/logs/*'),
+    'los ficheros de log no se sirven por web ni se suben al repositorio'
+);
+
+rmdirRecursivo($logsTmp);
 
 echo "\n==============================================================\n";
 if ($fail === 0) {

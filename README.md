@@ -545,8 +545,9 @@ tienda/
 │   │                        004_checkout.sql (mt_)
 │   ├── seeds/               001_seed.sql (planes, temas, tienda demo)
 │   └── migrate.php          Ejecutor de migraciones y semillas
-├── tools/verify.php         Comprobacion automatica (244)
+├── tools/verify.php         Comprobacion automatica (290)
 ├── tools/cache-clear.php    Gestion de la cache de datos (estado, vaciar, patrones, gc)
+├── tools/logs.php           Consulta los logs por consola (filtros, resumen, dias, gc)
 └── deploy/                  Vhosts/plantillas de Apache y nginx + scripts
 ```
 
@@ -751,6 +752,56 @@ confirmación (y, con ellos, recuperar la contraseña del cliente).
 
 ---
 
+## 8.quinquies Registro de logs (por día y por tienda)
+
+Para saber **qué ha pasado** cuando algo falla (sobre todo en una compra), la app
+escribe un registro en **ficheros**, uno por canal, día y tienda:
+
+```
+storage/logs/<canal>/<AAAA-MM-DD>/<id-tienda>_<slug>.log
+storage/logs/compras/2026-10-08/1_idirecto-demo.log
+storage/logs/sistema/2026-10-08/_plataforma.log     # plataforma, CLI o errores sin tienda
+```
+
+Una línea = un evento JSON, así que se puede leer con `tail`, `grep` o `jq` (y
+**no** está en la base de datos a propósito: el log no debe depender de lo que
+intenta diagnosticar):
+
+```json
+{"ts":"2026-10-08T12:30:05+02:00","level":"info","channel":"compras","store_id":1,
+ "store":"idirecto-demo","request_id":"a1b2c3","message":"Pedido registrado",
+ "context":{"pedido":"P26-00012","importe":149.9,"pago":"transfer"},
+ "http":{"method":"POST","url":"/checkout","ip":"10.0.0.4"}}
+```
+
+- **Canales**: `compras`, `pedidos`, `acceso`, `seguridad`, `panel`, `catalogo`,
+  `sistema`. **Niveles**: `debug`, `info`, `notice`, `warning`, `error`, `critical`.
+- **Las compras se registran de punta a punta**: alta en el carrito (producto no
+  disponible o cantidad recortada por stock), pedido registrado, compra rechazada
+  con su motivo, fallo inesperado con contexto y envío a idirecto (por línea).
+- **Las contraseñas, tokens y datos de tarjeta se sustituyen por `***`** antes de
+  tocar el disco.
+- Se revisan en **Panel > Logs** (`/panel/logs`): filtros por fecha, canal, nivel
+  mínimo y texto, resumen por nivel y el detalle del contexto. **Cada tienda ve
+  solo sus logs**; el rol `platform` ve todas las tiendas y puede forzar la limpieza.
+  El panel muestra además una tarjeta de **incidencias de hoy**.
+- Por consola:
+
+```bash
+php tools/logs.php --ayuda
+php tools/logs.php --tienda=1 --fecha=2026-10-08 --nivel=error
+php tools/logs.php --canal=compras --q="P26-00012"
+php tools/logs.php --resumen          # cuenta por nivel
+php tools/logs.php --gc               # borra lo anterior a la retención
+```
+
+- **Configuración** (`.env`): `LOG_ENABLED`, `LOG_LEVEL` (nivel mínimo),
+  `LOG_PATH`, `LOG_RETENTION_DAYS` (30 por defecto) y `LOG_GC_INTERVAL`. Los días
+  viejos se borran solos; `storage/logs/` está en `.gitignore` y **no se sirve por
+  web** (`.htaccess` y el `server` block de nginx bloquean `storage/`).
+
+---
+
 ## 9. Base de datos
 
 Tablas propias (prefijo `mt_`, aditivas sobre la BD central):
@@ -786,8 +837,9 @@ y pedido, con el precio a tarifa + beneficio e IVA incluido), storefront con
 portada con slider y accesos rápidos, tarjetas de producto con especificaciones clave
 y etiqueta de stock, filtros avanzados por socket/gráfica/memoria/formato/marca/precio,
 panel completo (diseño, banners, avisos, productos, dominios, clientes, ajustes),
-**pedidos con estados, cobro y envío por líneas al mayorista**, subida de imágenes con
-validación y cuota de plan aplicada en servidor.
+**pedidos con estados, cobro y envío por líneas al mayorista**, **registro de logs por
+día y por tienda** (visor en el panel, `tools/logs.php` y retención automática), subida de
+imágenes con validación y cuota de plan aplicada en servidor.
 
 **Pendiente (siguientes iteraciones):**
 

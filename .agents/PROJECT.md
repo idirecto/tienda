@@ -87,8 +87,10 @@ public/                    ÚNICO directorio servido como estático
   assets/css|js            shop.css, panel.css, shop.js, panel.js
   uploads/                 Archivos locales (si STORAGE_DRIVER=local)
 storage/                   cache/ y logs/ (escritura de la app; la caché se limpia sola)
-tools/verify.php           244 comprobaciones automáticas
+  logs/<canal>/<día>/       Un fichero JSON-lines por día y tienda (`Logger`)
+tools/verify.php           290 comprobaciones automáticas
 tools/cache-clear.php      Gestiona la caché de datos (estado, vaciar, patrones, gc)
+tools/logs.php             Consulta los logs por consola (filtros, resumen, días, tiendas, gc)
 ```
 
 ---
@@ -102,6 +104,8 @@ tools/cache-clear.php      Gestiona la caché de datos (estado, vaciar, patrones
 | `Appearance` | **Sistema de diseño**: resuelve los tokens (config + tienda + `theme_tokens`), deriva hover/suave/contraste y emite el CSS de variables `--c-*` |
 | `Database` | PDO singleton; `select/first/scalar/execute/insert/update/delete/transaction/tableExists` |
 | `Cache` | **Caché de datos**: `get/set/delete/remember/flush/forgetPattern/gc` con driver `Cache/FileCache` o `Cache/ApcuCache` (`config/cache.php`). Memo por petición + bloqueo antiestampida. **Nunca guarda precios** |
+| `Logger` | **Registro de actividad en ficheros por día y tienda**: `debug/info/notice/warning/error/critical` → `storage/logs/<canal>/<AAAA-MM-DD>/<id-tienda>_<slug>.log` (JSON-lines), redacción de secretos, captura de errores fatales y limpieza por retención (`config/log.php`) |
+| `Core/Log/LogReader` | **Lectura de los logs** (panel y `tools/logs.php`): días, canales y tiendas; filtros por fecha, canal, nivel mínimo, tienda y texto; paginación y conteos. Lee acotado (bytes y entradas) para no tumbar el visor |
 | `Router` | Compila `{param}`, detecta el subdirectorio base y despacha |
 | `TenantResolver` | **Decide qué tienda se sirve** según el hostname |
 | `Tenant` | Contexto inmutable de la tienda (nombre, tema, colores, radios, cuotas…) |
@@ -424,8 +428,13 @@ atrás. Solo entran categorías **con stock** y el árbol se cachea 30 min con
 
 `login`, `logout`, `dashboard`, `diseno` (+ `diseno/tokens` y `diseno/previa`
 para la vista previa), `banners`, `avisos`, `productos` (CRUD), `dominios` (alta,
-verificar, borrar), `ajustes`, `media/subir` y `media/{id}/borrar`. Todas exigen
-sesión + CSRF, y filtran por el `store_id` de la sesión.
+verificar, borrar), `ajustes`, `logs`, `media/subir` y `media/{id}/borrar`. Todas
+exigen sesión + CSRF, y filtran por el `store_id` de la sesión.
+
+`/panel/logs` (+ `POST /panel/logs/limpiar`) es el **visor del registro de
+actividad**: lee los ficheros de `storage/logs` con `Core/Log/LogReader` y filtra
+por fecha, canal, nivel mínimo y texto. Cada tienda ve **solo sus** logs; el rol
+`platform` puede ver todas las tiendas y forzar la limpieza (ver §7ter).
 
 Además, el módulo de pedidos (ver §7bis):
 
@@ -480,6 +489,34 @@ La tarifa sale de `precios` con el `id_margen` de la tienda (respaldo:
 
 `OrderGateway::preview()` hace exactamente los mismos cálculos **sin escribir**, y
 es lo que la ficha muestra antes de confirmar (base, IVA y total).
+
+### 7ter. Registro de logs (por día y por tienda)
+
+Todo se anota en **ficheros**, nunca en la base de datos (el log no debe depender
+de lo que intenta diagnosticar):
+
+```
+storage/logs/<canal>/<AAAA-MM-DD>/<id-tienda>_<slug>.log
+storage/logs/compras/2026-10-08/1_idirecto-demo.log
+storage/logs/sistema/2026-10-08/_plataforma.log
+```
+
+- Una línea = un evento **JSON** con `ts`, `level`, `channel`, `store_id`, `store`,
+  `request_id`, `message`, `context` y (en web) `http.method/url/ip` y `user`.
+- **`Logger`** (escritura): niveles `debug|info|notice|warning|error|critical`,
+  redacción de secretos (`password`, `token`, `csrf`, tarjeta… → `***`) y contexto
+  automático. La tienda sale del propio evento; si no, de la sesión del panel; si
+  no, del hostname. Si el fichero no se puede escribir **no rompe** la petición, y
+  además captura los errores **fatales** de PHP.
+- **`LogReader`** (lectura): `days`, `channels`, `stores`, `search` (filtros:
+  fecha, canal, **nivel mínimo**, tienda y texto libre) y `countByLevel`.
+- **Compras instrumentadas**: carrito (no disponible / recorte por stock), checkout
+  (pedido registrado; compra rechazada; fallo inesperado con contexto), envío a
+  idirecto y cambios de estado/cobro; más accesos, registro de tiendas y CSRF.
+- **Visor** `Panel > Logs` y consola `php tools/logs.php` (`--ayuda`). Cada tienda
+  ve solo lo suyo (el `store_id` sale de la sesión y `?tienda=` se ignora); el rol
+  `platform` ve todas y puede limpiar. Ajustes en `config/log.php` / `LOG_*`:
+  interruptor, nivel, carpeta, retención (30 días) e intervalo de limpieza.
 
 ### Temas
 
@@ -563,7 +600,7 @@ servidores no los traen en `/etc/mime.types` y servirían la imagen sin
 
 ```bash
 sudo bash deploy/setup-local-domain.sh     # /etc/hosts + VirtualHost + permisos
-php tools/verify.php                       # 244 comprobaciones
+php tools/verify.php                       # 290 comprobaciones
 php -S 127.0.0.1:8099 index.php            # servidor embebido (alternativa)
 ```
 
@@ -591,7 +628,7 @@ con repetir el script con el nuevo nombre y tocar esas tres claves del `.env`.
 ## 10. Verificación antes de dar algo por hecho
 
 ```bash
-php tools/verify.php                 # debe decir: TODO OK (244 comprobaciones)
+php tools/verify.php                 # debe decir: TODO OK (290 comprobaciones)
 curl -s -o /dev/null -w '%{http_code}\n' http://local.tienda/
 curl -s -o /dev/null -w '%{http_code}\n' http://local.tienda/catalogo
 curl -s -o /dev/null -w '%{http_code}\n' "http://local.tienda/catalogo?cat=9&subcat=102&f%5Bsocket%5D%5B0%5D=am5"

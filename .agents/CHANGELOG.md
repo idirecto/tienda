@@ -5,6 +5,57 @@ El detalle línea a línea está en `git log`.
 
 ---
 
+## 2026-10-08 · Sistema de logs por día y por tienda (con las compras instrumentadas)
+
+**Motivo (petición por chat):** «crea un sistema de logs, sobre todo para la web en las compras
+por si falla algo tener donde revisar logs, que se generen por día y por tienda para identificar
+algún problema». Decisiones confirmadas con el dueño: (1) revisión desde **panel de tienda +
+panel de plataforma + consola**, y (2) **solo ficheros** por día y tienda, sin tabla nueva.
+
+**Qué había:** un único `storage/logs/php-error.log` donde convivían los avisos de PHP y cuatro
+`error_log('[tienda] …')` sueltos (carrito, login de cliente, registro, envío a idirecto). Sin
+fecha por tienda, sin niveles, sin forma de verlo desde el panel y sin borrado.
+
+**Qué se hizo**
+
+- **`Tienda\Core\Logger`** (escritura): una línea JSON por evento en
+  `storage/logs/<canal>/<AAAA-MM-DD>/<id-tienda>_<slug>.log`. Niveles PSR-3
+  (`debug`…`critical`), canales (`compras`, `pedidos`, `acceso`, `seguridad`, `panel`,
+  `catalogo`, `sistema`), contexto (`request_id`, tienda, IP, método, URL, usuario) y
+  **redacción de secretos** (`password`, `token`, `csrf`, tarjeta… → `***`). La tienda del evento
+  manda sobre la del host; si no, la de la sesión del panel; si no, la resuelta por hostname. Un
+  fallo al escribir **nunca** rompe la petición: cae al log de PHP.
+- **`Tienda\Core\Log\LogReader`** (lectura): lista días/canales/tiendas y filtra por fecha,
+  canal, **nivel mínimo**, tienda y texto libre (mensaje + contexto), con paginación y conteos.
+  Lee como mucho N bytes del final de cada fichero y N entradas, para que un fichero enorme no
+  tumbe el visor.
+- **`config/log.php`** + claves `LOG_*` en `.env` y `.env.example`: interruptor, nivel mínimo,
+  carpeta, retención (30 días) e intervalo de limpieza. `Logger::gc()` borra los días viejos.
+- **Compras instrumentadas**: el checkout anota `info` del pedido registrado (código, importe,
+  líneas y forma de pago), `warning` de cada compra rechazada con su motivo y `critical` con
+  contexto si falla de forma inesperada; el carrito deja de usar `error_log` y pasa al canal
+  `compras` (producto no disponible y cantidad recortada por stock). El envío a idirecto anota
+  `info`/`warning`/`error` (pedido del mayorista, referencia y líneas).
+- **Accesos y seguridad**: entradas correctas y fallidas al panel y a la cuenta del cliente,
+  registros de tienda rechazados y tokens CSRF inválidos. Los errores no controlados
+  (`index.php`) y los **fatales de PHP** (`register_shutdown_function`) van al canal `sistema`.
+- **Panel > Logs** (`/panel/logs`): visor con filtros, resumen por nivel, detalle del contexto
+  en JSON y la ruta del fichero para SSH. **Cada tienda ve solo la suya** (el `store_id` sale de
+  la sesión; el parámetro `tienda` se ignora en los usuarios que no son de plataforma), y el rol
+  `platform` puede ver todas y limpiar. Tarjeta «Incidencias hoy» en el panel.
+- **`tools/logs.php`**: consulta por consola (`--tienda`, `--fecha`, `--desde/--hasta`,
+  `--canal`, `--nivel`, `--q`, `--limit`) y `--resumen`, `--dias`, `--tiendas`, `--gc`.
+- **Pruebas:** `verify.php` 261 → **290** (TODO OK) con 29 comprobaciones nuevas que usan una
+  carpeta temporal para no ensuciar los logs reales. Probado en **HTTP real**: compra y CSRF
+  fallido (con IP y URL), visor como plataforma y **aislamiento** con una tienda y un usuario
+  temporales (borrados después): el dueño de la tienda 235 pidiendo `?tienda=1` no ve nada de la
+  tienda 1 ni le aparece el selector. `/storage/logs/` sigue devolviendo 403.
+
+**Nota:** los logs viven en `storage/logs/` (en `.gitignore`) y no se sirven por web
+(`.htaccess` y el `server` block de nginx ya bloquean `storage/`).
+
+---
+
 ## 2026-10-08 · Nivel de cliente: aviso accionable y nivel visible en Ajustes
 
 **Motivo (petición por chat):** al entrar en el panel de la tienda `xgrabu` el editor del

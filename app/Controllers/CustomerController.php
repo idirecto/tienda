@@ -7,6 +7,7 @@ namespace Tienda\Controllers;
 use Tienda\Core\Cart;
 use Tienda\Core\Controller;
 use Tienda\Core\CustomerAuth;
+use Tienda\Core\Logger;
 use Tienda\Core\Session;
 use Tienda\Models\Customer;
 use Tienda\Models\CustomerAddress;
@@ -56,12 +57,21 @@ final class CustomerController extends Controller
 
         if ($email === '' || $password === '' || !CustomerAuth::attempt($storeId, $email, $password)) {
             CustomerAuth::noteAttempt($storeId);
-            error_log('[tienda] entrada de cliente fallida en la tienda ' . $storeId . ': ' . $email);
+            Logger::warning('acceso', 'Entrada de cliente fallida', [
+                'store_id' => $storeId,
+                'email'    => mb_substr($email, 0, 180),
+            ]);
             Session::flash('error', 'El email o la contrasena no son correctos.');
             $this->redirect('cuenta/login');
         }
 
         CustomerAuth::clearAttempts($storeId);
+        $cliente = CustomerAuth::customer($storeId);
+        Logger::info('acceso', 'Entrada de cliente correcta', [
+            'store_id'    => $storeId,
+            'cliente_id'  => (int) ($cliente['id'] ?? 0),
+            'email'       => mb_substr($email, 0, 180),
+        ]);
         Session::flash('success', 'Bienvenido de nuevo.');
 
         $this->redirect($return !== '' ? $return : 'cuenta');

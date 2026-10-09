@@ -6,6 +6,7 @@ namespace Tienda\Controllers\Admin;
 
 use Tienda\Core\Auth;
 use Tienda\Core\Controller;
+use Tienda\Core\Log\LogReader;
 use Tienda\Models\Banner;
 use Tienda\Models\Catalog;
 use Tienda\Models\Domain;
@@ -42,6 +43,8 @@ final class DashboardController extends Controller
                 'avisos'            => count(Notice::forStore($storeId)),
                 'max_avisos'        => $tenant->maxNotices(),
                 'dominios'          => count(Domain::forStore($storeId)),
+                // Incidencias de HOY (aviso, error y critico) del log de la tienda.
+                'incidencias'       => LogReader::make()->health($storeId),
                 'pedidos_activos'   => Order::countActiveForStore($storeId),
             ],
             'catalogReady' => Catalog::isAvailable(),

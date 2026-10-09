@@ -6,6 +6,7 @@ namespace Tienda\Controllers\Admin;
 
 use Tienda\Core\Auth;
 use Tienda\Core\Controller;
+use Tienda\Core\Logger;
 use Tienda\Core\Session;
 
 /**
@@ -34,11 +35,22 @@ final class AuthController extends Controller
         }
 
         if (!Auth::attempt($email, $password)) {
+            // Entrada fallida al panel: puede ser el tendero equivocandose de
+            // contrasena o alguien probando; queda en el log de acceso.
+            Logger::warning('acceso', 'Entrada al panel fallida', [
+                'email' => mb_substr($email, 0, 180),
+            ]);
             Session::flash('error', 'Credenciales incorrectas.');
             $this->redirect('panel/login');
         }
 
         // El usuario puede pertenecer a una tienda distinta a la resuelta por host.
+        $user = Auth::user();
+        Logger::info('acceso', 'Entrada al panel correcta', [
+            'user_id' => (int) ($user['id'] ?? 0),
+            'email'   => (string) ($user['email'] ?? $email),
+            'rol'     => Auth::role(),
+        ]);
         Session::flash('success', 'Bienvenido de nuevo.');
         $this->redirect('panel');
     }

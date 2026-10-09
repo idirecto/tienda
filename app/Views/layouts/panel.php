@@ -27,6 +27,7 @@ $nav = [
     ['panel/productos','Productos propios','Tu catalogo adicional'],
     ['panel/dominios', 'Dominios',         'Tu direccion web'],
     ['panel/ajustes',  'Ajustes',          'Datos y usuarios'],
+    ['panel/logs',     'Logs',             'Actividad, compras y errores por dia'],
 ];
 
 // El menu de la plataforma solo lo ve el rol `platform`.

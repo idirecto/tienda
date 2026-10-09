@@ -102,10 +102,31 @@ LEFT JOIN mt_plans p ON p.id = s.id_plan;
 SELECT id, store_id, domain, status, last_result FROM mt_domains;
 ```
 
+## Logs (por día y por tienda)
+
+```bash
+# Ficheros: storage/logs/<canal>/<AAAA-MM-DD>/<id-tienda>_<slug>.log
+tail -f storage/logs/compras/$(date +%F)/1_idirecto-demo.log
+grep -i error storage/logs/compras/2026-10-08/*.log | jq .
+
+# Consola (todas las opciones con --ayuda)
+php tools/logs.php --tienda=1 --fecha=2026-10-08 --nivel=error
+php tools/logs.php --canal=compras --q="P26-00012" --limit=100
+php tools/logs.php --resumen        # cuenta por nivel
+php tools/logs.php --dias --tiendas
+php tools/logs.php --gc             # borra lo anterior a LOG_RETENTION_DAYS
+
+# Visor del panel (cada tienda ve solo la suya; `platform` ve todas)
+curl -s -o /dev/null -w '%{http_code}\n' http://local.tienda/panel/logs
+```
+
+Los logs **nunca** se guardan en la base de datos y `storage/logs/` no se sirve por
+web (403). Se anotan con `Logger::info('compras', ...)`; el lector es `LogReader`.
+
 ## Verificación
 
 ```bash
-php tools/verify.php                        # 33 comprobaciones del proyecto
+php tools/verify.php                        # 290 comprobaciones del proyecto
 bash .agents/scripts/check-privacidad.sh    # la documentación NO debe ser web
 ```
 

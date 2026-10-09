@@ -8,6 +8,7 @@ use Tienda\Core\Auth;
 use Tienda\Core\Controller;
 use Tienda\Core\Idirecto\Account;
 use Tienda\Core\Idirecto\OrderGateway;
+use Tienda\Core\Logger;
 use Tienda\Core\Session;
 use Tienda\Core\ValidationException;
 use Tienda\Models\Catalog;
@@ -99,6 +100,13 @@ final class OrderController extends Controller
 
         $orderId = Order::createWithItems($storeId, $data, $normalized['lines']);
         Order::syncIdirectoPrices($orderId, $this->storeRow($storeId));
+
+        Logger::info('pedidos', 'Pedido creado a mano en el panel', [
+            'store_id' => $storeId,
+            'order_id' => $orderId,
+            'cliente'  => (string) ($data['customer_name'] ?? ''),
+            'lineas'   => count($normalized['lines']),
+        ]);
 
         Session::flash('success', 'Pedido creado. Ya puedes enviarlo al mayorista.');
         $this->redirect('panel/pedidos/' . $orderId);
@@ -200,6 +208,12 @@ final class OrderController extends Controller
         $status = (int) $this->input('status', Order::STATUS_ACTIVE);
 
         Order::setStatus((int) $order['id'], $status);
+        Logger::info('pedidos', 'Estado de pedido cambiado', [
+            'store_id' => $storeId,
+            'order_id' => (int) $order['id'],
+            'pedido'   => (string) ($order['code'] ?? ''),
+            'estado'   => Order::statusLabel(Order::normalizeStatus($status)),
+        ]);
         Session::flash('success', 'Pedido marcado como "' . Order::statusLabel(Order::normalizeStatus($status)) . '".');
         $this->redirect('panel/pedidos/' . $order['id']);
     }
@@ -220,6 +234,12 @@ final class OrderController extends Controller
         $pagado = (string) $this->input('payment_status', '1') === '1';
 
         Order::setPaymentStatus((int) $order['id'], $pagado ? 1 : 0);
+        Logger::info('pedidos', $pagado ? 'Pedido marcado como pagado' : 'Pedido vuelto a pendiente de pago', [
+            'store_id' => $storeId,
+            'order_id' => (int) $order['id'],
+            'pedido'   => (string) ($order['code'] ?? ''),
+            'importe'  => (float) ($order['total'] ?? 0),
+        ]);
         Session::flash('success', $pagado ? 'Pedido marcado como pagado.' : 'Pedido pendiente de pago.');
         $this->redirect('panel/pedidos/' . $order['id']);
     }
@@ -269,6 +289,18 @@ final class OrderController extends Controller
 
         try {
             $result = OrderGateway::send($store, $order, $ids);
+
+            Logger::info('pedidos', 'Lineas enviadas a idirecto', [
+                'store_id'    => $storeId,
+                'order_id'    => (int) $order['id'],
+                'pedido'      => (string) ($order['code'] ?? ''),
+                'idirecto'    => (int) $result['pedido_id'],
+                'referencia'  => (string) $result['referencia'],
+                'lineas'      => (int) $result['lineas'],
+                'importe'     => (float) $result['total'],
+                'completo'    => (bool) $result['completo'],
+            ]);
+
             Session::flash(
                 'success',
                 'Enviado a idirecto como pedido #' . $result['pedido_id'] . ' (' . $result['referencia'] . '): '
@@ -276,9 +308,22 @@ final class OrderController extends Controller
                 . ($result['completo'] ? ' El pedido ya esta completo en el mayorista.' : ' Quedan lineas por enviar.')
             );
         } catch (ValidationException $e) {
+            Logger::warning('pedidos', 'Envio a idirecto rechazado: ' . $e->getMessage(), [
+                'store_id' => $storeId,
+                'order_id' => (int) $order['id'],
+                'pedido'   => (string) ($order['code'] ?? ''),
+                'lineas'   => count($ids),
+            ]);
             Session::flash('error', $e->getMessage());
         } catch (\Throwable $e) {
-            error_log('[tienda] error al enviar el pedido ' . $order['id'] . ' a idirecto: ' . $e->getMessage());
+            Logger::error('pedidos', 'Fallo al enviar el pedido a idirecto: ' . $e->getMessage(), [
+                'store_id'  => $storeId,
+                'order_id'  => (int) $order['id'],
+                'pedido'    => (string) ($order['code'] ?? ''),
+                'exception' => get_class($e),
+                'file'      => $e->getFile() . ':' . $e->getLine(),
+                'lineas'    => count($ids),
+            ]);
             Session::flash('error', 'No se pudo crear el pedido en el mayorista: ' . $e->getMessage());
         }
 

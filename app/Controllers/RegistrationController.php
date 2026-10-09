@@ -8,6 +8,7 @@ use Tienda\Core\Auth;
 use Tienda\Core\Config;
 use Tienda\Core\Controller;
 use Tienda\Core\Idirecto\Account;
+use Tienda\Core\Logger;
 use Tienda\Core\Registration;
 use Tienda\Core\Session;
 use Tienda\Core\ValidationException;
@@ -73,7 +74,10 @@ final class RegistrationController extends Controller
         $cuenta = Account::login($email, $accountPassword);
         if ($cuenta === null) {
             $this->noteAttempt();
-            error_log('[tienda] registro rechazado para ' . $email . ' desde ' . $this->clientIp() . ': cuenta no valida');
+            Logger::warning('acceso', 'Registro de tienda rechazado: cuenta no valida', [
+                'email' => mb_substr($email, 0, 180),
+                'ip'    => $this->clientIp(),
+            ]);
             Session::flash('error', 'No encontramos ninguna cuenta activa en idirecto con esas credenciales.');
             $this->redirect('registro');
         }
@@ -93,7 +97,11 @@ final class RegistrationController extends Controller
             Session::flash('error', $e->getMessage());
             $this->redirect('registro');
         } catch (\Throwable $e) {
-            error_log('[tienda] error al registrar la tienda de ' . $email . ': ' . $e->getMessage());
+            Logger::error('acceso', 'Fallo al registrar la tienda: ' . $e->getMessage(), [
+                'email'     => mb_substr($email, 0, 180),
+                'exception' => get_class($e),
+                'file'      => $e->getFile() . ':' . $e->getLine(),
+            ]);
             Session::flash('error', 'No se ha podido crear la tienda. Intentalo de nuevo en unos minutos.');
             $this->redirect('registro');
         }
@@ -105,6 +113,14 @@ final class RegistrationController extends Controller
             Session::flash('success', 'Tu tienda esta creada. Entra con tu email y contrasena.');
             $this->redirect('panel/login');
         }
+
+        // Ya con sesion: el log queda en el fichero de la tienda recien creada.
+        Logger::info('acceso', 'Tienda registrada', [
+            'store_id' => (int) ($result['store_id'] ?? 0),
+            'slug'     => (string) ($result['slug'] ?? ''),
+            'email'    => mb_substr($email, 0, 180),
+            'cuenta'   => (int) $cuenta['id'],
+        ]);
 
         $publicUrl = $this->publicUrl($result['slug']);
         Session::flash(

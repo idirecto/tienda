@@ -21,6 +21,26 @@ _(vacío — sin petición pendiente)_
 
 Cada petición terminada se anota aquí con la fecha, qué se pidió y qué se hizo.
 
+### 2026-10-08 · Sistema de logs por día y por tienda (petición por chat)
+
+**Pedido:** «actúa como desarrollador senior full-stack experto en PHP 8.4 y MySQL/MariaDB, crea
+un sistema de logs, sobre todo para la web en las compras por si falla algo tener donde revisar
+logs, que se generen por día y por tienda para identificar algún problema».
+
+**Decisión confirmada:** se revisan desde **panel de tienda + panel de plataforma + consola**
+(`/panel/logs` y `php tools/logs.php`) y se guardan **solo en ficheros** por día y tienda, sin
+tabla nueva.
+
+**Hecho:** `Core/Logger` (línea JSON por evento en
+`storage/logs/<canal>/<AAAA-MM-DD>/<id-tienda>_<slug>.log`, niveles PSR-3, redacción de
+secretos, captura de errores fatales y limpieza por retención) y `Core/Log/LogReader` (filtros por
+fecha, canal, nivel mínimo, tienda y texto, con paginación); `config/log.php` + claves `LOG_*`;
+compras instrumentadas (checkout, carrito, envío a idirecto) más accesos, CSRF y errores;
+visor **Panel > Logs** con aislamiento por tienda (la plataforma ve todas) y tarjeta de
+incidencias en el panel; y `tools/logs.php` para consola. `verify.php` 261 → **290** (TODO OK),
+probado en HTTP real con una tienda y un usuario temporales (aislamiento incluido). Detalle en
+`CHANGELOG.md` y `STATE.md`.
+
 ### 2026-10-08 · Nivel de cliente: aviso accionable y nivel visible en Ajustes (petición por chat)
 
 **Pedido:** «me da este error en valduran cuando ingreso con los datos de la cuenta: *La

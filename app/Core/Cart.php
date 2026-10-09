@@ -39,10 +39,15 @@ final class Cart
         $product = self::loadProduct($storeId, $source, $productId);
 
         if ($product === null) {
-            // Se deja rastro en el log del proyecto (storage/logs/php-error.log)
-            // para poder diagnosticar intentos sobre productos no disponibles.
-            error_log('[tienda] carrito: producto no disponible (tienda ' . $storeId
-                . ', ' . $source . ' ' . $productId . ')');
+            // Queda en el log de compras (canal `compras`): permite ver intentos
+            // sobre productos que ya no estan disponibles.
+            Logger::warning('compras', 'Carrito: producto no disponible', [
+                'store_id'   => $storeId,
+                'source'     => $source,
+                'product_id' => $productId,
+                'qty'        => $qty,
+            ]);
+
             return ['ok' => false, 'message' => 'Ese producto ya no esta disponible.'];
         }
 
@@ -56,6 +61,14 @@ final class Cart
         if ($stock !== null && (int) $stock > 0 && $nueva > (int) $stock) {
             $nueva = (int) $stock;
             $_SESSION[self::SESSION_KEY][$storeId][$key] = $nueva;
+
+            Logger::notice('compras', 'Carrito: cantidad recortada por stock', [
+                'store_id'   => $storeId,
+                'source'     => $source,
+                'product_id' => $productId,
+                'pedido'     => $actual + $qty,
+                'aplicado'   => $nueva,
+            ]);
 
             return [
                 'ok'      => true,

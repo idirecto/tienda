@@ -34,6 +34,18 @@ $quotaText = $stats['cuota_ilimitada']
         <strong class="stat-value"><?= (int) $stats['dominios'] ?></strong>
         <span class="stat-hint">Direcciones propias</span>
     </article>
+    <?php $incidencias = (int) ($stats['incidencias']['total'] ?? 0); ?>
+    <article class="stat">
+        <span class="stat-label">Incidencias hoy</span>
+        <strong class="stat-value"><?= $incidencias ?></strong>
+        <span class="stat-hint">
+            <?php if ($incidencias > 0): ?>
+                <a href="<?= e($base) ?>/panel/logs?nivel=warning">Revisar en Logs</a>
+            <?php else: ?>
+                <a href="<?= e($base) ?>/panel/logs">Sin avisos ni errores</a>
+            <?php endif; ?>
+        </span>
+    </article>
 </section>
 
 <section class="two-col">

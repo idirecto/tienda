@@ -44,6 +44,8 @@ Los tres ficheros viven en el repositorio y **nunca** se sirven por web.
 | Cambiar carpetas/nombres en S3 | `app/Core/Storage/StorageKey.php` (+ `config/storage.php`) |
 | Desplegar con **nginx** | `deploy/nginx-site.conf.tpl` + `deploy/setup-nginx-domain.sh <dominio>` |
 | Saber servidor / esquema / host real | `app/Core/Server.php` |
+| Anotar algo en el log (`compras`, `acceso`…) | `Tienda\Core\Logger::info('compras', 'mensaje', [...])` |
+| Leer/filtrar logs (panel, consola) | `app/Core/Log/LogReader.php` · `/panel/logs` · `php tools/logs.php` |
 
 Apache y nginx son intercambiables: la app detecta el servidor. En Apache manda
 `.htaccess`; en nginx, el `server` block de `deploy/` (nginx **no** lee
@@ -55,7 +57,7 @@ Esquema de tablas `mt_` al detalle: [`references/esquema-bd.md`](references/esqu
 ## Verificación obligatoria antes de decir "hecho"
 
 ```bash
-php tools/verify.php          # debe terminar en: TODO OK (33 comprobaciones)
+php tools/verify.php          # debe terminar en: TODO OK (290 comprobaciones)
 php -l <fichero-modificado>   # sintaxis de cada PHP que toques
 node --check public/assets/js/shop.js   # si tocas JS
 curl -s -o /dev/null -w '%{http_code}\n' http://local.tienda/catalogo

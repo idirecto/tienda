@@ -415,3 +415,41 @@ code { background: #eef2f7; padding: .1rem .35rem; border-radius: 5px; font-size
     border: 1px solid var(--line); border-radius: 6px; font: inherit; font-size: .88rem; }
 .menu-choice-children { list-style: none; margin: .5rem 0 0 1rem; padding: 0; display: grid; gap: .4rem; }
 .menu-choice-children .menu-choice-label span { font-size: .92rem; }
+
+/* -----------------------------------------------------------------------------
+   Logs (/panel/logs): actividad por dia y por tienda.
+
+   Los niveles se pintan igual en el resumen y en la tabla (misma clase
+   `log-level-<nivel>`), para que un error se reconozca de un vistazo.
+   ----------------------------------------------------------------------------- */
+.log-filters { display: flex; flex-wrap: wrap; gap: .6rem; align-items: flex-end; margin: 1rem 0 .6rem; }
+.log-filters label { display: flex; flex-direction: column; gap: .2rem; font-size: .78rem; color: var(--muted); }
+.log-filters select, .log-filters input[type=search] { padding: .45rem .55rem; border: 1px solid var(--line);
+    border-radius: 8px; font: inherit; font-size: .88rem; background: #fff; color: var(--text); }
+.log-filters-q { flex: 1 1 220px; min-width: 180px; }
+.log-filters-q input[type=search] { width: 100%; }
+.log-filters-actions { display: flex; gap: .4rem; }
+
+.log-summary { display: flex; flex-wrap: wrap; gap: .4rem; margin-bottom: .8rem; }
+.log-level { display: inline-block; padding: .2rem .55rem; border-radius: 999px; font-size: .74rem;
+    font-weight: 700; letter-spacing: .02em; text-transform: uppercase; white-space: nowrap;
+    background: #f1f5f9; color: #475569; border: 1px solid transparent; text-decoration: none; }
+a.log-level:hover { border-color: #cbd5e1; }
+.log-level.is-active { outline: 2px solid currentColor; }
+.log-level-debug { background: #f1f5f9; color: #64748b; }
+.log-level-info { background: #eff6ff; color: #1d4ed8; }
+.log-level-notice { background: #ecfeff; color: #0e7490; }
+.log-level-warning { background: #fef3c7; color: #92400e; }
+.log-level-error { background: #fee2e2; color: #b91c1c; }
+.log-level-critical { background: #7f1d1d; color: #fff; }
+
+.log-hora { white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--muted); }
+.log-canal { white-space: nowrap; font-size: .82rem; }
+.log-msg { word-break: break-word; }
+.log-detalle { margin-top: .35rem; }
+.log-detalle > summary { cursor: pointer; font-size: .78rem; }
+.log-ctx { background: #0f172a; color: #e2e8f0; padding: .6rem .7rem; border-radius: 8px;
+    font-size: .76rem; overflow-x: auto; margin: .4rem 0 .3rem; }
+.log-meta { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: .3rem .9rem;
+    font-size: .76rem; color: var(--muted); }
+
