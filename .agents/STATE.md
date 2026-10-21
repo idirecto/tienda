@@ -1,7 +1,7 @@
 # STATE — Estado del proyecto
 
 > **El agente actualiza este fichero al terminar cada sesión.**
-> Última actualización: **2026-10-09**
+> Última actualización: **2026-10-21**
 
 ---
 
@@ -38,6 +38,7 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
 | Área | Estado |
 |---|---|
 | Multi-tienda (resolución por hostname) | ✅ Completo |
+| **Subdominio de plataforma configurable (`prueba.ecom-era.com`)** | ✅ Completo (se elige en **Panel > Dominios**, con validación, reservados y comprobación DNS/TLS) |
 | **Registro de tiendas (solo con cuenta activa del mayorista)** | ✅ Completo |
 | **Compra del cliente final (carrito, cuenta, direcciones y pedido)** | ✅ Completo (**sin pasarela de pago**) |
 | **Carrito: botón «Agregar al carrito» + mini-carrito lateral (AJAX, responsive, stock real)** | ✅ Completo |
@@ -81,6 +82,37 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
 - Sesión, CSRF y `password_hash` en el panel.
 - Almacenamiento conmutable local/S3 (en BD solo claves y URLs).
 - Verificación DNS (A/CNAME) con *lookup* inyectable para poder testear sin red.
+
+### Subdominio de plataforma configurable (2026-10-21)
+- **La tienda elige su dirección** en **Panel > Dominios**: `mt_stores.slug` es la
+  etiqueta y se sirve como `<slug>.<dominio base>` (`prueba.ecom-era.com`). No
+  hace falta dominio propio; el subdominio funciona desde el primer día.
+- **`Core/Subdomain`**: normaliza `prueba`, `Prueba` o
+  `https://prueba.ecom-era.com/`; exige 3-40 caracteres `[a-z0-9-]`; rechaza
+  reservados (`www`, `panel`, `admin`, `mail`, DNS, CDN…) y comprueba que no lo
+  use otra tienda. El alta (`/registro`) usa la misma validación.
+- **Sin dominio propio**: el resolver sigue por subdominio (paso 2) y no consulta
+  `mt_domains`. Un dominio propio **no** puede ocupar `ecom-era.com`,
+  `www.ecom-era.com` ni `cualquier.ecom-era.com`; esos Host se gestionan con el
+  slug (`TenantResolver::isPlatformHost()`).
+- **Dominio base**: `BASE_DOMAINS` incluye `ecom-era.com` y el host de `APP_URL`
+  se añade solo si falta. `TENANT_PUBLIC_DOMAIN` fija el dominio canónico que
+  muestra el panel (vacío = el Host de la petición). En producción:
+  `BASE_DOMAINS=ecom-era.com` y `TENANT_PUBLIC_DOMAIN=ecom-era.com`.
+- **«Comprobar que carga»**: `Subdomain::diagnose()` revisa DNS A/CNAME y hace
+  una carga HTTPS real en dos pasos (TCP → TLS) para detectar certificados que
+  no cubren el subdominio. El resultado se guarda por tienda en
+  `mt_settings.subdomain_check` y se muestra hasta que cambia el slug.
+- **Despliegue**: `deploy/nginx-site.conf.tpl` ya usa
+  `server_name __DOMINIO__ www.__DOMINIO__ *.__DOMINIO__;`; README y el script
+  de nginx documentan el DNS wildcard y el certificado wildcard (DNS-01). En la
+  prueba real contra `ecom-era.com`, el DNS de `prueba.ecom-era.com` resuelve a
+  la IP del servidor, pero **el certificado actual no cubre el wildcard**: el
+  panel lo detecta y lo explica en vez de dar una pantalla en blanco.
+- **Pruebas**: `verify.php` 312 → **328** (TODO OK). QA en HTTP real con una
+  tienda y un usuario temporales (borrados): resolución por Host, cambio de
+  subdominio, rechazo de `www`, rechazo de `otro.ecom-era.com` como dominio
+  propio, comprobación DNS y aislamiento de la fila.
 
 ### Favicon: el de la tienda con el predeterminado de Valduran de respaldo (2026-10-09)
 - **`Core/Favicon` es la única fuente de verdad.** Resuelve el favicon **efectivo**: el propio de la
@@ -335,7 +367,8 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
   mismo generador de tokens que la web pública.
 - CRUD de banners, avisos y productos propios con **cuota por plan**.
 - Subida de imágenes con validación de MIME real y vista previa.
-- Alta de dominios propios con instrucciones DNS y verificación.
+- **Subdominio de plataforma editable** con comprobación DNS/HTTPS y **alta de
+  dominios propios** con instrucciones DNS y verificación.
 
 ### Menú administrable desde el panel (2026-10-02)
 - **Un solo árbol** (`mt_menu_items`) con **borrador y publicación**: el escaparate
@@ -520,14 +553,15 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
 - `deploy/setup-local-domain.sh`: dominio de pruebas `http://local.tienda` con
   permisos correctos para `www-data` (Apache).
 - `deploy/setup-nginx-domain.sh` + `deploy/nginx-site.conf.tpl`: el mismo sitio
-  en **nginx + PHP-FPM** (`sudo bash deploy/setup-nginx-domain.sh valduran.com`).
+  en **nginx + PHP-FPM** (`sudo bash deploy/setup-nginx-domain.sh ecom-era.com`).
 - La app detecta el servidor (`app/Core/Server.php`): ruta pública de `/public`,
   esquema real (incluido proxy) y host de las URLs canónicas.
-- `tools/verify.php`: 312 comprobaciones automáticas (diseño, facetas, filtros
+- `tools/verify.php`: 328 comprobaciones automáticas (diseño, facetas, filtros
   estructurados del mayorista, catálogo, paginación y enlaces de las tarjetas, caché y
   precios en vivo, carrito y mini-carrito, favicon de la tienda y predeterminado de
-  Valduran, almacenamiento, DNS, servidor, registro de tiendas, pedidos, envío al
-  mayorista, ausencia de credenciales por defecto y diagnóstico del nivel de cliente).
+  Valduran, **subdominios de plataforma y wildcard DNS/TLS**, almacenamiento, DNS,
+  servidor, registro de tiendas, pedidos, envío al mayorista, ausencia de
+  credenciales por defecto y diagnóstico del nivel de cliente).
 - Documentación interna en `.agents/`, blindada frente a la web.
 - Repositorio publicado en GitHub (`main`).
 
@@ -645,6 +679,11 @@ No hay ninguno. Prioridad: `Specs` (parseo de especificaciones),
   (`IDIRECTO_REGISTER_ATTEMPTS`) porque este formulario autentica contra las
   cuentas del mayorista; si algún día se abre mucho, conviene limitar también por
   IP y añadir captcha.
+- **Subdominios y TLS wildcard**: `prueba.ecom-era.com` necesita DNS wildcard
+  `*.ecom-era.com` y un certificado que cubra apex + wildcard. El certificado
+  actual de `ecom-era.com` (solo apex y `www`) **no sirve** para los subdominios:
+  el navegador rechaza la conexión. El panel lo detecta en «Comprobar que carga»
+  y la solución está documentada en README/deploy; no es un fallo del resolver.
 - **El envío a idirecto escribe en tablas de producción del mayorista**
   (`pedidos`, `pedidos_det`, `pedidos_addr`, y descuenta `stock`/`reserva`). Está
   aislado en `Core/Idirecto/OrderGateway`, con vista previa obligatoria y

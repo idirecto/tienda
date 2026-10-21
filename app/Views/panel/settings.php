@@ -31,7 +31,15 @@ $v = static fn (string $k, string $d = '') => e($store[$k] ?? $d);
 
         <div class="hint-box">
             <strong>Tu direccion web</strong>
-            <p>Subdominio: <code><?= e($store['slug'] ?? '') ?></code></p>
+            <?php $slugActual = (string) ($store['slug'] ?? ''); ?>
+            <?php if ($slugActual !== ''): ?>
+                <p>Subdominio:
+                    <a href="<?= e(\Tienda\Core\Subdomain::url($slugActual)) ?>" target="_blank" rel="noopener">
+                        <code><?= e(\Tienda\Core\Subdomain::host($slugActual)) ?></code>
+                    </a>
+                </p>
+                <p class="muted small">Puedes cambiarlo en <a href="<?= e($base) ?>/panel/dominios">Dominios</a>.</p>
+            <?php endif; ?>
             <p class="muted small">Plan actual: <strong><?= e($store['plan_name'] ?? 'Sin plan') ?></strong></p>
         </div>
     </div>

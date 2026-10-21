@@ -95,11 +95,11 @@ Funciona igual que con Apache, pero nginx **no lee `.htaccess`**: el enrutado al
 front controller y el bloqueo de rutas internas se definen en el `server` block.
 
 ```bash
-cd /var/www/vhosts/valduran/tienda        # la raiz del proyecto
-sudo bash deploy/setup-nginx-domain.sh valduran.com
+cd /var/www/vhosts/ecom-era/tienda        # la raiz del proyecto
+sudo bash deploy/setup-nginx-domain.sh ecom-era.com
 
 # Ver que haria, sin tocar nada (no necesita sudo):
-bash deploy/setup-nginx-domain.sh valduran.com --dry-run
+bash deploy/setup-nginx-domain.sh ecom-era.com --dry-run
 ```
 
 La raíz y el dominio se detectan/reciben por argumento, así que el script sirve
@@ -122,11 +122,24 @@ estáticos 30 días. La raíz del sitio es la **del proyecto** (no `public/`), i
 que en Apache.
 
 Para cambiar de dominio más adelante, vuelve a ejecutarlo con el nuevo nombre y
-actualiza `APP_URL`, `BASE_DOMAINS` y `PLATFORM_CNAME` en `.env`. Con HTTPS:
+actualiza `APP_URL`, `BASE_DOMAINS` y `TENANT_PUBLIC_DOMAIN` en `.env`.
+
+**Subdominios de tienda (`prueba.ecom-era.com`)** necesitan un certificado
+**wildcard**; el de `ecom-era.com` y `www.ecom-era.com` no sirve para un
+subdominio. Con Let's Encrypt y Cloudflare (DNS-01):
 
 ```bash
-sudo certbot --nginx -d valduran.com -d www.valduran.com
+sudo apt-get install -y python3-certbot-dns-cloudflare
+# /root/.secrets/cloudflare.ini -> dns_cloudflare_api_token = ...
+sudo certbot certonly --dns-cloudflare \
+  --dns-cloudflare-credentials /root/.secrets/cloudflare.ini \
+  -d ecom-era.com -d '*.ecom-era.com' --cert-name ecom-era.com
+curl -I https://prueba.ecom-era.com/
 ```
+
+El wildcard **no cubre el apex**: incluye siempre `-d ecom-era.com` además de
+`-d '*.ecom-era.com'`. En el panel, **Dominios > Comprobar que carga** verifica
+DNS, HTTPS y el certificado del subdominio.
 
 > **¿Servidor con panel (Plesk, cPanel)?** `/var/www/vhosts/...` es la ruta típica
 > de Plesk: el panel gestiona nginx y sobrescribe `/etc/nginx/plesk.conf.d`, así
@@ -277,10 +290,11 @@ STORAGE_MAX_BYTES_BANNERS=8388608    # banners: 8 MB
 ### Multi-tenant
 
 ```ini
-BASE_DOMAINS=idirecto.es,tienda.local
+BASE_DOMAINS=ecom-era.com
+TENANT_PUBLIC_DOMAIN=ecom-era.com # dominio que muestra el panel (vacio = el del Host)
 DEMO_STORE=idirecto-demo          # tienda mostrada si el host no resuelve
-PLATFORM_IP=203.0.113.10          # IP para el registro A
-PLATFORM_CNAME=stores.idirecto.es # destino del CNAME
+PLATFORM_IP=203.0.113.10          # IP para las instrucciones del registro A
+PLATFORM_CNAME=ecom-era.com       # destino del CNAME de dominios propios
 ```
 
 ### Catálogo central

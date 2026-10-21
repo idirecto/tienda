@@ -103,6 +103,44 @@ final class TenantResolver
     }
 
     /**
+     * Dominio base al que pertenece un host, si es de la plataforma.
+     *
+     * Devuelve el dominio base tanto para el apex (ecom-era.com), como para
+     * www.ecom-era.com y para un subdominio de un nivel
+     * (prueba.ecom-era.com). Para un dominio propio devuelve null.
+     */
+    public static function baseDomainForHost(string $host): ?string
+    {
+        $host = self::normalizeHost($host);
+        if ($host === '') {
+            return null;
+        }
+
+        $bases = self::getBaseDomains();
+        usort($bases, static fn ($a, $b) => strlen((string) $b) <=> strlen((string) $a));
+
+        foreach ($bases as $base) {
+            if ($host === $base || $host === 'www.' . $base) {
+                return $base;
+            }
+            if (str_ends_with($host, '.' . $base)) {
+                $sub = substr($host, 0, strlen($host) - strlen('.' . $base));
+                if ($sub !== '' && !str_contains($sub, '.') && $sub !== 'www') {
+                    return $base;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /** ¿El host pertenece al dominio de la plataforma (apex, www o subdominio)? */
+    public static function isPlatformHost(string $host): bool
+    {
+        return self::baseDomainForHost($host) !== null;
+    }
+
+    /**
      * Devuelve la etiqueta de subdominio si el host cuelga de un dominio base.
      */
     public static function extractSubdomain(string $host, array $baseDomains): ?string

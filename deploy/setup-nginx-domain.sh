@@ -10,12 +10,12 @@
 #  Uso:
 #      sudo bash deploy/setup-nginx-domain.sh [dominio] [--dry-run]
 #
-#  - Dominio por defecto: valduran.com.
+#  - Dominio por defecto: ecom-era.com.
 #  - --dry-run (o DRY_RUN=1): no toca nada; muestra lo que haria y el
 #    fichero de configuracion que generaria. Se puede usar sin sudo.
 #
 #  Variables opcionales (por si el script no cuelga del proyecto):
-#      ROOT=/var/www/vhosts/valduran/tienda   raiz del proyecto
+#      ROOT=/var/www/vhosts/ecom-era/tienda   raiz del proyecto
 #      WEB_USER=www-data                      usuario del servidor web
 #      FPM_SOCK=/run/php/php8.4-fpm.sock      socket de PHP-FPM
 #      FORZAR=1                               continuar aunque haya Plesk
@@ -49,7 +49,7 @@ for arg in "$@"; do
         *) DOMAIN="$arg" ;;
     esac
 done
-DOMAIN="${DOMAIN:-valduran.com}"
+DOMAIN="${DOMAIN:-ecom-era.com}"
 
 ROOT="${ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 WEB_USER="${WEB_USER:-www-data}"
@@ -289,12 +289,21 @@ echo "        APP_ENV=production"
 echo "        APP_DEBUG=false"
 echo "        APP_URL=https://${DOMAIN}"
 echo "        BASE_DOMAINS=${DOMAIN}"
+echo "        TENANT_PUBLIC_DOMAIN=${DOMAIN}"
+echo "        PLATFORM_IP=<IP publica del servidor>"
+echo "        PLATFORM_CNAME=${DOMAIN}"
 echo "        DEMO_STORE=idirecto-demo"
 echo "        + credenciales de la base de datos de ese servidor"
 echo "  2) Esquema y datos:   php database/migrate.php --seed"
-echo "  3) HTTPS:             sudo certbot --nginx -d ${DOMAIN} -d www.${DOMAIN}"
-echo "     (si el dominio ya tenia certificado, certbot lo reutiliza)"
-echo "  4) Comprobar protecciones:"
+echo "  3) DNS wildcard:      *.${DOMAIN} -> IP del servidor"
+echo "  4) HTTPS wildcard (OBLIGATORIO para <slug>.${DOMAIN}):"
+echo "        sudo certbot certonly --dns-cloudflare \\"
+echo "          --dns-cloudflare-credentials /root/.secrets/cloudflare.ini \\"
+echo "          -d ${DOMAIN} -d '*.${DOMAIN}' --cert-name ${DOMAIN}"
+echo "     El wildcard NO cubre el apex: incluye siempre -d ${DOMAIN}."
+echo "     Con el plugin DNS de tu proveedor (Cloudflare en ecom-era.com)."
+echo "     Comprueba:  curl -I https://prueba.${DOMAIN}/"
+echo "  5) Comprobar protecciones:"
 echo "        for p in /.env /app/bootstrap.php /config/database.php \\"
 echo "                 /.agents/PROJECT.md /public/assets/css/shop.css; do"
 echo "          printf '%s  %s\\n' \"\$(curl -s -o /dev/null -w '%{http_code}' https://${DOMAIN}\$p)\" \"\$p\""
@@ -303,6 +312,7 @@ echo "        # esperado: 404 en todo menos /public/assets/... (200)"
 echo
 echo "  https://${DOMAIN}/           (tienda)"
 echo "  https://${DOMAIN}/panel      (panel)"
+echo "  https://prueba.${DOMAIN}/    (subdominio de tienda, si existe la tienda prueba)"
 echo "  Logs: /var/log/nginx/${DOMAIN}.error.log"
 echo
 

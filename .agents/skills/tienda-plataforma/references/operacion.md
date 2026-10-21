@@ -31,21 +31,38 @@ sudo tail -30 /var/log/apache2/local.tienda-access.log
 ## nginx
 
 ```bash
-# Instalar/actualizar el sitio (idempotente; dominio por defecto valduran.com)
-sudo bash deploy/setup-nginx-domain.sh valduran.com
+# Instalar/actualizar el sitio (idempotente; dominio por defecto ecom-era.com)
+sudo bash deploy/setup-nginx-domain.sh ecom-era.com
 sudo FPM_SOCK=/run/php/php8.4-fpm.sock bash deploy/setup-nginx-domain.sh otro-dominio.com
 
 # Ver que haria sin tocar nada (vale sin sudo)
-bash deploy/setup-nginx-domain.sh valduran.com --dry-run
+bash deploy/setup-nginx-domain.sh ecom-era.com --dry-run
 
 # Otras rutas / usuarios: el script toma ROOT de su propia ubicacion
-sudo ROOT=/var/www/vhosts/valduran/tienda WEB_USER=nginx bash deploy/setup-nginx-domain.sh valduran.com
+sudo ROOT=/var/www/vhosts/ecom-era/tienda WEB_USER=nginx bash deploy/setup-nginx-domain.sh ecom-era.com
 
 sudo nginx -t                    # validar antes de recargar
 sudo systemctl reload nginx      # aplicar cambios
-sudo tail -30 /var/log/nginx/valduran.com-error.log
-sudo tail -30 /var/log/nginx/valduran.com-access.log
+sudo tail -30 /var/log/nginx/ecom-era.com-error.log
+sudo tail -30 /var/log/nginx/ecom-era.com-access.log
 ```
+
+Los subdominios de tienda (`<slug>.ecom-era.com`) necesitan:
+
+1. DNS wildcard `*.ecom-era.com` apuntando al servidor.
+2. `server_name ecom-era.com www.ecom-era.com *.ecom-era.com;` (ya en la plantilla).
+3. Un certificado **wildcard** que cubra apex + wildcard; el de `ecom-era.com`
+   no sirve para `prueba.ecom-era.com`:
+
+```bash
+sudo certbot certonly --dns-cloudflare \
+  --dns-cloudflare-credentials /root/.secrets/cloudflare.ini \
+  -d ecom-era.com -d '*.ecom-era.com' --cert-name ecom-era.com
+curl -I https://prueba.ecom-era.com/
+```
+
+El panel lo comprueba desde **Dominios > Comprobar que carga** (DNS, HTTPS y
+certificado).
 
 **Plesk / cPanel:** el panel gestiona nginx (y sobrescribe `/etc/nginx/plesk.conf.d`),
 asi que el script avisa y se detiene. La via correcta ahi es: PHP Settings → 8.2+;
@@ -58,13 +75,13 @@ Comprobar el bloqueo de rutas internas y el enrutado (nginx no lee `.htaccess`):
 ```bash
 for p in /.env /app/bootstrap.php /config/database.php /storage/logs/php-error.log \
          /.agents/PROJECT.md /public/assets/css/shop.css; do
-    printf '%s  %s\n' "$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: valduran.com' "http://127.0.0.1$p")" "$p"
+    printf '%s  %s\n' "$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: ecom-era.com' "http://127.0.0.1$p")" "$p"
 done
 # Esperado: 404 en todo menos /public/assets/... (200)
 ```
 
 Al cambiar de dominio: repite el script con el nuevo nombre y ajusta
-`APP_URL`, `BASE_DOMAINS` y `PLATFORM_CNAME` en `.env`.
+`APP_URL`, `BASE_DOMAINS` y `TENANT_PUBLIC_DOMAIN` en `.env`.
 
 ## Servidor detectado por la aplicación
 
@@ -126,7 +143,7 @@ web (403). Se anotan con `Logger::info('compras', ...)`; el lector es `LogReader
 ## Verificación
 
 ```bash
-php tools/verify.php                        # 312 comprobaciones del proyecto
+php tools/verify.php                        # 328 comprobaciones del proyecto
 bash .agents/scripts/check-privacidad.sh    # la documentación NO debe ser web
 ```
 

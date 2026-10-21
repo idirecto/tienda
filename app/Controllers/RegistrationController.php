@@ -11,6 +11,7 @@ use Tienda\Core\Idirecto\Account;
 use Tienda\Core\Logger;
 use Tienda\Core\Registration;
 use Tienda\Core\Session;
+use Tienda\Core\Subdomain;
 use Tienda\Core\ValidationException;
 
 /**
@@ -137,9 +138,7 @@ final class RegistrationController extends Controller
     /** URL publica que tendra la tienda (subdominio o dominio propio). */
     private function publicUrl(string $slug): string
     {
-        $base = (string) (Config::get('tenant.base_domains', ['localhost'])[0] ?? 'localhost');
-
-        return 'https://' . $slug . '.' . $base;
+        return Subdomain::url($slug);
     }
 
     /**

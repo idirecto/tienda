@@ -220,6 +220,9 @@ $router->get('/panel/clientes/{id}',       [CustomerAdminController::class, 'sho
 
 $router->get('/panel/dominios',        [DomainController::class, 'index']);
 $router->post('/panel/dominios',       [DomainController::class, 'store']);
+// El subdominio de plataforma se gestiona aparte de los dominios propios.
+$router->post('/panel/dominios/subdominio',           [DomainController::class, 'saveSubdomain']);
+$router->post('/panel/dominios/subdominio/comprobar', [DomainController::class, 'checkSubdomain']);
 $router->post('/panel/dominios/{id}/verificar', [DomainController::class, 'verify']);
 $router->post('/panel/dominios/{id}/borrar', [DomainController::class, 'destroy']);
 

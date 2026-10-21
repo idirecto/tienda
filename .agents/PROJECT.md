@@ -18,8 +18,8 @@ catálogo del mayorista idirecto**. Cada tienda cliente obtiene:
   con stock, más sus propios productos;
 - un **panel** para personalizar diseño, banners, avisos, productos, dominios y
   ajustes, sin tocar código;
-- **dominio propio** con verificación por DNS, o subdominio
-  `<slug>.idirecto.es`.
+- **dominio propio** con verificación por DNS, o subdominio de plataforma
+  configurable `<slug>.ecom-era.com` (se elige en **Panel > Dominios**).
 
 La tienda **no gestiona el stock del catálogo central**: lo lee. Su stock propio
 solo aplica a sus productos propios.
@@ -60,6 +60,7 @@ app/
   Core/                    Infraestructura (ver §4)
   Core/Idirecto/           Puente con el mayorista: Account, Pricing y OrderGateway
   Core/Registration.php    Alta de una tienda a partir de una cuenta de `tiendas`
+  Core/Subdomain.php       Subdominio de plataforma: validación, reservados, URL y diagnóstico DNS/TLS
   Core/Cart.php            Carrito del cliente final (en sesión, por tienda)
   Core/Checkout.php        Cierre del pedido: direcciones, pago y comentario
   Core/Shipping.php        Gastos de envío (tarifa plana + gratis desde X €)
@@ -91,7 +92,7 @@ public/                    ÚNICO directorio servido como estático
   uploads/                 Archivos locales (si STORAGE_DRIVER=local)
 storage/                   cache/ y logs/ (escritura de la app; la caché se limpia sola)
   logs/<canal>/<día>/       Un fichero JSON-lines por día y tienda (`Logger`)
-tools/verify.php           312 comprobaciones automáticas
+tools/verify.php           328 comprobaciones automáticas
 tools/cache-clear.php      Gestiona la caché de datos (estado, vaciar, patrones, gc)
 tools/logs.php             Consulta los logs por consola (filtros, resumen, días, tiendas, gc)
 ```
@@ -111,7 +112,8 @@ tools/logs.php             Consulta los logs por consola (filtros, resumen, día
 | `Logger` | **Registro de actividad en ficheros por día y tienda**: `debug/info/notice/warning/error/critical` → `storage/logs/<canal>/<AAAA-MM-DD>/<id-tienda>_<slug>.log` (JSON-lines), redacción de secretos, captura de errores fatales y limpieza por retención (`config/log.php`) |
 | `Core/Log/LogReader` | **Lectura de los logs** (panel y `tools/logs.php`): días, canales y tiendas; filtros por fecha, canal, nivel mínimo, tienda y texto; paginación y conteos. Lee acotado (bytes y entradas) para no tumbar el visor |
 | `Router` | Compila `{param}`, detecta el subdirectorio base y despacha |
-| `TenantResolver` | **Decide qué tienda se sirve** según el hostname |
+| `TenantResolver` | **Decide qué tienda se sirve** según el hostname; `baseDomainForHost()` e `isPlatformHost()` distinguen apex, `www`, subdominios y dominios propios |
+| `Subdomain` | **Dirección de plataforma de la tienda**: normaliza la etiqueta, rechaza reservados (`www`, `panel`, `mail`…), comprueba que esté libre, construye host/URL y diagnostica DNS + HTTPS (incluido el certificado wildcard) |
 | `Tenant` | Contexto inmutable de la tienda (nombre, tema, colores, radios, cuotas…) |
 | `Auth` / `Session` / `Csrf` | Sesión, login y tokens CSRF |
 | `Controller` / `View` / `Model` | Base MVC; `View` usa `extract()` |
@@ -368,6 +370,40 @@ lleva límite de intentos por sesión (`IDIRECTO_REGISTER_ATTEMPTS`) porque
 autentica contra las cuentas del mayorista. Con `IDIRECTO_REGISTER=false` queda
 cerrado. Al terminar, la tienda responde ya en `https://<slug>.<dominio base>`.
 
+### Subdominio de plataforma (siempre disponible)
+
+La tienda **no necesita comprar un dominio** para publicarse: `mt_stores.slug`
+es la etiqueta del subdominio y se resuelve como `<slug>.<dominio base>`.
+
+- **Se elige en el panel**: `Panel > Dominios` muestra la dirección actual, deja
+  cambiarla y tiene «Comprobar que carga». Solo se actualiza la fila del
+  `store_id` de la sesión.
+- **`Core/Subdomain`** centraliza la lógica: acepta `prueba`, `Prueba` o
+  `https://prueba.ecom-era.com/` y normaliza; exige 3-40 caracteres, solo
+  `[a-z0-9-]`; rechaza etiquetas reservadas (`www`, `panel`, `admin`, `mail`,
+  DNS, CDN…) y comprueba que no la use otra tienda. El alta (`/registro`) usa la
+  misma validación, así no puede nacer una tienda con un subdominio inutilizable.
+- **Sin dominio propio funciona igual**: la resolución por subdominio es el
+  paso 2 de `TenantResolver` y no consulta `mt_domains`. Si la tienda tiene un
+  dominio propio verificado, sigue teniendo su subdominio de plataforma.
+- **Un dominio propio no puede ocupar la plataforma**: `TenantResolver::isPlatformHost()`
+  rechaza `ecom-era.com`, `www.ecom-era.com` y `cualquier.ecom-era.com` en el
+  formulario de dominios propios; esos Host se gestionan con el slug.
+- **Dominio base y URL**: `BASE_DOMAINS` (el host de `APP_URL` se añade solo si
+  falta) y `TENANT_PUBLIC_DOMAIN` (opcional; vacío = el Host de la petición).
+  En producción: `BASE_DOMAINS=ecom-era.com` y
+  `TENANT_PUBLIC_DOMAIN=ecom-era.com`.
+- **Diagnóstico**: «Comprobar que carga» ejecuta `Subdomain::diagnose()`:
+  DNS por A/CNAME (inyectable para pruebas) y una carga HTTPS real en dos pasos
+  (TCP → TLS) para detectar **certificados que no cubren el subdominio**. El
+  resultado queda en `mt_settings.subdomain_check` por tienda y se muestra hasta
+  que cambie el slug.
+- **Infraestructura**: el servidor necesita DNS wildcard `*.ecom-era.com` y un
+  certificado **wildcard** que cubra `ecom-era.com` y `*.ecom-era.com` (el
+  wildcard no cubre el apex). La plantilla de nginx ya declara
+  `server_name __DOMINIO__ www.__DOMINIO__ *.__DOMINIO__;`; el comando de
+  certbot con DNS-01 está en `deploy/nginx-site.conf.tpl` y en el README.
+
 ### Sistema de diseño (white-label)
 
 El storefront no escribe **ningún** color a mano: `public/assets/css/shop.css`
@@ -440,9 +476,14 @@ atrás. Solo entran categorías **con stock** y el árbol se cachea 30 min con
 
 `login`, `logout`, `dashboard`, `diseno` (+ `diseno/tokens` y `diseno/previa`
 para la vista previa; el **favicon** de la tienda se sube o se quita desde aquí),
-`banners`, `avisos`, `productos` (CRUD), `dominios` (alta,
-verificar, borrar), `ajustes`, `logs`, `media/subir` y `media/{id}/borrar`. Todas
-exigen sesión + CSRF, y filtran por el `store_id` de la sesión.
+`banners`, `avisos`, `productos` (CRUD), `dominios` (subdominio de plataforma,
+alta/verificación/borrado de dominios propios), `ajustes`, `logs`, `media/subir` y
+`media/{id}/borrar`. Todas exigen sesión + CSRF, y filtran por el `store_id` de
+la sesión.
+
+Dentro de `/panel/dominios`: `POST /panel/dominios/subdominio` guarda el slug y
+`POST /panel/dominios/subdominio/comprobar` diagnostica DNS + HTTPS. Las rutas
+fijas se declaran **antes** de `/panel/dominios/{id}/...`.
 
 `/panel/logs` (+ `POST /panel/logs/limpiar`) es el **visor del registro de
 actividad**: lee los ficheros de `storage/logs` con `Core/Log/LogReader` y filtra
@@ -640,7 +681,7 @@ servidores no los traen en `/etc/mime.types` y servirían la imagen sin
 
 ```bash
 sudo bash deploy/setup-local-domain.sh     # /etc/hosts + VirtualHost + permisos
-php tools/verify.php                       # 312 comprobaciones
+php tools/verify.php                       # 328 comprobaciones
 php -S 127.0.0.1:8099 index.php            # servidor embebido (alternativa)
 ```
 
@@ -651,25 +692,34 @@ El script también deja los permisos correctos: `.env` en `640` con grupo
 `www-data`, y escritura para `www-data` en `storage/{cache,logs}` y
 `public/uploads`.
 
-### Producción con nginx (valduran.com)
+### Producción con nginx (ecom-era.com)
 
 ```bash
 sudo apt-get install -y nginx php8.4-fpm
-sudo bash deploy/setup-nginx-domain.sh valduran.com
-# .env: APP_URL, BASE_DOMAINS=valduran.com y PLATFORM_CNAME
-sudo certbot --nginx -d valduran.com -d www.valduran.com
+sudo bash deploy/setup-nginx-domain.sh ecom-era.com
+# .env: APP_URL=https://ecom-era.com, BASE_DOMAINS=ecom-era.com,
+#       TENANT_PUBLIC_DOMAIN=ecom-era.com y PLATFORM_CNAME=ecom-era.com
+# DNS wildcard *.ecom-era.com -> IP del servidor
+# Certificado wildcard (DNS-01; el wildcard NO cubre el apex):
+sudo certbot certonly --dns-cloudflare \
+  --dns-cloudflare-credentials /root/.secrets/cloudflare.ini \
+  -d ecom-era.com -d '*.ecom-era.com' --cert-name ecom-era.com
+curl -I https://prueba.ecom-era.com/
 ```
 
 El mismo código sirve para Apache y para nginx; para cambiar de dominio basta
-con repetir el script con el nuevo nombre y tocar esas tres claves del `.env`.
+con repetir el script con el nuevo nombre y tocar `APP_URL`, `BASE_DOMAINS` y
+`TENANT_PUBLIC_DOMAIN` del `.env`. Los subdominios necesitan DNS wildcard y
+certificado wildcard; el panel los comprueba en **Dominios > Comprobar que carga**.
 
 ---
 
 ## 10. Verificación antes de dar algo por hecho
 
 ```bash
-php tools/verify.php                 # debe decir: TODO OK (312 comprobaciones)
+php tools/verify.php                 # debe decir: TODO OK (328 comprobaciones)
 curl -s -o /dev/null -w '%{http_code}\n' http://local.tienda/
+curl -s -o /dev/null -w '%{http_code}\n' -H 'Host: idirecto-demo.local.tienda' http://127.0.0.1/
 curl -s -o /dev/null -w '%{http_code}\n' http://local.tienda/catalogo
 curl -s -o /dev/null -w '%{http_code}\n' http://local.tienda/favicon.ico
 curl -s -o /dev/null -w '%{http_code}\n' "http://local.tienda/catalogo?cat=9&subcat=102&f%5Bsocket%5D%5B0%5D=am5"

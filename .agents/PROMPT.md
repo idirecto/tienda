@@ -21,6 +21,26 @@ _(vacío — sin petición pendiente)_
 
 Cada petición terminada se anota aquí con la fecha, qué se pidió y qué se hizo.
 
+### 2026-10-21 · Subdominio de tienda configurable en ecom-era.com (petición por chat)
+
+**Pedido:** como desarrollador senior full-stack experto en PHP 8.4, MySQL/MariaDB, DNS y
+dominios: la web está en **ecom-era.com** y la tienda debe poder **establecer su subdominio**
+donde verse (p. ej. `prueba.ecom-era.com`). Si la tienda no tiene dominio propio, revisar
+que el subdominio cargue y hacer las modificaciones necesarias.
+
+**Auditoría:** el resolver ya aceptaba `<slug>.<dominio base>` con `mt_stores.slug`, pero
+la tienda **no podía cambiarlo** desde el panel y el dominio base no incluía
+`ecom-era.com` en este entorno. En producción `prueba.ecom-era.com` resuelve por DNS
+wildcard, pero el certificado de `ecom-era.com` solo cubre apex y `www` → falla TLS.
+
+**Hecho:** `Core/Subdomain` (normalización, reservados, validación, URL, DNS y diagnóstico
+HTTPS/TLS); `Panel > Dominios` permite cambiar el subdominio y comprobar que carga,
+guardando el resultado por tienda; el alta `/registro` comparte la validación; los
+dominios propios no pueden ocupar `*.ecom-era.com`; `TENANT_PUBLIC_DOMAIN` y
+`BASE_DOMAINS` actualizados; «Ver mi tienda» y Ajustes usan la URL completa; despliegue
+documentado para DNS + certificado wildcard. `verify.php` 312 → **328** (TODO OK) y QA en
+HTTP real con tienda/usuario temporales (borrados). Detalle en `CHANGELOG.md` y `STATE.md`.
+
 ### 2026-10-09 · Favicon predeterminado de Valduran para todas las tiendas (petición por chat)
 
 **Pedido:** como desarrollador senior full-stack especializado en multi-tenant, gestión de

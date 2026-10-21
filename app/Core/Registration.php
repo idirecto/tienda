@@ -64,8 +64,20 @@ final class Registration
         $idTienda = (int) ($tienda['id'] ?? 0);
         $idMargen = (int) ($tienda['id_margen'] ?? 0);
 
+        // La direccion pedida se valida antes de tocar la base de datos: si es
+        // una etiqueta reservada (www, panel, mail...) la tienda nacería con un
+        // subdominio que no resuelve. Vacio = se genera del nombre comercial.
+        $slugPedido = $slug !== null && trim($slug) !== '' ? Subdomain::normalize($slug) : '';
+        if ($slugPedido !== '') {
+            $slugError = Subdomain::formatError($slugPedido);
+            if ($slugError !== null) {
+                throw new ValidationException('Direccion de tienda no valida: ' . $slugError);
+            }
+        }
+        $slugFinal = self::uniqueSlug($slugPedido !== '' ? $slugPedido : $comercial);
+
         return [
-            'slug'        => self::uniqueSlug($slug !== null && trim($slug) !== '' ? $slug : $comercial),
+            'slug'        => $slugFinal,
             'name'        => mb_substr($comercial !== '' ? $comercial : 'Mi tienda', 0, 120),
             'legal_name'  => $razonSocial !== '' ? mb_substr($razonSocial, 0, 150) : null,
             'email'       => mb_substr(mb_strtolower(trim((string) ($tienda['email'] ?? ''))), 0, 150) ?: null,
@@ -156,15 +168,15 @@ final class Registration
     /** Slug libre a partir de un texto (anade -2, -3... si esta cogido). */
     public static function uniqueSlug(string $base): string
     {
-        $base = Str::slugify($base, 40);
-        if ($base === '') {
-            $base = 'tienda';
-        }
+        // suggest() evita etiquetas reservadas (www, panel, mail...) y deja una
+        // etiqueta valida incluso cuando el texto de entrada viene vacio.
+        $base = Subdomain::suggest($base);
 
         $slug = $base;
         $i = 2;
         while (self::slugTaken($slug)) {
-            $slug = $base . '-' . $i;
+            $suffix = '-' . $i;
+            $slug = rtrim(substr($base, 0, Subdomain::MAX_LENGTH - strlen($suffix)), '-') . $suffix;
             if (++$i > 200) {
                 $slug = $base . '-' . bin2hex(random_bytes(3));
                 break;

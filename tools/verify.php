@@ -43,6 +43,7 @@ use Tienda\Core\Storage\LocalStorage;
 use Tienda\Core\Storage\S3Storage;
 use Tienda\Core\Storage\StorageKey;
 use Tienda\Core\Storage\StorageManager;
+use Tienda\Core\Subdomain;
 use Tienda\Core\Tenant;
 use Tienda\Core\TenantResolver;
 use Tienda\Core\CatalogUrl;
@@ -135,6 +136,87 @@ check(TenantResolver::extractSubdomain('kartutx.idirecto.es', ['idirecto.es']) =
 check(TenantResolver::extractSubdomain('idirecto.es', ['idirecto.es']) === null, 'dominio raiz no es tenant');
 check(TenantResolver::extractSubdomain('mitienda.com', ['idirecto.es']) === null, 'dominio externo no es subdominio');
 check(TenantResolver::extractSubdomain('www.idirecto.es', ['idirecto.es']) === null, 'www excluido');
+
+// Base domain real de produccion + resolucion de subdominios de tienda.
+check(
+    in_array('ecom-era.com', TenantResolver::getBaseDomains(), true),
+    'ecom-era.com esta en BASE_DOMAINS'
+);
+check(
+    TenantResolver::baseDomainForHost('prueba.ecom-era.com') === 'ecom-era.com'
+        && TenantResolver::baseDomainForHost('ecom-era.com') === 'ecom-era.com'
+        && TenantResolver::baseDomainForHost('www.ecom-era.com') === 'ecom-era.com'
+        && TenantResolver::baseDomainForHost('mitienda.com') === null,
+    'dominio base reconocido en apex, www y subdominio (y null en dominio propio)'
+);
+check(
+    TenantResolver::isPlatformHost('prueba.ecom-era.com')
+        && TenantResolver::isPlatformHost('ecom-era.com')
+        && !TenantResolver::isPlatformHost('mitienda.com'),
+    'isPlatformHost distingue la plataforma de un dominio propio'
+);
+
+echo "\n== Subdominios de tienda ==\n";
+check(Subdomain::normalize('https://prueba.ecom-era.com/') === 'prueba', 'normaliza un host completo a su etiqueta');
+check(Subdomain::normalize('Prueba') === 'prueba', 'normaliza mayusculas');
+check(Subdomain::formatError('prueba') === null, 'subdominio valido aceptado');
+check(
+    Subdomain::formatError('www') !== null
+        && Subdomain::formatError('ab') !== null
+        && Subdomain::formatError('prueba.otro-dominio.com') !== null
+        && Subdomain::suggest('www') === 'www-tienda',
+    'reservados, cortos y hosts ajenos rechazados; suggest evita reservados'
+);
+check(
+    Subdomain::host('prueba', 'ecom-era.com') === 'prueba.ecom-era.com'
+        && str_ends_with(Subdomain::url('prueba', 'ecom-era.com'), 'prueba.ecom-era.com'),
+    'host y URL publica del subdominio'
+);
+$subLookup = static fn (string $type, string $host): array => $type === 'A' ? ['203.0.113.9'] : [];
+$dnsSub = Subdomain::dnsStatus('prueba', 'ecom-era.com', $subLookup);
+$diagSub = Subdomain::diagnose(
+    'prueba',
+    'ecom-era.com',
+    $subLookup,
+    static fn (string $scheme, string $host): array => ['ok' => true, 'code' => 200, 'message' => 'La web responde con HTTP 200.']
+);
+check(
+    $dnsSub['host'] === 'prueba.ecom-era.com' && $dnsSub['a'] === ['203.0.113.9'],
+    'diagnostico DNS del subdominio (lookup inyectable)'
+);
+check(
+    ($diagSub['web']['ok'] ?? false) === true
+        && $diagSub['host'] === 'prueba.ecom-era.com'
+        && str_contains((string) $diagSub['message'], 'web'),
+    'diagnostico completo DNS + carga web'
+);
+
+echo "\n== Panel y despliegue del subdominio ==\n";
+$indexSrc = (string) file_get_contents(TIENDA_BASE . '/index.php');
+$domainsView = (string) file_get_contents(TIENDA_BASE . '/app/Views/panel/domains.php');
+$envExample = (string) file_get_contents(TIENDA_BASE . '/.env.example');
+$nginxTpl = (string) file_get_contents(TIENDA_BASE . '/deploy/nginx-site.conf.tpl');
+check(
+    str_contains($indexSrc, "'/panel/dominios/subdominio'")
+        && str_contains($indexSrc, "'/panel/dominios/subdominio/comprobar'"),
+    'el panel tiene rutas para guardar y comprobar el subdominio'
+);
+check(
+    str_contains($domainsView, 'name="subdomain"')
+        && str_contains($domainsView, 'Comprobar que carga')
+        && str_contains($domainsView, 'Tu direccion web'),
+    'la pantalla de dominios permite elegir y comprobar el subdominio'
+);
+check(
+    str_contains($envExample, 'TENANT_PUBLIC_DOMAIN')
+        && str_contains($envExample, 'BASE_DOMAINS=local.tienda,tienda.local,ecom-era.com'),
+    '.env.example documenta TENANT_PUBLIC_DOMAIN y el dominio ecom-era.com'
+);
+check(
+    str_contains($nginxTpl, 'server_name __DOMINIO__ www.__DOMINIO__ *.__DOMINIO__;')
+        && str_contains($nginxTpl, "d '*.ecom-era.com'"),
+    'nginx acepta el wildcard y documenta el certificado *.ecom-era.com'
+);
 
 echo "\n== Cuotas de plan ==\n";
 $basico = new Tenant(['own_products_quota' => 0]);
@@ -595,8 +677,9 @@ check(Registration::defaultPlanId() !== null, 'plan por defecto del registro (' 
 check(
     Registration::uniqueSlug('Mi Tienda SL') === 'mi-tienda-sl'
         && Registration::uniqueSlug('idirecto-demo') === 'idirecto-demo-2'
-        && Registration::uniqueSlug('') === 'tienda',
-    'slug unico para la tienda nueva (evita repetidos)'
+        && Registration::uniqueSlug('') === 'tienda'
+        && Registration::uniqueSlug('www') === 'www-tienda',
+    'slug unico para la tienda nueva (evita repetidos y reservados)'
 );
 check(Registration::existingStoreFor(0) === null, 'sin cuenta no hay tienda registrada');
 
@@ -624,6 +707,17 @@ check(
     Registration::dataFromAccount($cuentaPrueba, 'otro-slug')['slug'] === 'otro-slug',
     'se respeta la direccion de tienda pedida'
 );
+check(
+    Registration::dataFromAccount($cuentaPrueba, 'prueba.ecom-era.com')['slug'] === 'prueba',
+    'el alta acepta el subdominio escrito como host completo'
+);
+try {
+    Registration::dataFromAccount($cuentaPrueba, 'www');
+    $reservadoRechazado = false;
+} catch (\Tienda\Core\ValidationException) {
+    $reservadoRechazado = true;
+}
+check($reservadoRechazado, 'el alta rechaza subdominios reservados (www)');
 
 // La cadena completa (comprobar cuenta -> crear tienda -> usuario de panel) se
 // prueba en una transaccion que se DESHACE: no queda ninguna tienda de prueba.

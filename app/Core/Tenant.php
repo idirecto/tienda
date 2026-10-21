@@ -314,14 +314,14 @@ final class Tenant
 
     // ----- Utilidades ---------------------------------------------------
 
-    /** URL publica de la tienda (subdominio o dominio propio). */
+    /** URL publica de la tienda (dominio propio verificado o subdominio). */
     public function publicUrl(): string
     {
         if (!empty($this->store['primary_domain'])) {
             return 'https://' . $this->store['primary_domain'];
         }
-        $base = Config::get('tenant.base_domains', ['localhost'])[0] ?? 'localhost';
-        return 'https://' . $this->slug() . '.' . $base;
+
+        return Subdomain::url($this->slug());
     }
 
     public function toArray(): array

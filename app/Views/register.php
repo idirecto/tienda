@@ -9,8 +9,9 @@
  * @var bool $open Registro abierto @var string $slug @var string $base
  */
 use Tienda\Core\Csrf;
+use Tienda\Core\Subdomain;
 
-$baseDomain = (string) (config('tenant.base_domains', ['localhost'])[0] ?? 'localhost');
+$baseDomain = Subdomain::baseDomain();
 ?>
 <div class="auth-head">
     <h1>Crea tu tienda</h1>
@@ -41,11 +42,13 @@ $baseDomain = (string) (config('tenant.base_domains', ['localhost'])[0] ?? 'loca
         <div class="auth-sep"></div>
 
         <label>Direccion de tu tienda (opcional)
-            <input type="text" name="slug" maxlength="40" value="<?= e($slug) ?>" placeholder="mi-tienda">
+            <input type="text" name="slug" minlength="3" maxlength="40"
+                   pattern="[a-z0-9](?:[a-z0-9-]*[a-z0-9])?"
+                   value="<?= e($slug) ?>" placeholder="mi-tienda" autocomplete="off" spellcheck="false">
         </label>
         <p class="muted small">
-            Sera <code>https://&lt;direccion&gt;.<?= e($baseDomain) ?></code>. Si lo dejas vacio,
-            la generamos a partir del nombre de tu cuenta.
+            Sera <code><?= e(Subdomain::scheme()) ?>://&lt;direccion&gt;.<?= e($baseDomain) ?></code>. Si lo dejas vacio,
+            la generamos a partir del nombre de tu cuenta. Solo letras, numeros y guiones.
         </p>
 
         <label>Contrasena para este panel

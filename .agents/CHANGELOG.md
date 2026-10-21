@@ -5,6 +5,59 @@ El detalle línea a línea está en `git log`.
 
 ---
 
+## 2026-10-21 · Subdominio de tienda configurable (`prueba.ecom-era.com`)
+
+**Motivo (petición por chat):** la plataforma está en **ecom-era.com** y cada tienda debe
+poder **elegir su subdominio** (`prueba.ecom-era.com`). Si la tienda no compra dominio
+propio, el subdominio tiene que cargar igualmente: había que revisar la resolución por
+Host y hacer las modificaciones necesarias de aplicación, DNS y TLS.
+
+**Auditoría:** el resolver por subdominio ya existía (`mt_stores.slug` →
+`TenantResolver`), pero **la tienda no podía cambiarlo** desde el panel: solo se elegía al
+registrarse. `BASE_DOMAINS` no incluía `ecom-era.com` en este entorno y el panel enseñaba
+el slug sin URL completa. En producción, `prueba.ecom-era.com` **sí resuelve** por DNS
+wildcard a la IP del servidor (51.68.7.177), pero el certificado actual de `ecom-era.com`
+solo cubre apex y `www`: el navegador rechaza el subdominio con un certificado ajeno.
+
+**Qué se hizo**
+
+- **`Core/Subdomain`** (nueva clase): normaliza etiquetas (`prueba`, `Prueba`,
+  `https://prueba.ecom-era.com/`), exige 3-40 caracteres `[a-z0-9-]`, rechaza
+  **reservados** (`www`, `panel`, `admin`, `mail`, DNS, CDN…), comprueba que no esté
+  ocupado por otra tienda y construye host/URL con el dominio base real. Incluye
+  `dnsStatus()` (A/CNAME, lookup inyectable) y `diagnose()` (DNS + carga HTTPS real en
+  dos pasos TCP→TLS, que detecta certificados que no cubren el subdominio).
+- **Panel > Dominios**: tarjeta «Tu direccion web» con el subdominio actual, formulario
+  para cambiarlo, «Ver mi tienda» y **«Comprobar que carga»**. Los formularios nuevos son
+  `POST /panel/dominios/subdominio` y `.../subdominio/comprobar`; el resultado se guarda
+  por tienda en `mt_settings.subdomain_check` y desaparece al cambiar el slug.
+- **Validación compartida con `/registro`**: `Registration::uniqueSlug()` usa
+  `Subdomain::suggest()`; el alta rechaza reservados y acepta el host completo. Así no
+  nace una tienda con una dirección que no resuelve.
+- **Sin dominio propio funciona igual**: el subdominio es el paso 2 del resolver y no
+  depende de `mt_domains`. Se impide registrar como dominio propio `ecom-era.com`,
+  `www.ecom-era.com` o cualquier `*.ecom-era.com` (`TenantResolver::isPlatformHost()`).
+- **Configuración**: `config/tenant.php` incluye `ecom-era.com`, añade el host de
+  `APP_URL` si falta y admite `TENANT_PUBLIC_DOMAIN` (dominio canónico; vacío = Host de
+  la petición). `.env.example` y los ejemplos de producción pasan de `valduran.com` a
+  `ecom-era.com`.
+- **URLs y panel correctos**: `Tenant::publicUrl()`, `RegistrationController`, Ajustes y
+  el enlace «Ver mi tienda» usan `Subdomain`; el layout del panel toma la tienda de la
+  **sesión** (antes podía enseñar la demo resuelta por el Host de `ecom-era.com`).
+- **Despliegue**: nginx ya declaraba `*.__DOMINIO__`; se documenta que hace falta DNS
+  wildcard `*.ecom-era.com` y un **certificado wildcard** (DNS-01, p. ej. Cloudflare)
+  que cubra apex + wildcard. El certificado de solo apex **no sirve** y el panel ahora
+  lo explica con el detalle de OpenSSL.
+- **Pruebas**: `verify.php` 312 → **328** (TODO OK: resolución apex/www/subdominio,
+  normalización, reservados, URL, diagnóstico inyectable, rutas/panel y despliegue).
+  QA en **HTTP real** con tienda y usuario temporales (borrados): `Host:
+  prueba.local.tienda` y `Host: prueba.ecom-era.com` sirven la tienda correcta; cambiar
+  el slug actualiza solo esa fila; `www` y `otro.ecom-era.com` se rechazan; la
+  comprobación DNS deja su resultado por tienda. Contra producción se confirmó el fallo
+  real: DNS wildcard correcto y **certificado sin wildcard**.
+
+---
+
 ## 2026-10-09 · Favicon predeterminado de Valduran (multi-tienda)
 
 **Motivo (petición por chat):** el sistema debe tener un **favicon predeterminado de Valduran**

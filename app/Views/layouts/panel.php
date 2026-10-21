@@ -11,11 +11,26 @@
 use Tienda\Core\Auth;
 use Tienda\Core\Favicon;
 use Tienda\Core\Session;
+use Tienda\Core\Tenant;
+use Tienda\Models\Store;
 
 $current = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
 $success = Session::pullFlash('success');
 $error = Session::pullFlash('error');
 $warning = Session::pullFlash('warning');
+
+// La tienda de la SESION manda sobre la resuelta por el host: el panel se usa
+// desde el dominio principal (ecom-era.com) y alli el tenant del host es la
+// tienda demo. Sin esto, la cabecera y «Ver mi tienda» apuntaban a otra tienda.
+$panelStore = $tenant;
+$authStoreId = Auth::storeId();
+if ($authStoreId !== null && $authStoreId > 0 && $authStoreId !== $tenant->id()) {
+    $storeRow = Store::findWithPlan($authStoreId);
+    if ($storeRow !== null) {
+        $panelStore = new Tenant($storeRow);
+    }
+}
+$panelStoreUrl = $panelStore->publicUrl();
 
 $nav = [
     ['panel',          'Panel',            'Resumen de tu tienda'],
@@ -49,19 +64,19 @@ $isActive = static function (string $path) use ($current, $base): bool {
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title><?= e($pageTitle ?? 'Panel') ?> · <?= e($tenant->name()) ?></title>
+    <title><?= e($pageTitle ?? 'Panel') ?> · <?= e($panelStore->name()) ?></title>
     <?php /* Mismo favicon que la tienda publica (el suyo o el de Valduran). */ ?>
-    <?= Favicon::linkTags($tenant) ?>
+    <?= Favicon::linkTags($panelStore) ?>
     <link rel="stylesheet" href="<?= e(asset('assets/css/panel.css')) ?>">
-    <style>:root{--brand: <?= e($tenant->colorPrimary()) ?>;}</style>
+    <style>:root{--brand: <?= e($panelStore->colorPrimary()) ?>;}</style>
 </head>
 <body class="panel">
 <div class="shell">
     <aside class="sidebar">
         <div class="sidebar-brand">
             <div>
-                <strong><?= e($tenant->name()) ?></strong>
-                <small><?= e($tenant->planName()) ?></small>
+                <strong><?= e($panelStore->name()) ?></strong>
+                <small><?= e($panelStore->planName()) ?></small>
             </div>
         </div>
 
@@ -74,7 +89,7 @@ $isActive = static function (string $path) use ($current, $base): bool {
         </nav>
 
         <div class="sidebar-foot">
-            <a class="sidebar-store" href="<?= e($base) ?>/" target="_blank" rel="noopener">Ver mi tienda &rarr;</a>
+            <a class="sidebar-store" href="<?= e($panelStoreUrl) ?>" target="_blank" rel="noopener">Ver mi tienda &rarr;</a>
         </div>
     </aside>
 
