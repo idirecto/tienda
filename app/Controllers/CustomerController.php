@@ -9,6 +9,7 @@ use Tienda\Core\Controller;
 use Tienda\Core\CustomerAuth;
 use Tienda\Core\Logger;
 use Tienda\Core\Session;
+use Tienda\Core\ShippingZone;
 use Tienda\Models\Customer;
 use Tienda\Models\CustomerAddress;
 use Tienda\Models\Order;
@@ -252,11 +253,18 @@ final class CustomerController extends Controller
             }
         }
 
+        $selectedProvinceId = $address !== null
+            ? (int) (ShippingZone::resolveProvince($address) ?? 0)
+            : 0;
+
         return $this->view($this->themeView('account/address_form'), [
             'pageTitle' => $address === null ? 'Nueva direccion' : 'Editar direccion',
             'customer'  => $customer,
             'address'   => $address,
             'isFirst'   => CustomerAddress::countForCustomer((int) $customer['id'], $storeId) === 0,
+            'provinces' => ShippingZone::provinces(),
+            'spainCountryId' => ShippingZone::spainCountryId(),
+            'selectedProvinceId' => $selectedProvinceId,
         ], 'shop');
     }
 
@@ -294,6 +302,12 @@ final class CustomerController extends Controller
 
         if (trim($data['name']) === '' || trim($data['address']) === '') {
             Session::flash('error', 'El nombre y la direccion son obligatorios.');
+            $this->redirect('cuenta/direcciones/' . ($id > 0 ? $id : 'nueva'));
+        }
+
+        $data = ShippingZone::canonicalizeAddress($data);
+        if (!ShippingZone::countryIsSpain($data) || ShippingZone::resolveProvince($data) === null) {
+            Session::flash('error', 'Selecciona una provincia de España para la direccion.');
             $this->redirect('cuenta/direcciones/' . ($id > 0 ? $id : 'nueva'));
         }
 

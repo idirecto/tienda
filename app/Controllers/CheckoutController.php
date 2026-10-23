@@ -10,6 +10,7 @@ use Tienda\Core\Controller;
 use Tienda\Core\CustomerAuth;
 use Tienda\Core\Logger;
 use Tienda\Core\Session;
+use Tienda\Core\ShippingZone;
 use Tienda\Core\ValidationException;
 use Tienda\Models\CustomerAddress;
 use Tienda\Models\Order;
@@ -40,12 +41,55 @@ final class CheckoutController extends Controller
             Session::flash('error', 'Tu carrito esta vacio.');
             $this->redirect('carrito');
         }
-        $totals = Cart::totals($items, $store);
-
         $customer = CustomerAuth::customer($storeId);
         $addresses = $customer === null
             ? []
             : CustomerAddress::forCustomer((int) $customer['id'], $storeId);
+
+        $selectedAddress = (int) $this->input('direccion', 0);
+        $previewAddress = $addresses[0] ?? null;
+        if ($selectedAddress > 0) {
+            $foundAddress = null;
+            foreach ($addresses as $address) {
+                if ((int) $address['id'] === $selectedAddress) {
+                    $foundAddress = $address;
+                    break;
+                }
+            }
+            if ($foundAddress !== null) {
+                $previewAddress = $foundAddress;
+            } else {
+                $selectedAddress = 0;
+            }
+        }
+
+        // La provincia no se conoce hasta que hay direccion. Para que el
+        // primer render no ensene un envio de otra zona, se muestra "por
+        // calcular" y el importe definitivo se fija en el servidor.
+        $totals = Cart::totals($items, $store, [
+            'zone_code' => null,
+            'cost'      => 0,
+            'free_from' => null,
+        ]);
+        $shippingQuote = null;
+        $shippingPending = true;
+        $shippingError = '';
+
+        if ($previewAddress !== null) {
+            $canonical = ShippingZone::canonicalizeAddress($previewAddress);
+            $zone = ShippingZone::zoneForAddress($canonical);
+            $zoneConfig = $zone !== null
+                ? ShippingZone::enabledConfig($storeId, $zone)
+                : null;
+
+            if ($zone !== null && $zoneConfig !== null) {
+                $totals = Cart::totals($items, $store, $zoneConfig);
+                $shippingQuote = $this->shippingQuotePayload($zoneConfig, $totals);
+                $shippingPending = false;
+            } else {
+                $shippingError = ShippingZone::blockedMessage($storeId);
+            }
+        }
 
         return $this->view($this->themeView('checkout'), [
             'pageTitle'  => 'Finalizar compra',
@@ -55,7 +99,12 @@ final class CheckoutController extends Controller
             'addresses'  => $addresses,
             'methods'    => Checkout::paymentMethods($store),
             'store'      => $store,
-            'selectedAddress' => (int) $this->input('direccion', 0),
+            'selectedAddress' => $selectedAddress,
+            'provinces'  => ShippingZone::provinces(),
+            'spainCountryId' => ShippingZone::spainCountryId(),
+            'shippingQuote' => $shippingQuote,
+            'shippingPending' => $shippingPending,
+            'shippingError' => $shippingError,
         ], 'shop');
     }
 
@@ -83,14 +132,22 @@ final class CheckoutController extends Controller
         $totals = [];
         try {
             // Direccion de envio: la elegida de la libreta o la escrita a mano.
-            $ship = $this->shipAddress($storeId);
+            $ship = ShippingZone::canonicalizeAddress($this->shipAddress($storeId));
+            $zone = ShippingZone::zoneForAddress($ship);
+            $zoneConfig = $zone !== null
+                ? ShippingZone::enabledConfig($storeId, $zone)
+                : null;
+            if ($zone === null || $zoneConfig === null) {
+                throw new ValidationException(ShippingZone::blockedMessage($storeId));
+            }
+
             $customer = Checkout::resolveCustomer($store, $ship);
-            $totals = Cart::totals($items, $store);
+            $totals = Cart::totals($items, $store, $zoneConfig);
 
             $result = Checkout::place($store, $customer, $ship, $this->billAddress($ship), [
                 'payment_method' => (string) $this->input('payment_method', ''),
                 'comment'        => (string) $this->input('comment', ''),
-            ], $items, $totals);
+            ], $items);
         } catch (ValidationException $e) {
             // Compra rechazada por datos del cliente (direccion, pago, email...):
             // queda en el log de compras para poder explicar al cliente que fallo.
@@ -136,6 +193,78 @@ final class CheckoutController extends Controller
         Session::flash('success', 'Gracias. Hemos registrado tu pedido ' . $result['code'] . '.');
 
         $this->redirect('checkout/gracias/' . $result['code']);
+    }
+
+    /** Cotizacion de envio para actualizar el resumen sin guardar el pedido. */
+    public function quote(array $params = []): string
+    {
+        $this->requireCsrf('checkout');
+
+        $storeId = (int) $this->tenant->id();
+        $store = $this->tenant->toArray();
+        if (!$this->tenant->allowOrders()) {
+            return $this->json([
+                'ok' => false,
+                'code' => 'store_closed',
+                'message' => 'Esta tienda no esta aceptando pedidos en este momento.',
+            ], 422);
+        }
+
+        $items = Cart::items($storeId);
+        if ($items === []) {
+            return $this->json([
+                'ok' => false,
+                'code' => 'empty_cart',
+                'message' => 'Tu carrito esta vacio.',
+            ], 422);
+        }
+
+        try {
+            $ship = ShippingZone::canonicalizeAddress($this->shipAddress($storeId));
+            $zone = ShippingZone::zoneForAddress($ship);
+            $zoneConfig = $zone !== null
+                ? ShippingZone::enabledConfig($storeId, $zone)
+                : null;
+            if ($zone === null || $zoneConfig === null) {
+                return $this->json([
+                    'ok' => false,
+                    'code' => 'zone_blocked',
+                    'message' => ShippingZone::blockedMessage($storeId),
+                ], 422);
+            }
+
+            $totals = Cart::totals($items, $store, $zoneConfig);
+
+            return $this->json(['ok' => true] + $this->shippingQuotePayload($zoneConfig, $totals));
+        } catch (ValidationException $e) {
+            return $this->json([
+                'ok' => false,
+                'code' => 'validation',
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    /** Datos comunes de la cotizacion (render inicial y AJAX). */
+    private function shippingQuotePayload(array $zone, array $totals): array
+    {
+        $shipping = round((float) $totals['shipping'], 2);
+        $total = round((float) $totals['total'], 2);
+
+        return [
+            'zone'           => (string) $zone['zone_code'],
+            'zone_label'     => ShippingZone::label((string) $zone['zone_code']),
+            'shipping'       => $shipping,
+            'shipping_label' => $shipping > 0 ? euros($shipping) : 'Gratis',
+            'total'          => $total,
+            'total_label'    => euros($total),
+            'delivery_label' => ShippingZone::deliveryLabel(
+                $zone['delivery_days_min'] ?? null,
+                $zone['delivery_days_max'] ?? null
+            ),
+            'conditions'     => (string) ($zone['conditions'] ?? ''),
+            'message'        => '',
+        ];
     }
 
     /** Pagina de "gracias": resumen del pedido e instrucciones de pago. */

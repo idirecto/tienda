@@ -3,12 +3,12 @@
  * Formulario de direccion (nueva o edicion).
  *
  * @var array $customer @var array|null $address @var bool $isFirst @var string $base
+ * @var array<int,string> $provinces @var int|null $spainCountryId @var int $selectedProvinceId
  */
 use Tienda\Core\Csrf;
 
 $v = static fn (string $key, string $default = ''): string => (string) ($address[$key] ?? $default);
 $id = (int) ($address['id'] ?? 0);
-$espana = (string) ($address['country'] ?? 'Espana');
 ?>
 <section class="container section section-narrow">
     <div class="page-head">
@@ -43,10 +43,19 @@ $espana = (string) ($address['country'] ?? 'Espana');
                 <input type="text" name="city" maxlength="120" value="<?= e($v('city')) ?>">
             </label>
             <label>Provincia
-                <input type="text" name="province" maxlength="120" value="<?= e($v('province')) ?>">
+                <select name="id_provincia" required>
+                    <option value="">Selecciona provincia</option>
+                    <?php foreach ($provinces as $provinceId => $provinceName): ?>
+                        <option value="<?= (int) $provinceId ?>" <?= (int) $selectedProvinceId === (int) $provinceId ? 'selected' : '' ?>>
+                            <?= e($provinceName) ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
             </label>
             <label>Pais
-                <input type="text" name="country" maxlength="60" value="<?= e($espana) ?>">
+                <input type="text" value="España" disabled>
+                <input type="hidden" name="country" value="Espana">
+                <input type="hidden" name="id_pais" value="<?= (int) ($spainCountryId ?? 0) ?>">
             </label>
             <label>Telefono
                 <input type="text" name="phone" maxlength="40" value="<?= e($v('phone', (string) ($customer['phone'] ?? ''))) ?>">

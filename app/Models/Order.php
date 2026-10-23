@@ -301,6 +301,7 @@ final class Order extends Model
                 'ship_country_id' => self::intOrNull($data['ship_country_id'] ?? null),
                 'ship_province_id' => self::intOrNull($data['ship_province_id'] ?? null),
                 'ship_poblacion_id' => self::intOrNull($data['ship_poblacion_id'] ?? null),
+                'ship_zone' => $data['ship_zone'] ?? null,
 
                 'notes'          => $data['notes'] ?? null,
                 'customer_note'  => $data['customer_note'] ?? null,

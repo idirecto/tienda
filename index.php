@@ -106,6 +106,7 @@ $router->post('/carrito/vaciar',        [CartController::class, 'clear']);
 
 $router->get('/checkout',               [CheckoutController::class, 'start']);
 $router->post('/checkout',              [CheckoutController::class, 'place']);
+$router->post('/checkout/envio',        [CheckoutController::class, 'quote']);
 $router->get('/checkout/gracias/{code}', [CheckoutController::class, 'thanks']);
 
 $router->get('/cuenta/login',           [CustomerController::class, 'showLogin']);

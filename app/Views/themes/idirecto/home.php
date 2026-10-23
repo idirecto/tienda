@@ -21,7 +21,7 @@ $cardFile = TIENDA_BASE . '/app/Views/themes/idirecto/_card.php';
 $ownCardFile = TIENDA_BASE . '/app/Views/themes/idirecto/_card_own.php';
 
 $services = [
-    ['icon' => 'truck',   'title' => 'Envio 24/48 h',  'text' => 'Gestionado por la tienda'],
+    ['icon' => 'truck',   'title' => 'Envio segun destino', 'text' => 'Plazos por zona'],
     ['icon' => 'shield',  'title' => 'Pago seguro',    'text' => 'Pasarelas verificadas'],
     ['icon' => 'refresh', 'title' => '30 dias',        'text' => 'Devoluciones sin complicaciones'],
     ['icon' => 'headset', 'title' => 'Soporte tecnico', 'text' => 'Atencion personalizada'],

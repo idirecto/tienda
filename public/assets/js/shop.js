@@ -631,6 +631,165 @@
             });
         });
     }
+
+    /* Cotizacion de envio por zona. El servidor sigue siendo la autoridad:
+       esto solo actualiza el resumen antes de confirmar el pedido. */
+    var checkoutForm = document.querySelector('[data-checkout-form]');
+    if (checkoutForm) {
+        initShippingQuote(checkoutForm);
+    }
+
+    function initShippingQuote(form) {
+        var endpoint = form.getAttribute('data-shipping-quote-url') || '';
+        var amount = form.querySelector('[data-shipping-amount]');
+        var total = form.querySelector('[data-order-total]');
+        var caption = form.querySelector('[data-total-caption]');
+        var summary = form.querySelector('[data-shipping-summary]');
+        var zoneLabel = form.querySelector('[data-shipping-zone]');
+        var delivery = form.querySelector('[data-shipping-delivery]');
+        var conditions = form.querySelector('[data-shipping-conditions]');
+        var message = form.querySelector('[data-shipping-message]');
+        var pending = form.querySelector('[data-shipping-pending]');
+        var submit = form.querySelector('[data-checkout-submit]');
+        var province = form.querySelector('select[name="ship_id_provincia"]');
+        var newAddress = form.querySelector('[data-address-new]');
+        var manualBox = form.querySelector('[data-manual-address]');
+        var addressRadios = Array.prototype.slice.call(form.querySelectorAll('input[name="address_id"]'));
+        var manualFields = Array.prototype.slice.call(form.querySelectorAll('[name^="ship_"]'));
+        var timer = null;
+        var requestNo = 0;
+        var subtotalLabel = form.getAttribute('data-subtotal-label') || '';
+        var canSubmit = !!form.querySelector('input[name="payment_method"]');
+
+        if (!endpoint || !amount || !total) {
+            return;
+        }
+
+        if (submit && form.getAttribute('data-shipping-blocked') === '1') {
+            submit.disabled = true;
+        }
+
+        function usaDireccionGuardada() {
+            var selected = form.querySelector('input[name="address_id"]:checked');
+            return !!(selected && parseInt(selected.value, 10) > 0);
+        }
+
+        function sincronizarDireccionManual() {
+            if (!manualBox) { return; }
+            var guardada = usaDireccionGuardada();
+            manualBox.hidden = guardada;
+            if (province) {
+                province.required = !guardada;
+            }
+        }
+
+        function marcar(texto) {
+            if (!message) { return; }
+            message.textContent = texto || '';
+            message.hidden = !texto;
+        }
+
+        function mostrarPendiente(blocked) {
+            amount.textContent = blocked ? 'No disponible' : 'Se calcula al confirmar';
+            total.textContent = subtotalLabel;
+            if (caption) { caption.textContent = 'Total sin envio'; }
+            if (summary) { summary.hidden = true; }
+            if (pending) { pending.hidden = !!blocked; }
+            if (submit) { submit.disabled = !!blocked || !canSubmit; }
+        }
+
+        function actualizar() {
+            if (!province) { return; }
+            var selected = form.querySelector('input[name="address_id"]:checked');
+            var usingSaved = selected && parseInt(selected.value, 10) > 0;
+            if (!usingSaved && !parseInt(province.value, 10)) {
+                mostrarPendiente(false);
+                marcar('');
+                return;
+            }
+
+            var request = ++requestNo;
+            amount.textContent = 'Calculando...';
+            marcar('');
+
+            window.fetch(endpoint, {
+                method: 'POST',
+                body: new FormData(form),
+                credentials: 'same-origin',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json'
+                }
+            })
+            .then(function (response) {
+                return response.json().catch(function () {
+                    return { ok: false, message: 'No se pudo calcular el envio.' };
+                });
+            })
+            .then(function (data) {
+                if (request !== requestNo) { return; }
+                if (!data || !data.ok) {
+                    mostrarPendiente(!!(data && data.code === 'zone_blocked'));
+                    marcar((data && data.message) || 'No se pudo calcular el envio.');
+                    return;
+                }
+
+                amount.textContent = data.shipping_label || 'Gratis';
+                total.textContent = data.total_label || total.textContent;
+                if (caption) { caption.textContent = 'Total'; }
+                if (zoneLabel) { zoneLabel.textContent = data.zone_label || ''; }
+                if (delivery) { delivery.textContent = data.delivery_label || ''; }
+                if (conditions) { conditions.textContent = data.conditions || ''; }
+                if (summary) { summary.hidden = !data.zone_label; }
+                if (pending) { pending.hidden = true; }
+                if (submit) { submit.disabled = !canSubmit; }
+                marcar('');
+            })
+            .catch(function () {
+                if (request !== requestNo) { return; }
+                mostrarPendiente(false);
+                marcar('No se pudo calcular el envio. Se comprobara al confirmar.');
+            });
+        }
+
+        function programar() {
+            window.clearTimeout(timer);
+            timer = window.setTimeout(actualizar, 350);
+        }
+
+        if (province) {
+            province.addEventListener('change', programar);
+        }
+        addressRadios.forEach(function (radio) {
+            radio.addEventListener('change', function () {
+                sincronizarDireccionManual();
+                programar();
+            });
+        });
+        manualFields.forEach(function (field) {
+            field.addEventListener('input', function () {
+                // Si el cliente empieza a escribir una direccion nueva, deja de
+                // aplicar la direccion guardada que estuviera seleccionada.
+                if (newAddress && field.name !== 'ship_id_pais' && field.name !== 'ship_country') {
+                    newAddress.checked = true;
+                }
+                sincronizarDireccionManual();
+                programar();
+            });
+            field.addEventListener('change', programar);
+        });
+
+        if (newAddress) {
+            newAddress.addEventListener('change', function () {
+                if (newAddress.checked) {
+                    programar();
+                }
+                sincronizarDireccionManual();
+            });
+        }
+
+        sincronizarDireccionManual();
+    }
 })();
 
 /* =====================================================================

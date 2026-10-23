@@ -73,9 +73,8 @@ final class Checkout
      * @param array $bill     Direccion de facturacion (si viene vacia = la de envio)
      * @param array $data     Forma de pago y comentario
      * @param array<int,array<string,mixed>> $items Lineas del carrito
-     * @param array $totals   Totales calculados por el carrito
-     * @return array{order_id:int,code:string}
-     * @throws ValidationException si falta algo o el pedido no se puede registrar
+     * @return array{order_id:int,code:string,zone:string}
+     * @throws ValidationException si falta algo, la zona no vale o el pedido no se puede registrar
      */
     public static function place(
         array $store,
@@ -83,8 +82,7 @@ final class Checkout
         array $ship,
         array $bill,
         array $data,
-        array $items,
-        array $totals
+        array $items
     ): array {
         $storeId = (int) $store['id'];
 
@@ -102,8 +100,8 @@ final class Checkout
         }
 
         // Facturacion: si no viene nada, se factura a la direccion de envio.
-        $ship = self::normalizeAddress($ship);
-        $bill = self::normalizeAddress($bill);
+        $ship = ShippingZone::canonicalizeAddress(self::normalizeAddress($ship));
+        $bill = ShippingZone::canonicalizeAddress(self::normalizeAddress($bill));
         if ($bill['name'] === '' && $bill['address'] === '') {
             $bill = $ship;
         }
@@ -114,6 +112,19 @@ final class Checkout
         if (trim((string) ($customer['email'] ?? '')) === '') {
             throw new ValidationException('Necesitamos un email para poder avisarte del pedido.');
         }
+
+        // La zona se resuelve en servidor desde la direccion de envio. Si no
+        // esta activa para esta tienda, el pedido no llega a crearse. El coste
+        // se recalcula aqui: no se confia en ningun importe enviado por el
+        // navegador.
+        $zoneCode = ShippingZone::zoneForAddress($ship);
+        $zoneConfig = $zoneCode !== null
+            ? ShippingZone::enabledConfig($storeId, $zoneCode)
+            : null;
+        if ($zoneCode === null || $zoneConfig === null) {
+            throw new ValidationException(ShippingZone::blockedMessage($storeId));
+        }
+        $totals = Cart::totals($items, $store, $zoneConfig);
 
         $lines = [];
         foreach ($items as $item) {
@@ -151,6 +162,7 @@ final class Checkout
             'ship_country_id'  => $ship['id_pais'],
             'ship_province_id' => $ship['id_provincia'],
             'ship_poblacion_id' => $ship['id_poblacion'],
+            'ship_zone'        => $zoneCode,
 
             'bill_name'        => $bill['name'],
             'bill_tax_id'      => $bill['tax_id'],
@@ -173,7 +185,11 @@ final class Checkout
 
         $order = Order::findForStore($orderId, $storeId);
 
-        return ['order_id' => $orderId, 'code' => (string) ($order['code'] ?? '')];
+        return [
+            'order_id' => $orderId,
+            'code'     => (string) ($order['code'] ?? ''),
+            'zone'     => $zoneCode,
+        ];
     }
 
     /**

@@ -190,9 +190,10 @@ final class Cart
      * Totales del carrito (importes de la tienda: en el storefront, con IVA).
      *
      * @param array<int,array<string,mixed>> $items
-     * @return array{subtotal_net:float,tax_total:float,subtotal:float,shipping:float,total:float,units:int,lines:int}
+     * @param array<string,mixed>|null $zone Configuracion de zona confirmada
+     * @return array{subtotal_net:float,tax_total:float,subtotal:float,shipping:float,total:float,units:int,lines:int,zone_code:?string}
      */
-    public static function totals(array $items, array $store): array
+    public static function totals(array $items, array $store, ?array $zone = null): array
     {
         $subtotalNet = 0.0;
         $taxTotal = 0.0;
@@ -212,7 +213,7 @@ final class Cart
         $subtotalNet = round($subtotalNet, 2);
         $subtotal = round($subtotal, 2);
         $taxTotal = round($subtotal - $subtotalNet, 2);
-        $shipping = Shipping::cost($store, $subtotal);
+        $shipping = Shipping::cost($store, $subtotal, $zone);
 
         return [
             'subtotal_net' => $subtotalNet,
@@ -222,6 +223,7 @@ final class Cart
             'total'        => round($subtotal + $shipping, 2),
             'units'        => $units,
             'lines'        => count($items),
+            'zone_code'    => $zone['zone_code'] ?? null,
         ];
     }
 

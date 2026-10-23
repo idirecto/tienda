@@ -51,6 +51,9 @@ $items = (array) ($order['items'] ?? []);
                 <?= e($order['ship_address'] ?? '') ?><?= $order['ship_detail'] ? ', ' . e($order['ship_detail']) : '' ?><br>
                 <?= e($order['ship_postal_code'] ?? '') ?> <?= e($order['ship_city'] ?? '') ?><br>
                 <?= e($order['ship_province'] ?? '') ?>
+                <?php if (!empty($order['ship_zone'])): ?>
+                    <br><span class="muted small">Zona: <?= e(\Tienda\Core\ShippingZone::label((string) $order['ship_zone'])) ?></span>
+                <?php endif; ?>
             </p>
 
             <?php if (!empty($order['bill_address']) && $order['bill_address'] !== $order['ship_address']): ?>

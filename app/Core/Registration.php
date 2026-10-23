@@ -133,6 +133,10 @@ final class Registration
         $crear = function () use ($data, $email, $password): array {
             $storeId = (int) Database::insert('mt_stores', $data);
 
+            // Toda tienda nueva arranca con las cuatro zonas disponibles y la
+            // tarifa general como respaldo; el tendero puede ajustarlas luego.
+            ShippingZone::seedDefaults($storeId);
+
             $userId = (int) Database::insert('mt_store_users', [
                 'store_id'      => $storeId,
                 'name'          => $data['name'],

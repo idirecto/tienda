@@ -94,6 +94,7 @@ $puedeSeguir = $allowOrders && $items !== [];
                     <div><dt>Gastos de envio</dt><dd><?= $totals['shipping'] > 0 ? e(euros($totals['shipping'])) : 'Gratis' ?></dd></div>
                     <div class="totals-grand"><dt>Total</dt><dd><?= e(euros($totals['total'])) ?></dd></div>
                 </dl>
+                <p class="muted small">El importe definitivo del envio se calcula en el checkout segun la provincia.</p>
 
                 <?php if ($missingFree > 0): ?>
                     <p class="cart-hint">Te faltan <strong><?= e(euros($missingFree)) ?></strong> para el envio gratis.</p>

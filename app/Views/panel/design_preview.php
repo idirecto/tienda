@@ -53,7 +53,7 @@ $demoSpecs = [
         <ul class="service-strip" style="margin: 0;">
             <li class="service">
                 <span class="service-icon" aria-hidden="true"><?= icon_svg('truck') ?></span>
-                <span class="service-body"><strong>Envio 24/48 h</strong><small>Stock real</small></span>
+                <span class="service-body"><strong>Envio segun destino</strong><small>Stock real</small></span>
             </li>
             <li class="service">
                 <span class="service-icon" aria-hidden="true"><?= icon_svg('shield') ?></span>

@@ -1810,3 +1810,30 @@ body.shop-minicart-open { overflow: hidden; }
     .minicart-spinner { animation: none; }
 }
 
+
+/* Resumen de envio por zona en el checkout. */
+.shipping-quote {
+    display: flex;
+    flex-direction: column;
+    gap: .2rem;
+    margin: .65rem 0;
+    padding: .6rem .7rem;
+    border: 1px solid var(--c-border);
+    border-radius: var(--c-radius-md);
+    background: var(--c-surface-2);
+}
+.shipping-quote[hidden],
+[data-shipping-message][hidden],
+[data-shipping-pending][hidden] { display: none; }
+.shipping-quote > strong { font-size: .86rem; }
+.shipping-quote > span { color: var(--c-text); font-size: .8rem; }
+.shipping-quote > [data-shipping-conditions] { margin: .35rem 0 0; color: var(--c-text); white-space: pre-line; }
+.shipping-quote-label {
+    font-size: .68rem;
+    font-weight: 800;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--c-text);
+}
+[data-manual-address][hidden],
+[data-bill-fields][hidden] { display: none !important; }

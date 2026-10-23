@@ -5,9 +5,28 @@
  * @var array $account cuenta del mayorista resuelta
  * @var array $nivel estado del nivel de cliente (nivel, cuenta y motivo)
  * @var string $nivelAviso frase accionable cuando la cuenta no tiene nivel
+ * @var array<string,array<string,mixed>> $shippingZones
+ * @var string $shippingBlockedMessage
  */
 use Tienda\Core\Csrf;
 $v = static fn (string $k, string $d = '') => e($store[$k] ?? $d);
+$zoneValue = static function (mixed $value): string {
+    if ($value === null || $value === '') {
+        return '';
+    }
+    $numeric = str_replace(',', '.', (string) $value);
+    if (is_numeric($numeric)) {
+        return number_format((float) $numeric, 2, ',', '');
+    }
+
+    return (string) $value;
+};
+$globalCost = (float) ($store['shipping_flat'] ?? 0);
+$globalFree = $store['free_shipping_from'] ?? null;
+$globalCostLabel = $globalCost > 0 ? number_format($globalCost, 2, ',', '') . ' EUR' : 'sin coste';
+$globalFreeLabel = $globalFree !== null && (float) $globalFree > 0
+    ? number_format((float) $globalFree, 2, ',', '') . ' EUR'
+    : 'sin envio gratis';
 ?>
 <section class="two-col">
     <div class="card">
@@ -57,11 +76,13 @@ $v = static fn (string $k, string $d = '') => e($store[$k] ?? $d);
                 <label>Beneficio (%)
                     <input type="text" name="markup" value="<?= $v('markup', '15') ?>">
                 </label>
-                <label>Gastos de envio (EUR)
+                <label>Tarifa de envio general (EUR)
                     <input type="text" name="shipping_flat" value="<?= $v('shipping_flat', '0') ?>">
+                    <small class="muted">Se usa en las zonas que no tengan coste propio.</small>
                 </label>
-                <label>Envio gratis desde (EUR)
+                <label>Envio gratis general desde (EUR)
                     <input type="text" name="free_shipping_from" value="<?= $v('free_shipping_from') ?>" placeholder="vacio = nunca">
+                    <small class="muted">Se hereda solo en las zonas sin umbral propio.</small>
                 </label>
             </div>
 
@@ -115,6 +136,72 @@ $v = static fn (string $k, string $d = '') => e($store[$k] ?? $d);
             </div>
         </form>
     </div>
+</section>
+
+<section class="card">
+    <h2>Zonas de venta y envio</h2>
+    <p class="muted small">
+        Elige donde aceptas pedidos. Las cuatro zonas son independientes: puedes activar una, varias o todas.
+        El coste, el envio gratis y el plazo de cada zona son opcionales; si los dejas vacios se usa la
+        tarifa general de arriba. Un valor <strong>0</strong> en "Envio gratis desde" desactiva el envio
+        gratis para esa zona. La zona solo decide el envio: no cambia el IVA ni ningun otro impuesto.
+    </p>
+
+    <form method="post" action="<?= e($base) ?>/panel/ajustes" class="stack">
+        <?= Csrf::field() ?>
+        <input type="hidden" name="form" value="shipping_zones">
+
+        <div class="shipping-zones-grid">
+            <?php foreach ($shippingZones as $zoneCode => $zone): ?>
+                <section class="shipping-zone-card">
+                    <label class="check check-line">
+                        <input type="checkbox" name="zones[<?= e($zoneCode) ?>][enabled]" value="1"
+                               <?= (int) ($zone['enabled'] ?? 0) === 1 ? 'checked' : '' ?>>
+                        <span>
+                            <strong><?= e((string) $zone['label']) ?></strong>
+                            <small class="zone-toggle-hint">Activar zona</small>
+                        </span>
+                    </label>
+                    <small class="muted zone-state">Inactiva: no acepta pedidos; su configuracion se conserva.</small>
+
+                    <div class="field-grid">
+                        <label>Coste (EUR)
+                            <input type="text" inputmode="decimal" name="zones[<?= e($zoneCode) ?>][cost]"
+                                   value="<?= e($zoneValue($zone['cost'] ?? '')) ?>" placeholder="Heredar general (<?= e($globalCostLabel) ?>)">
+                            <small class="muted">Vacio = usa la tarifa general de la tienda.</small>
+                        </label>
+                        <label>Envio gratis desde (EUR)
+                            <input type="text" inputmode="decimal" name="zones[<?= e($zoneCode) ?>][free_from]"
+                                   value="<?= e($zoneValue($zone['free_from'] ?? '')) ?>" placeholder="Heredar general (<?= e($globalFreeLabel) ?>)">
+                            <small class="muted">Vacio = hereda el umbral general; 0 = sin envio gratis; importe = umbral propio.</small>
+                        </label>
+                        <label>Plazo minimo (dias)
+                            <input type="number" min="0" step="1" name="zones[<?= e($zoneCode) ?>][delivery_days_min]"
+                                   value="<?= e((string) ($zone['delivery_days_min'] ?? '')) ?>" placeholder="Sin definir">
+                        </label>
+                        <label>Plazo maximo (dias)
+                            <input type="number" min="0" step="1" name="zones[<?= e($zoneCode) ?>][delivery_days_max]"
+                                   value="<?= e((string) ($zone['delivery_days_max'] ?? '')) ?>" placeholder="Sin definir">
+                        </label>
+                    </div>
+
+                    <label>Condiciones de envio de esta zona
+                        <textarea name="zones[<?= e($zoneCode) ?>][conditions]" rows="3" maxlength="1000"
+                                  placeholder="Ej. condiciones de reparto, incidencias, recogidas..."><?= e((string) ($zone['conditions'] ?? '')) ?></textarea>
+                    </label>
+                </section>
+            <?php endforeach; ?>
+        </div>
+
+        <label>Mensaje cuando la zona no esta disponible
+            <textarea name="shipping_blocked_message" rows="3" maxlength="500" required><?= e($shippingBlockedMessage) ?></textarea>
+            <small class="muted">Se muestra en el checkout si la direccion no pertenece a una zona activa.</small>
+        </label>
+
+        <div class="actions">
+            <button class="btn btn-primary" type="submit">Guardar zonas y envio</button>
+        </div>
+    </form>
 </section>
 
 <section class="card">

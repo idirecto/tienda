@@ -11,16 +11,20 @@ namespace Tienda\Core;
  * gratis a partir de un importe. Se calculan sobre el importe que paga el cliente
  * (con IVA), que es como lo piensa el tendero cuando dice "gratis desde 50 €".
  *
- * El calculo por peso y provincia (como hace puntobyze) queda pendiente: necesita
- * pesos fiables por producto y una tabla de tarifas por zona.
+ * La configuracion puede ser general o por zona comercial. Si la zona no tiene
+ * coste/umbral propios, se hereda la tarifa general de la tienda. No se calcula
+ * por peso: el catalogo no ofrece pesos fiables.
  */
 final class Shipping
 {
-    /** Coste del envio para ese importe de productos (ya con IVA). */
-    public static function cost(array $store, float $subtotal): float
+    /**
+     * Coste del envio para ese importe de productos (ya con IVA).
+     *
+     * @param array<string,mixed>|null $zone Configuracion de ShippingZone::storeConfig()
+     */
+    public static function cost(array $store, float $subtotal, ?array $zone = null): float
     {
-        $flat = round((float) ($store['shipping_flat'] ?? 0), 2);
-        $free = $store['free_shipping_from'] ?? null;
+        [$flat, $free] = self::effectiveConfig($store, $zone);
 
         if ($flat <= 0) {
             return 0.0;
@@ -33,11 +37,15 @@ final class Shipping
         return $flat;
     }
 
-    /** Cuanto falta para el envio gratis (0 si ya no aplica). */
-    public static function missingForFree(array $store, float $subtotal): float
+    /**
+     * Cuanto falta para el envio gratis (0 si ya no aplica).
+     *
+     * @param array<string,mixed>|null $zone Configuracion de la zona
+     */
+    public static function missingForFree(array $store, float $subtotal, ?array $zone = null): float
     {
-        $free = $store['free_shipping_from'] ?? null;
-        if ($free === null || (float) $free <= 0 || (float) ($store['shipping_flat'] ?? 0) <= 0) {
+        [$flat, $free] = self::effectiveConfig($store, $zone);
+        if ($free === null || (float) $free <= 0 || $flat <= 0) {
             return 0.0;
         }
 
@@ -46,11 +54,38 @@ final class Shipping
         return $falta > 0 ? $falta : 0.0;
     }
 
-    /** Hay envio gratis configurado (para poder anunciarlo en el carrito). */
-    public static function hasFreeFrom(array $store): bool
+    /**
+     * Hay envio gratis configurado (para poder anunciarlo en el carrito).
+     *
+     * @param array<string,mixed>|null $zone Configuracion de la zona
+     */
+    public static function hasFreeFrom(array $store, ?array $zone = null): bool
     {
-        return ($store['free_shipping_from'] ?? null) !== null
-            && (float) $store['free_shipping_from'] > 0
-            && (float) ($store['shipping_flat'] ?? 0) > 0;
+        [$flat, $free] = self::effectiveConfig($store, $zone);
+
+        return $free !== null
+            && (float) $free > 0
+            && $flat > 0;
+    }
+
+    /**
+     * Coste y umbral efectivos: la zona manda; si el campo esta a NULL se
+     * hereda la configuracion general de la tienda.
+     *
+     * @param array<string,mixed>|null $zone
+     * @return array{0:float,1:float|int|null}
+     */
+    private static function effectiveConfig(array $store, ?array $zone): array
+    {
+        $flat = $zone !== null && array_key_exists('cost', $zone) && $zone['cost'] !== null
+            ? (float) $zone['cost']
+            : (float) ($store['shipping_flat'] ?? 0);
+        $free = $zone !== null
+            && array_key_exists('free_from', $zone)
+            && $zone['free_from'] !== null
+            ? $zone['free_from']
+            : ($store['free_shipping_from'] ?? null);
+
+        return [round($flat, 2), $free];
     }
 }

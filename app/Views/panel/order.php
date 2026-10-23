@@ -142,6 +142,9 @@ $sendFormId = 'send-order-' . (int) $order['id'];
                 <?= e($order['ship_address']) ?><?= !empty($order['ship_detail']) ? ', ' . e($order['ship_detail']) : '' ?><br>
                 <?= e(trim(($order['ship_postal_code'] ?? '') . ' ' . ($order['ship_city'] ?? ''))) ?><br>
                 <?= e($order['ship_province'] ?? '') ?> · <?= e($order['ship_country'] ?? '') ?>
+                <?php if (!empty($order['ship_zone'])): ?>
+                    <br><span class="muted small">Zona: <?= e(\Tienda\Core\ShippingZone::label((string) $order['ship_zone'])) ?></span>
+                <?php endif; ?>
                 <?php if (!empty($order['ship_phone']) || !empty($order['ship_mobile'])): ?>
                     <br><span class="muted small"><?= e($order['ship_phone'] ?: $order['ship_mobile']) ?></span>
                 <?php endif; ?>

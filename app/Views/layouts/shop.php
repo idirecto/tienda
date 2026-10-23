@@ -128,7 +128,7 @@ $headerStyle = preg_replace('/[^a-z0-9_\-]/i', '', $tenant->headerStyle()) ?: 'c
 <header class="shop-header">
     <div class="topbar">
         <div class="container topbar-inner">
-            <span class="topbar-item">Envio rapido en 24/48 h</span>
+            <span class="topbar-item">Consulta plazos y zonas de envio</span>
             <span class="topbar-item topbar-hide-sm">Atencion personalizada</span>
             <span class="topbar-item topbar-right">
                 <a href="<?= e($base) ?>/contacto">Contacto</a>
