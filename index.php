@@ -183,11 +183,20 @@ $router->get('/panel/diseno/tokens',   [DesignController::class, 'tokens']);
 $router->get('/panel/diseno/previa',   [DesignController::class, 'preview']);
 
 $router->get('/panel/banners',         [BannerController::class, 'index']);
+$router->get('/panel/banners/nuevo',   [BannerController::class, 'create']);
 $router->post('/panel/banners',        [BannerController::class, 'store']);
+// Rutas fijas de previsualizacion antes de las dinamicas con {id}.
+$router->post('/panel/banners/previa', [BannerController::class, 'preview']);
+$router->get('/panel/banners/{id}/editar', [BannerController::class, 'edit']);
+$router->post('/panel/banners/{id}',   [BannerController::class, 'update']);
 $router->post('/panel/banners/{id}/borrar', [BannerController::class, 'destroy']);
 
 $router->get('/panel/avisos',          [NoticeController::class, 'index']);
+$router->get('/panel/avisos/nuevo',    [NoticeController::class, 'create']);
 $router->post('/panel/avisos',         [NoticeController::class, 'store']);
+$router->post('/panel/avisos/previa',  [NoticeController::class, 'preview']);
+$router->get('/panel/avisos/{id}/editar', [NoticeController::class, 'edit']);
+$router->post('/panel/avisos/{id}',    [NoticeController::class, 'update']);
 $router->post('/panel/avisos/{id}/borrar', [NoticeController::class, 'destroy']);
 
 $router->get('/panel/productos',       [ProductController::class, 'index']);

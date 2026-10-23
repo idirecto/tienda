@@ -79,8 +79,7 @@
                 var preview = document.querySelector(opts.preview);
                 if (preview) {
                     // El destino puede ser la propia <img> (favicon) o un contenedor
-                    // (logo). Se conserva lo que ya hubiera: asi el aviso del favicon
-                    // no desaparece al subir la imagen.
+                    // (logo, banner o aviso). Se conserva lo que ya hubiera.
                     if (preview.tagName === 'IMG') {
                         preview.src = data.media.url;
                     } else {
@@ -88,9 +87,20 @@
                         if (previewImg) {
                             previewImg.src = data.media.url;
                         } else {
-                            preview.innerHTML = '<img src="' + data.media.url + '" alt="">';
+                            previewImg = document.createElement('img');
+                            previewImg.alt = '';
+                            previewImg.src = data.media.url;
+                            preview.appendChild(previewImg);
                         }
                     }
+                }
+            }
+            // La previsualizacion del banner/aviso escucha los cambios del
+            // formulario; los campos ocultos se rellenan por AJAX, sin teclado.
+            if (opts.urlTarget) {
+                var notifyInput = document.querySelector(opts.urlTarget);
+                if (notifyInput) {
+                    notifyInput.dispatchEvent(new Event('input', { bubbles: true }));
                 }
             }
             if (opts.label) {
@@ -762,6 +772,85 @@
         });
     }
 
+    /**
+     * Previsualizacion de banners y avisos.
+     *
+     * Envia el formulario actual al endpoint del servidor y coloca el HTML
+     * resultante en dos iframes: uno ancho (media query de escritorio) y otro
+     * de 390 px (media query movil). El HTML sale del mismo partial que la
+     * tienda, asi que no hay una maqueta paralela que pueda desviarse.
+     */
+    function initContentPreview(formSelector, rootSelector, stateSelector) {
+        var form = document.querySelector(formSelector);
+        var root = document.querySelector(rootSelector);
+        if (!form || !root) { return; }
+
+        var endpoint = form.getAttribute('data-preview-url') || '';
+        var state = document.querySelector(stateSelector);
+        var frames = root.querySelectorAll('iframe');
+        var timer = null;
+        var lastRequest = 0;
+
+        if (!endpoint || !frames.length) { return; }
+
+        function marcar(texto, error) {
+            if (!state) { return; }
+            state.textContent = texto;
+            state.classList.toggle('is-error', !!error);
+        }
+
+        function actualizar() {
+            var data = new FormData(form);
+            var request = ++lastRequest;
+            marcar('Previsualizando...');
+
+            fetch(endpoint, {
+                method: 'POST',
+                body: data,
+                credentials: 'same-origin',
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            })
+            .then(function (response) {
+                if (!response.ok) {
+                    throw new Error('No se pudo generar la previsualizacion.');
+                }
+                return response.text();
+            })
+            .then(function (html) {
+                if (request !== lastRequest) { return; }
+                Array.prototype.forEach.call(frames, function (frame) {
+                    frame.setAttribute('srcdoc', html);
+                });
+                marcar('Vista previa sin guardar');
+            })
+            .catch(function (error) {
+                if (request !== lastRequest) { return; }
+                marcar(error && error.message ? error.message : 'Vista previa no disponible', true);
+            });
+        }
+
+        function programar() {
+            window.clearTimeout(timer);
+            marcar('Cambios sin previsualizar');
+            timer = window.setTimeout(actualizar, 320);
+        }
+
+        form.addEventListener('input', programar);
+        form.addEventListener('change', programar);
+        actualizar();
+    }
+
+    /** Mantiene sincronizado el valor visible de los sliders. */
+    function initRangeOutputs() {
+        document.querySelectorAll('input[type=range][id]').forEach(function (range) {
+            var output = document.querySelector('output[for="' + range.id + '"]');
+            if (!output) { return; }
+            var sync = function () { output.textContent = String(range.value) + ' %'; };
+            range.addEventListener('input', sync);
+            sync();
+        });
+    }
+
     document.addEventListener('DOMContentLoaded', function () {
         document.querySelectorAll('.uploader').forEach(initUploader);
 
@@ -769,6 +858,10 @@
         if (designForm) {
             initDesignPreview(designForm);
         }
+
+        initContentPreview('[data-banner-form]', '[data-banner-preview]', '[data-banner-preview-state]');
+        initContentPreview('[data-notice-form]', '[data-notice-preview]', '[data-notice-preview-state]');
+        initRangeOutputs();
 
         initLineEditors();
         initOrderSend();

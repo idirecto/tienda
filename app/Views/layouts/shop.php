@@ -224,10 +224,19 @@ $headerStyle = preg_replace('/[^a-z0-9_\-]/i', '', $tenant->headerStyle()) ?: 'c
 <?php endif; ?>
 
 <?php if (!empty($notices)): ?>
+    <?php
+    // El aviso se pinta con un partial del tema para que la previsualizacion
+    // del panel use exactamente el mismo HTML y las mismas clases.
+    $noticeTheme = preg_replace('/[^a-z0-9_\-]/i', '', $tenant->theme()) ?: 'idirecto';
+    $noticePartial = __DIR__ . '/../themes/' . $noticeTheme . '/_notice.php';
+    if (!is_file($noticePartial)) {
+        $noticePartial = __DIR__ . '/../themes/idirecto/_notice.php';
+    }
+    ?>
     <div class="notices">
         <div class="container">
             <?php foreach ($notices as $n): ?>
-                <div class="notice notice-<?= e($n['type']) ?>" role="status"><?= e($n['message']) ?></div>
+                <?php include $noticePartial; ?>
             <?php endforeach; ?>
         </div>
     </div>

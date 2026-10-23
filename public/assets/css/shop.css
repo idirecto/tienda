@@ -185,14 +185,108 @@ svg { flex: 0 0 auto; }
 /* ---------- Avisos -------------------------------------------------------- */
 .notices { padding-top: .75rem; }
 .notice {
-    display: flex; align-items: center; gap: .6rem;
-    padding: .65rem 1rem; border-radius: var(--c-radius-md); margin-bottom: .5rem;
-    font-size: .9rem; border-left: 4px solid var(--c-info);
-    background: var(--c-surface); color: var(--c-text); box-shadow: var(--c-shadow-sm);
+    /* El tipo decide el acento; la variante decide el tratamiento visual. */
+    --notice-accent: var(--c-info);
+    --notice-tint: var(--c-info-soft);
+    display: flex;
+    align-items: stretch;
+    gap: 1rem;
+    padding: .8rem 1rem;
+    border: 1px solid var(--c-border);
+    border-left: 4px solid var(--notice-accent);
+    border-radius: var(--c-radius-md);
+    background: var(--notice-tint);
+    color: var(--c-text);
+    box-shadow: var(--c-shadow-sm);
+    margin-bottom: .55rem;
 }
-.notice-promo { border-left-color: var(--c-success); background: var(--c-success-soft); }
-.notice-warning { border-left-color: var(--c-warning); background: var(--c-warning-soft); }
-.notice-info { border-left-color: var(--c-info); background: var(--c-info-soft); }
+.notice-promo { --notice-accent: var(--c-success); --notice-tint: var(--c-success-soft); }
+.notice-warning { --notice-accent: var(--c-warning); --notice-tint: var(--c-warning-soft); }
+.notice-info { --notice-accent: var(--c-info); --notice-tint: var(--c-info-soft); }
+
+.notice--outline {
+    background: var(--c-surface);
+    border-color: var(--c-border-strong);
+    border-left-color: var(--notice-accent);
+}
+.notice--solid {
+    background: var(--c-primary);
+    border-color: var(--c-primary);
+    border-left-color: var(--c-primary);
+    color: var(--c-primary-contrast);
+}
+.notice--solid .notice-message,
+.notice--solid .notice-icon { color: inherit; }
+.notice--solid .notice-badge {
+    background: var(--c-primary-contrast);
+    color: var(--c-primary);
+    border-color: transparent;
+}
+
+.notice-content {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: .35rem;
+}
+.notice-head { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.notice-icon {
+    display: inline-grid;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    flex: 0 0 auto;
+    color: var(--notice-accent);
+}
+.notice-icon svg { width: 22px; height: 22px; }
+.notice-badge {
+    display: inline-block;
+    align-self: flex-start;
+    padding: .12rem .5rem;
+    border: 1px solid transparent;
+    border-radius: var(--c-radius-pill);
+    background: var(--c-text);
+    color: var(--c-bg);
+    font-size: .7rem;
+    font-weight: 800;
+    line-height: 1.4;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+}
+.notice-message {
+    margin: 0;
+    color: inherit;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+.notice--size-sm .notice-message { font-size: .84rem; }
+.notice--size-md .notice-message { font-size: .93rem; }
+.notice--size-lg .notice-message { font-size: 1.06rem; }
+
+.notice-media {
+    flex: 0 0 128px;
+    min-height: 68px;
+    max-height: 108px;
+    align-self: center;
+    overflow: hidden;
+    border-radius: var(--c-radius-sm);
+    background: var(--c-surface-2);
+}
+.notice-media img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    max-height: 108px;
+    object-fit: cover;
+}
+@media (max-width: 640px) {
+    .notice { gap: .7rem; padding: .75rem; }
+    .notice-media { flex-basis: 82px; min-height: 56px; max-height: 78px; }
+    .notice-media img { max-height: 78px; }
+    .notice--size-lg .notice-message { font-size: 1rem; }
+}
 
 /* =============================================================================
    HERO / SLIDER
@@ -221,11 +315,28 @@ svg { flex: 0 0 auto; }
 .hero-overlay {
     position: absolute; inset: 0; z-index: -1;
     background: linear-gradient(90deg, rgba(6, 10, 16, .88) 0%, rgba(6, 10, 16, .62) 45%, rgba(6, 10, 16, .15) 100%);
+    /* La intensidad la decide cada banner (0-70). El texto conserva ademas un
+       fondo local para no depender de que toda la imagen este oscurecida. */
+    opacity: var(--hero-overlay-alpha, .35);
 }
 
 .hero-copy {
     position: relative; width: min(var(--c-container-max), 94%, max(var(--c-container-min), 92%));
     margin-inline: auto; padding: 3rem 0;
+}
+/* Scrim local detras del texto: mantiene contraste aunque el velo general sea 0. */
+.hero-slide > .hero-copy:not(.is-empty) {
+    isolation: isolate;
+    text-shadow: 0 2px 18px rgba(6, 10, 16, .5);
+}
+.hero-slide > .hero-copy:not(.is-empty)::before {
+    content: '';
+    position: absolute;
+    inset: 1.2rem -1rem;
+    z-index: -1;
+    border-radius: var(--c-radius-lg);
+    background: linear-gradient(90deg, rgba(6, 10, 16, .56), rgba(6, 10, 16, .24) 62%, transparent 100%);
+    pointer-events: none;
 }
 .hero-eyebrow {
     display: inline-block; margin-bottom: .6rem;

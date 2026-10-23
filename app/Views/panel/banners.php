@@ -1,77 +1,137 @@
 <?php
 /**
- * Banners.
- * @var array $banners @var int $used @var int $max @var string $base
+ * Listado de banners de la tienda.
+ *
+ * @var array<int,array<string,mixed>> $banners
+ * @var int $used
+ * @var int $max
+ * @var bool $canCreate
+ * @var string $planName
+ * @var string $base
  */
 use Tienda\Core\Csrf;
-?>
-<section class="two-col">
-    <div class="card">
-        <div class="card-head">
-            <h2>Banners</h2>
-            <span class="badge"><?= (int) $used ?> / <?= (int) $max ?></span>
-        </div>
+use Tienda\Models\Banner;
 
-        <?php if (empty($banners)): ?>
-            <p class="muted">Todavia no hay banners. Crea el primero con el formulario.</p>
-        <?php else: ?>
-            <ul class="list">
-                <?php foreach ($banners as $b): ?>
-                    <li class="list-item">
-                        <div class="thumb"<?= $b['image_url'] ? ' style="background-image:url(' . e($b['image_url']) . ')"' : '' ?>></div>
-                        <div class="list-body">
-                            <strong><?= e($b['title'] ?: '(sin titulo)') ?></strong>
-                            <small><?= e($b['position']) ?> · orden <?= (int) $b['sort'] ?> · <?= (int) $b['active'] === 1 ? 'activo' : 'oculto' ?></small>
+$statusClass = static fn (string $status): string => match ($status) {
+    'active'    => 'pill-ok',
+    'scheduled' => 'pill-info',
+    'expired'   => 'pill-warning',
+    'draft'     => 'pill-warning',
+    default     => 'pill-neutral',
+};
+$fmtDate = static function (mixed $value): string {
+    $value = trim((string) ($value ?? ''));
+    if ($value === '') {
+        return '';
+    }
+    $ts = strtotime($value);
+    return $ts === false ? $value : date('d/m/Y H:i', $ts);
+};
+?>
+<section class="editor-heading">
+    <div>
+        <h2>Banners</h2>
+        <p class="muted">
+            Plan <?= e($planName) ?>: <?= (int) $used ?> de <?= (int) $max ?> banners.
+            El limite se calcula siempre desde el plan actual.
+        </p>
+    </div>
+    <?php if ($canCreate): ?>
+        <a class="btn btn-primary" href="<?= e($base) ?>/panel/banners/nuevo">Nuevo banner</a>
+    <?php else: ?>
+        <button class="btn btn-primary" type="button" disabled>Nuevo banner</button>
+    <?php endif; ?>
+</section>
+
+<?php if ($max <= 0): ?>
+    <div class="alert alert-warning">Tu plan actual no permite banners.</div>
+<?php elseif (!$canCreate): ?>
+    <div class="alert alert-warning">
+        Has alcanzado el limite de <?= (int) $max ?> banners de tu plan.
+        Puedes editar o eliminar uno existente, pero no crear otro.
+    </div>
+<?php endif; ?>
+
+<section class="card">
+    <?php if ($banners === []): ?>
+        <div class="empty-state">
+            <h3>Todavia no hay banners</h3>
+            <p class="muted">Crea el primero para destacar una promocion o un contenido en la portada.</p>
+            <?php if ($canCreate): ?>
+                <a class="btn btn-primary" href="<?= e($base) ?>/panel/banners/nuevo">Crear banner</a>
+            <?php endif; ?>
+        </div>
+    <?php else: ?>
+        <ul class="content-list">
+            <?php foreach ($banners as $banner): ?>
+                <?php
+                $effective = (string) ($banner['effective_status'] ?? Banner::effectiveStatus($banner));
+                $position = (string) ($banner['position'] ?? '');
+                $isRendered = Banner::isRenderedPosition($position);
+                ?>
+                <li class="content-item<?= $isRendered ? '' : ' is-legacy' ?>">
+                    <div class="content-thumb">
+                        <?php if (!empty($banner['image_url'])): ?>
+                            <img src="<?= e((string) $banner['image_url']) ?>"
+                                 alt="<?= e((string) ($banner['alt_text'] ?: Banner::displayName($banner))) ?>"
+                                 loading="lazy" decoding="async">
+                        <?php else: ?>
+                            <span class="content-thumb-empty" aria-hidden="true">Sin imagen</span>
+                        <?php endif; ?>
+                    </div>
+
+                    <div class="content-body">
+                        <div class="content-title-row">
+                            <strong><?= e(Banner::displayName($banner)) ?></strong>
+                            <span class="pill <?= e($statusClass($effective)) ?>"><?= e(Banner::statusLabel($effective)) ?></span>
+                            <?php if (!$isRendered): ?>
+                                <span class="pill pill-danger">No visible</span>
+                            <?php endif; ?>
                         </div>
-                        <form method="post" action="<?= e($base) ?>/panel/banners/<?= (int) $b['id'] ?>/borrar"
-                              onsubmit="return confirm('¿Eliminar este banner?')">
+                        <?php if (!empty($banner['title'])): ?>
+                            <p class="content-subtitle"><?= e((string) $banner['title']) ?></p>
+                        <?php endif; ?>
+                        <p class="content-meta">
+                            <?= e(Banner::positionLabel($position)) ?>
+                            · Orden <?= (int) $banner['sort'] ?>
+                            · Velo <?= Banner::overlayOpacity($banner) ?> %
+                        </p>
+                        <p class="content-dates">
+                            <?php if (!empty($banner['starts_at'])): ?>
+                                Desde <?= e($fmtDate($banner['starts_at'])) ?>
+                            <?php else: ?>
+                                Sin fecha de inicio
+                            <?php endif; ?>
+                            <?php if (!empty($banner['ends_at'])): ?>
+                                · Hasta <?= e($fmtDate($banner['ends_at'])) ?>
+                            <?php else: ?>
+                                · Sin fecha de fin
+                            <?php endif; ?>
+                        </p>
+                        <?php if (!$isRendered): ?>
+                            <p class="content-warning">
+                                Esta posicion no se pinta en el storefront. Edita el banner y elige
+                                Portada para publicarlo.
+                            </p>
+                        <?php endif; ?>
+                        <?php if (empty($banner['media_id']) && !empty($banner['image_url'])): ?>
+                            <p class="content-warning">Imagen heredada sin media asociado; se conserva sin cambios.</p>
+                        <?php endif; ?>
+                    </div>
+
+                    <div class="content-actions">
+                        <a class="btn btn-ghost btn-sm" href="<?= e($base) ?>/panel/banners/<?= (int) $banner['id'] ?>/editar">
+                            Editar
+                        </a>
+                        <form method="post"
+                              action="<?= e($base) ?>/panel/banners/<?= (int) $banner['id'] ?>/borrar"
+                              onsubmit="return confirm('¿Eliminar este banner? La imagen se conservara en la biblioteca de medios.')">
                             <?= Csrf::field() ?>
                             <button class="btn btn-danger btn-sm" type="submit">Eliminar</button>
                         </form>
-                    </li>
-                <?php endforeach; ?>
-            </ul>
-        <?php endif; ?>
-    </div>
-
-    <div class="card">
-        <h2>Nuevo banner</h2>
-        <?php if ($used >= $max): ?>
-            <div class="alert alert-error">Has alcanzado el limite de banners de tu plan.</div>
-        <?php else: ?>
-            <form method="post" action="<?= e($base) ?>/panel/banners" class="stack">
-                <?= Csrf::field() ?>
-                <label>Titulo<input type="text" name="title"></label>
-                <label>Subtitulo<input type="text" name="subtitle"></label>
-                <label>Enlace<input type="url" name="link" placeholder="https://..."></label>
-                <label>Posicion
-                    <select name="position">
-                        <option value="hero">Portada (hero)</option>
-                        <option value="middle">Intermedio</option>
-                        <option value="footer">Pie</option>
-                    </select>
-                </label>
-                <label class="field">Imagen
-                    <div class="uploader" data-folder="banners">
-                        <input type="file" accept="image/*" data-upload data-folder="banners"
-                               data-max-bytes="<?= \Tienda\Core\Media\MediaRules::maxBytes('banners') ?>"
-                               data-status="#banner-status"
-                               data-url-target="#banner_image_url" data-preview="#banner-preview">
-                        <input type="hidden" name="image_url" id="banner_image_url">
-                        <div id="banner-preview" class="preview"></div>
                     </div>
-                    <span class="muted" id="banner-status">JPG, PNG o WebP hasta
-                        <?= \Tienda\Core\Media\MediaRules::formatoBytes(\Tienda\Core\Media\MediaRules::maxBytes('banners')) ?>.
-                        Se optimiza a WebP al subirla.</span>
-                </label>
-                <div class="field-grid">
-                    <label>Orden<input type="number" name="sort" value="0"></label>
-                    <label class="check"><input type="checkbox" name="active" value="1" checked> Activo</label>
-                </div>
-                <div class="actions">
-                    <button class="btn btn-primary" type="submit">Crear banner</button>
-                </div>
-            </form>
-        <?php endif; ?>
-    </div>
+                </li>
+            <?php endforeach; ?>
+        </ul>
+    <?php endif; ?>
 </section>

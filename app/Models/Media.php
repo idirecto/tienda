@@ -40,4 +40,23 @@ final class Media extends Model
             ['key' => $key, 'store_id' => $storeId]
         );
     }
+
+    /**
+     * Registro por URL, siempre acotado a la tienda.
+     *
+     * Permite que un formulario antiguo que solo enviaba `image_url` siga
+     * funcionando y quede asociado a su `media_id` de la misma tienda.
+     */
+    public static function findByUrlForStore(string $url, int $storeId): ?array
+    {
+        $url = trim($url);
+        if ($url === '') {
+            return null;
+        }
+
+        return \Tienda\Core\Database::first(
+            'SELECT * FROM mt_media WHERE url = :url AND store_id = :store_id LIMIT 1',
+            ['url' => $url, 'store_id' => $storeId]
+        );
+    }
 }

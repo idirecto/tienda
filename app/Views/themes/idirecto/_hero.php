@@ -47,22 +47,29 @@ $gradient = 'linear-gradient(115deg, var(--c-secondary), var(--c-primary))';
                 <?php foreach ($banners as $i => $b): ?>
                     <?php
                     $active = $i === 0;
-                    $link = trim((string) ($b['link'] ?? ''));
+                    $link = \Tienda\Models\Banner::safePublicLink($b['link'] ?? '');
                     $image = trim((string) ($b['image_url'] ?? ''));
+                    $alt = trim((string) ($b['alt_text'] ?? ''));
+                    $overlay = \Tienda\Models\Banner::overlayOpacity($b);
+                    $overlayAlpha = number_format($overlay / 100, 2, '.', '');
+                    $hasCopy = trim((string) ($b['title'] ?? '')) !== ''
+                        || trim((string) ($b['subtitle'] ?? '')) !== ''
+                        || $link !== '';
                     ?>
                     <article class="hero-slide<?= $active ? ' is-active' : '' ?>"
                              data-slider-slide
                              id="hero-slide-<?= $i ?>"
                              role="group" aria-roledescription="diapositiva"
                              aria-label="<?= (int) ($i + 1) ?> de <?= $total ?>"
+                             style="--hero-overlay-alpha: <?= e($overlayAlpha) ?>"
                              <?= $active ? '' : 'hidden' ?>>
                         <?php if ($image !== ''): ?>
                             <img class="hero-media" src="<?= e($image) ?>"
-                                 alt="" width="1600" height="600"
+                                 alt="<?= e($alt) ?>" width="1600" height="600"
                                  <?= $active ? 'fetchpriority="high" decoding="async"' : 'loading="lazy" decoding="async"' ?>>
                         <?php endif; ?>
                         <div class="hero-overlay" aria-hidden="true"></div>
-                        <div class="hero-copy">
+                        <div class="hero-copy<?= $hasCopy ? '' : ' is-empty' ?>">
                             <?php if (!empty($b['title'])): ?>
                                 <h2 class="hero-title"><?= e($b['title']) ?></h2>
                             <?php endif; ?>
