@@ -5,6 +5,28 @@ El detalle línea a línea está en `git log`.
 
 ---
 
+## 2026-11-04 · Nombre de sociedad en cabecera y banner
+
+**Motivo (petición por chat):** la cabecera y el banner mostraban el nombre
+personal/comercial de la tienda («XAVIER GRABULOSA») cuando debían mostrar el
+nombre de la sociedad («XGRABU»).
+
+**Qué se hizo**
+
+- **`Tenant::brandName()`**: devuelve `legal_name` (razón social) y, solo si está
+  vacío, cae al nombre comercial. Así las tiendas que ya tenían la razón social
+  guardada se corrigen sin migración ni edición manual de la base de datos.
+- **Cabecera**: el nombre visible, el `aria-label`, el texto alternativo del logo
+  y la inicial del marcador usan `brandName()`.
+- **Banner de portada**: el texto del hero sin imágenes también usa `brandName()`.
+- **Prueba**: una comprobación nueva en `verify.php` (337 → 338) cubre la razón
+  social, el respaldo al nombre comercial y el uso en ambas vistas.
+
+No se cambia el nombre comercial guardado ni la razón social: solo se decide cuál
+se pinta como marca visible.
+
+---
+
 ## 2026-11-04 · Modo de pruebas comercial: carrito y pedidos bloqueados
 
 **Motivo (petición por chat):** mientras la web está en pruebas, ningún artículo

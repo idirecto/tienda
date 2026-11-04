@@ -270,6 +270,19 @@ check($medio->canAddOwnProduct(50) === false, 'medio: bloquea en 50');
 check($premium->quotaIsUnlimited() === true, 'premium: ilimitado');
 check($premium->canAddOwnProduct(9999) === true, 'premium: sin limite');
 
+echo "\n== Nombre visible de la marca ==\n";
+$tenantConRazonSocial = new Tenant(['name' => 'XAVIER GRABULOSA', 'legal_name' => 'XGRABU']);
+$tenantSinRazonSocial = new Tenant(['name' => 'Tienda de respaldo']);
+$layoutMarca = (string) file_get_contents(TIENDA_BASE . '/app/Views/layouts/shop.php');
+$heroMarca = (string) file_get_contents(TIENDA_BASE . '/app/Views/themes/idirecto/_hero.php');
+check(
+    $tenantConRazonSocial->brandName() === 'XGRABU'
+        && $tenantSinRazonSocial->brandName() === 'Tienda de respaldo'
+        && str_contains($layoutMarca, '$tenant->brandName()')
+        && str_contains($heroMarca, '$tenant->brandName()'),
+    'cabecera y banner usan la razon social, con el nombre comercial como respaldo'
+);
+
 echo "\n== Almacenamiento ==\n";
 check(StorageManager::driver() instanceof LocalStorage || StorageManager::driver() instanceof S3Storage, 'driver de almacenamiento operativo (' . StorageManager::driver()->driver() . ')');
 

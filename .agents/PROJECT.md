@@ -114,7 +114,7 @@ tools/logs.php             Consulta los logs por consola (filtros, resumen, día
 | `Router` | Compila `{param}`, detecta el subdirectorio base y despacha |
 | `TenantResolver` | **Decide qué tienda se sirve** según el hostname; `baseDomainForHost()` e `isPlatformHost()` distinguen apex, `www`, subdominios y dominios propios |
 | `Subdomain` | **Dirección de plataforma de la tienda**: normaliza la etiqueta, rechaza reservados (`www`, `panel`, `mail`…), comprueba que esté libre, construye host/URL y diagnostica DNS + HTTPS (incluido el certificado wildcard) |
-| `Tenant` | Contexto inmutable de la tienda (nombre, tema, colores, radios, cuotas…) |
+| `Tenant` | Contexto inmutable de la tienda (nombre, razón social visible de marca, tema, colores, radios, cuotas…) |
 | `Auth` / `Session` / `Csrf` | Sesión, login y tokens CSRF |
 | `Controller` / `View` / `Model` | Base MVC; `View` usa `extract()` |
 | `Storage/*` | `StorageInterface` + `LocalStorage` + `S3Storage` + `StorageManager` + `StorageKey` |

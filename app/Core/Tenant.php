@@ -32,6 +32,20 @@ final class Tenant
         return (string) ($this->store['name'] ?? 'Tienda');
     }
 
+    /**
+     * Nombre visible de la marca en la cabecera y el banner.
+     *
+     * La razon social manda sobre el nombre comercial cuando existe, que es lo
+     * que debe verse como nombre de la sociedad. Si no hay razon social se usa
+     * el nombre de la tienda como respaldo.
+     */
+    public function brandName(): string
+    {
+        $legalName = trim($this->legalName());
+
+        return $legalName !== '' ? $legalName : $this->name();
+    }
+
     public function legalName(): string
     {
         return (string) ($this->store['legal_name'] ?? '');

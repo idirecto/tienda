@@ -24,7 +24,8 @@ use Tienda\Models\Menu;
 
 $scheme = Appearance::scheme($tenant);
 $themeCss = Appearance::css($tenant);
-$brandName = $tenant->logoUrl();
+$brandLogo = $tenant->logoUrl();
+$brandText = $tenant->brandName();
 
 // Avisos de la ultima accion (carrito, cuenta, pedido).
 $flashSuccess = Session::pullFlash('success');
@@ -137,12 +138,12 @@ $headerStyle = preg_replace('/[^a-z0-9_\-]/i', '', $tenant->headerStyle()) ?: 'c
     </div>
 
     <div class="container header-main">
-        <a class="brand" href="<?= e($base) ?>/" aria-label="<?= e($tenant->name()) ?> - Inicio">
-            <?php if ($brandName): ?>
-                <img src="<?= e($brandName) ?>" alt="<?= e($tenant->name()) ?>" width="160" height="44" decoding="async">
+        <a class="brand" href="<?= e($base) ?>/" aria-label="<?= e($brandText) ?> - Inicio">
+            <?php if ($brandLogo): ?>
+                <img src="<?= e($brandLogo) ?>" alt="<?= e($brandText) ?>" width="160" height="44" decoding="async">
             <?php else: ?>
-                <span class="brand-mark" aria-hidden="true"><?= e(mb_substr($tenant->name(), 0, 1)) ?></span>
-                <span class="brand-text"><?= e($tenant->name()) ?></span>
+                <span class="brand-mark" aria-hidden="true"><?= e(mb_substr($brandText, 0, 1)) ?></span>
+                <span class="brand-text"><?= e($brandText) ?></span>
             <?php endif; ?>
         </a>
 

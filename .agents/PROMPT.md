@@ -21,6 +21,16 @@ _(vacío — sin petición pendiente)_
 
 Cada petición terminada se anota aquí con la fecha, qué se pidió y qué se hizo.
 
+### 2026-11-04 · Cabecera y banner con la razón social (petición por chat)
+
+**Pedido:** en la cabecera y el banner aparecía «XAVIER GRABULOSA» (nombre personal);
+debía aparecer «XGRABU» (nombre de la sociedad).
+
+**Hecho:** `Tenant::brandName()` muestra `legal_name` y usa `name` solo si no hay
+razón social; la cabecera, el `alt`/`aria-label`, la inicial del logo y el banner de
+portada usan ese nombre. Comprobación nueva en `verify.php` (337 → 338). Ver
+`CHANGELOG.md` y `STATE.md`.
+
 ### 2026-11-04 · Modo de pruebas: no se puede comprar (petición por chat)
 
 **Pedido:** al intentar añadir un producto al carrito o tramitar un pedido, mostrar

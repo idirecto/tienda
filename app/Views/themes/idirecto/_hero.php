@@ -28,7 +28,7 @@ $gradient = 'linear-gradient(115deg, var(--c-secondary), var(--c-primary))';
         <div class="container">
             <div class="hero-placeholder" style="background-image: <?= e($gradient) ?>">
                 <div class="hero-copy">
-                    <p class="hero-eyebrow"><?= e($tenant->name()) ?></p>
+                    <p class="hero-eyebrow"><?= e($tenant->brandName()) ?></p>
                     <h1 class="hero-title"><?= e($tenant->tagline() ?: 'Tecnologia al mejor precio') ?></h1>
                     <p class="hero-subtitle">Personaliza este banner, los colores y los textos desde el panel de la tienda.</p>
                     <div class="hero-actions">
