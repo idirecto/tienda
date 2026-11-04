@@ -57,26 +57,28 @@ final class CustomerAuth
     public static function login(int $storeId, array $customer): void
     {
         Session::regenerate();
-        $_SESSION[self::SESSION_KEY][$storeId] = [
+        $customers = self::sessionCustomers();
+        $customers[$storeId] = [
             'id'       => (int) $customer['id'],
             'name'     => (string) ($customer['name'] ?? ''),
             'email'    => (string) ($customer['email'] ?? ''),
             'is_guest' => (int) ($customer['is_guest'] ?? 0),
         ];
+        $_SESSION[self::SESSION_KEY] = $customers;
 
         Customer::updateById((int) $customer['id'], ['last_login_at' => date('Y-m-d H:i:s')]);
     }
 
     public static function check(int $storeId): bool
     {
-        return !empty($_SESSION[self::SESSION_KEY][$storeId]['id']);
+        return !empty(self::sessionCustomer($storeId)['id']);
     }
 
     public static function id(int $storeId): ?int
     {
-        $id = $_SESSION[self::SESSION_KEY][$storeId]['id'] ?? null;
+        $id = self::sessionCustomer($storeId)['id'] ?? null;
 
-        return $id === null ? null : (int) $id;
+        return is_numeric($id) ? (int) $id : null;
     }
 
     /** Fila del cliente que tiene la sesion abierta (se lee de la base). */
@@ -89,7 +91,9 @@ final class CustomerAuth
 
     public static function logout(int $storeId): void
     {
-        unset($_SESSION[self::SESSION_KEY][$storeId]);
+        $customers = self::sessionCustomers();
+        unset($customers[$storeId]);
+        $_SESSION[self::SESSION_KEY] = $customers;
         Session::regenerate();
     }
 
@@ -113,21 +117,63 @@ final class CustomerAuth
 
     public static function noteAttempt(int $storeId, int $window = self::WINDOW): void
     {
-        $intentos = self::attempts($storeId);
+        $all = self::guestAttempts();
+        $intentos = is_array($all[$storeId] ?? null) ? $all[$storeId] : [];
         $intentos['count'] = (int) ($intentos['count'] ?? 0) + 1;
         $intentos['until'] = time() + $window;
-        $_SESSION[self::GUEST][$storeId] = $intentos;
+        $all[$storeId] = $intentos;
+        $_SESSION[self::GUEST] = $all;
     }
 
     public static function clearAttempts(int $storeId): void
     {
-        unset($_SESSION[self::GUEST][$storeId]);
+        $all = self::guestAttempts();
+        unset($all[$storeId]);
+        $_SESSION[self::GUEST] = $all;
     }
 
     private static function attempts(int $storeId): array
     {
-        $intentos = $_SESSION[self::GUEST][$storeId] ?? [];
+        $all = self::guestAttempts();
+        $intentos = $all[$storeId] ?? [];
 
         return is_array($intentos) ? $intentos : [];
+    }
+
+    /** Clientes guardados en la sesion, saneados. */
+    private static function sessionCustomers(): array
+    {
+        $customers = $_SESSION[self::SESSION_KEY] ?? [];
+        if (!is_array($customers)) {
+            $customers = [];
+        }
+        $_SESSION[self::SESSION_KEY] = $customers;
+
+        return $customers;
+    }
+
+    private static function sessionCustomer(int $storeId): array
+    {
+        $customers = self::sessionCustomers();
+        $customer = $customers[$storeId] ?? [];
+        if (!is_array($customer)) {
+            $customer = [];
+        }
+        $customers[$storeId] = $customer;
+        $_SESSION[self::SESSION_KEY] = $customers;
+
+        return $customer;
+    }
+
+    /** Intentos de invitado, saneados. */
+    private static function guestAttempts(): array
+    {
+        $all = $_SESSION[self::GUEST] ?? [];
+        if (!is_array($all)) {
+            $all = [];
+        }
+        $_SESSION[self::GUEST] = $all;
+
+        return $all;
     }
 }

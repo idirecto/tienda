@@ -21,6 +21,15 @@ _(vacío — sin petición pendiente)_
 
 Cada petición terminada se anota aquí con la fecha, qué se pidió y qué se hizo.
 
+### 2026-11-04 · Sesiones antiguas y título con razón social (petición por chat)
+
+**Pedido:** que la web funcione también con la sesión anterior del navegador y que la
+pestaña muestre la razón social en vez del nombre personal.
+
+**Hecho:** carrito, cliente, panel, flash y CSRF sanean datos incompatibles sin cerrar
+la sesión; los títulos públicos usan `brandName()`. `verify.php` 338 → **340**.
+Ver `CHANGELOG.md` y `STATE.md`.
+
 ### 2026-11-04 · Cabecera y banner con la razón social (petición por chat)
 
 **Pedido:** en la cabecera y el banner aparecía «XAVIER GRABULOSA» (nombre personal);

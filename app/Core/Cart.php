@@ -41,6 +41,10 @@ final class Cart
             return ['ok' => false, 'message' => ShopMode::message()];
         }
 
+        // Una sesion antigua o manipulada puede traer `cart` como texto/objeto.
+        // `raw()` la normaliza antes de escribir y evita un TypeError.
+        self::raw($storeId);
+
         $qty = max(1, min(self::MAX_QTY, $qty));
         $product = self::loadProduct($storeId, $source, $productId);
 
@@ -98,6 +102,7 @@ final class Cart
      */
     public static function updateQuantities(int $storeId, array $quantities): array
     {
+        self::raw($storeId);
         $warnings = [];
 
         foreach ($quantities as $key => $qty) {
@@ -131,18 +136,20 @@ final class Cart
 
     public static function remove(int $storeId, string $key): void
     {
+        self::raw($storeId);
         unset($_SESSION[self::SESSION_KEY][$storeId][$key]);
     }
 
     public static function clear(int $storeId): void
     {
+        self::raw($storeId);
         unset($_SESSION[self::SESSION_KEY][$storeId]);
     }
 
     /** Numero de unidades (para el contador de la cabecera). */
     public static function count(int $storeId): int
     {
-        return array_sum(array_map('intval', $_SESSION[self::SESSION_KEY][$storeId] ?? []));
+        return array_sum(array_map('intval', self::raw($storeId)));
     }
 
     /** Hay lineas en el carrito. */
@@ -289,12 +296,40 @@ final class Cart
     // INTERNOS
     // =====================================================================
 
-    /** Cantidades guardadas en sesion. */
+    /**
+     * Cantidades guardadas en sesion, saneadas.
+     *
+     * Las sesiones creadas por versiones anteriores (o manipuladas) pueden
+     * tener `cart` como texto/objeto. Se descarta lo invalido y se deja una
+     * estructura siempre segura: [clave valida => cantidad 1..MAX_QTY].
+     */
     private static function raw(int $storeId): array
     {
-        $cart = $_SESSION[self::SESSION_KEY][$storeId] ?? [];
+        $all = $_SESSION[self::SESSION_KEY] ?? [];
+        if (!is_array($all)) {
+            $all = [];
+        }
 
-        return is_array($cart) ? $cart : [];
+        $cart = $all[$storeId] ?? [];
+        if (!is_array($cart)) {
+            $cart = [];
+        }
+
+        $clean = [];
+        foreach ($cart as $key => $qty) {
+            if (!is_string($key) || preg_match('/^[co]\d+$/', $key) !== 1 || !is_numeric($qty)) {
+                continue;
+            }
+            $qty = (int) $qty;
+            if ($qty > 0) {
+                $clean[$key] = min(self::MAX_QTY, $qty);
+            }
+        }
+
+        $all[$storeId] = $clean;
+        $_SESSION[self::SESSION_KEY] = $all;
+
+        return $clean;
     }
 
     public static function key(string $source, int $productId): string

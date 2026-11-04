@@ -50,14 +50,28 @@ final class Session
 
     public static function flash(string $key, mixed $value): void
     {
-        $_SESSION['_flash'][$key] = $value;
+        $flash = $_SESSION['_flash'] ?? [];
+        if (!is_array($flash)) {
+            $flash = [];
+        }
+        $flash[$key] = $value;
+        $_SESSION['_flash'] = $flash;
     }
 
     public static function pullFlash(string $key, mixed $default = null): mixed
     {
-        $value = $_SESSION['_flash'][$key] ?? $default;
-        unset($_SESSION['_flash'][$key]);
-        return $value;
+        $flash = $_SESSION['_flash'] ?? [];
+        if (!is_array($flash)) {
+            unset($_SESSION['_flash']);
+            return $default;
+        }
+
+        $value = array_key_exists($key, $flash) ? $flash[$key] : $default;
+        unset($flash[$key]);
+        $_SESSION['_flash'] = $flash;
+
+        // En una sesion antigua puede haber objetos/arrays donde esperamos texto.
+        return is_scalar($value) || $value === null ? $value : $default;
     }
 
     public static function regenerate(): void

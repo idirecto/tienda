@@ -41,7 +41,7 @@ final class StorefrontController extends Controller
             // Accesos rapidos resueltos contra el catalogo real (con stock).
             'quickLinks'   => Catalog::quickCategories($base),
             'catalogReady' => Catalog::isAvailable(),
-            'pageTitle'    => $this->tenant->metaTitle(),
+            'pageTitle'    => $this->tenant->brandName(),
         ], 'shop');
     }
 
@@ -178,7 +178,7 @@ final class StorefrontController extends Controller
                 ? OwnProduct::searchPublished($this->tenant->id(), $q, 20)
                 : OwnProduct::publishedForStore($this->tenant->id()),
             'catalogReady'  => Catalog::isAvailable(),
-            'pageTitle'     => $title . ' - ' . $this->tenant->name(),
+            'pageTitle'     => $title . ' - ' . $this->tenant->brandName(),
         ], 'shop');
     }
 
@@ -293,7 +293,7 @@ final class StorefrontController extends Controller
 
         return $this->view($this->themeView('marcas'), [
             'brands'    => Catalog::brandList(200),
-            'pageTitle' => 'Marcas - ' . $this->tenant->name(),
+            'pageTitle' => 'Marcas - ' . $this->tenant->brandName(),
         ], 'shop');
     }
 
@@ -318,7 +318,7 @@ final class StorefrontController extends Controller
             'total'       => count($all),
             'page'        => $page,
             'pages'       => $pages,
-            'pageTitle'   => 'Productos propios - ' . $this->tenant->name(),
+            'pageTitle'   => 'Productos propios - ' . $this->tenant->brandName(),
         ], 'shop');
     }
 
@@ -585,7 +585,7 @@ final class StorefrontController extends Controller
             'product'         => $product,
             'canonical'       => absolute_url(product_url($product)),
             // El nombre del producto es el primer factor SEO del <title>.
-            'pageTitle'       => Str::excerpt((string) $product['nombre'], 65) . ' - ' . $this->tenant->name(),
+            'pageTitle'       => Str::excerpt((string) $product['nombre'], 65) . ' - ' . $this->tenant->brandName(),
             'pageDescription' => $this->productDescription($product),
         ], 'shop');
     }
@@ -612,13 +612,13 @@ final class StorefrontController extends Controller
             (string) ($product['nombre'] ?? ''),
             (string) ($product['part_number'] ?? ''),
         ]);
-        return \Tienda\Core\Str::excerpt(implode(' ', $partes) . '. Compra online en ' . $this->tenant->name() . '.');
+        return \Tienda\Core\Str::excerpt(implode(' ', $partes) . '. Compra online en ' . $this->tenant->brandName() . '.');
     }
 
     public function contact(array $params = []): string
     {
         return $this->view($this->themeView('contact'), [
-            'pageTitle' => 'Contacto - ' . $this->tenant->name(),
+            'pageTitle' => 'Contacto - ' . $this->tenant->brandName(),
         ], 'shop');
     }
 

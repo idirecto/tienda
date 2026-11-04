@@ -43,7 +43,8 @@ el carrito y los pedidos se rechazan con un aviso hasta poner
 | **Registro de tiendas (solo con cuenta activa del mayorista)** | ✅ Completo |
 | **Compra del cliente final (carrito, cuenta, direcciones y pedido)** | ✅ Completo (**sin pasarela de pago**) |
 | **Modo de pruebas comercial (`SHOP_TEST_MODE`)** | ✅ Activo por defecto: bloquea carrito y checkout con el aviso solicitado |
-| **Nombre visible de la marca** | ✅ Cabecera y banner usan la razón social (`XGRABU`), con el nombre comercial como respaldo |
+| **Nombre visible de la marca** | ✅ Cabecera, banner y pestaña usan la razón social (`XGRABU`), con el nombre comercial como respaldo |
+| **Compatibilidad con sesiones antiguas** | ✅ Sanea carrito, cliente, panel, flash y CSRF sin cerrar la sesión |
 | **Carrito: botón «Agregar al carrito» + mini-carrito lateral (AJAX, responsive, stock real)** | ✅ Completo |
 | Catálogo central (stock, búsqueda, paginación) | ✅ Completo (**listados de 40 productos y tarjeta entera enlazada**, ~20-60 ms) |
 | **Navegación: Menú Compacto y Menú Catalogo (un solo árbol de 3 niveles)** | ✅ Completo (14 categorías / 83 grupos / 346 destinos) |
@@ -77,6 +78,14 @@ el carrito y los pedidos se rechazan con un aviso hasta poner
 ---
 
 ## Hecho
+
+### Sesiones antiguas compatibles y título de pestaña (2026-11-04)
+- `Cart` sanea la estructura de `cart`; `CustomerAuth` y `Auth` validan sus sesiones;
+  `Session::pullFlash()` descarta valores no escalares y `Csrf` regenera tokens
+  inválidos. La sesión anterior se conserva en todo lo que sea válido.
+- Las páginas públicas componen el `<title>` con `brandName()` (razón social), no con
+  el nombre personal.
+- `verify.php` pasa de 338 a **340** comprobaciones.
 
 ### Nombre de sociedad en cabecera y banner (2026-11-04)
 - `Tenant::brandName()` prioriza `legal_name` y usa `name` solo como respaldo.
@@ -584,13 +593,13 @@ el carrito y los pedidos se rechazan con un aviso hasta poner
   en **nginx + PHP-FPM** (`sudo bash deploy/setup-nginx-domain.sh ecom-era.com`).
 - La app detecta el servidor (`app/Core/Server.php`): ruta pública de `/public`,
   esquema real (incluido proxy) y host de las URLs canónicas.
-- `tools/verify.php`: 338 comprobaciones automáticas (diseño, facetas, filtros
+- `tools/verify.php`: 340 comprobaciones automáticas (diseño, facetas, filtros
   estructurados del mayorista, catálogo, paginación y enlaces de las tarjetas, caché y
   precios en vivo, carrito y mini-carrito, **modo de pruebas comercial**, **nombre de
-  marca con razón social**, favicon de la tienda y predeterminado de Valduran,
-  **subdominios de plataforma y wildcard DNS/TLS**, almacenamiento, DNS, servidor,
-  registro de tiendas, pedidos, envío al mayorista, ausencia de credenciales por
-  defecto y diagnóstico del nivel de cliente).
+  marca con razón social**, **sesiones antiguas y títulos públicos**, favicon de la
+  tienda y predeterminado de Valduran, **subdominios de plataforma y wildcard DNS/TLS**,
+  almacenamiento, DNS, servidor, registro de tiendas, pedidos, envío al mayorista,
+  ausencia de credenciales por defecto y diagnóstico del nivel de cliente).
 - Documentación interna en `.agents/`, blindada frente a la web.
 - Repositorio publicado en GitHub (`main`).
 

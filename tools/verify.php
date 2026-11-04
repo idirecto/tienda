@@ -25,6 +25,8 @@ use Tienda\Core\Auth;
 use Tienda\Core\Cache;
 use Tienda\Core\Cart;
 use Tienda\Core\Checkout;
+use Tienda\Core\Csrf;
+use Tienda\Core\CustomerAuth;
 use Tienda\Core\Database;
 use Tienda\Core\Dns;
 use Tienda\Core\Favicon;
@@ -36,6 +38,7 @@ use Tienda\Core\Logger;
 use Tienda\Core\Media\ImageOptimizer;
 use Tienda\Core\Media\MediaRules;
 use Tienda\Core\Registration;
+use Tienda\Core\Session;
 use Tienda\Core\Shipping;
 use Tienda\Core\ShopMode;
 use Tienda\Core\Server;
@@ -281,6 +284,33 @@ check(
         && str_contains($layoutMarca, '$tenant->brandName()')
         && str_contains($heroMarca, '$tenant->brandName()'),
     'cabecera y banner usan la razon social, con el nombre comercial como respaldo'
+);
+
+echo "\n== Sesiones antiguas y titulo de pestana ==\n";
+$sesionAntesCompat = $_SESSION ?? [];
+$_SESSION['cart'] = [1 => 'valor-viejo'];
+$compatCarrito = Cart::count(1) === 0 && is_array($_SESSION['cart'][1] ?? null);
+$_SESSION['shop_customers'] = [1 => 'valor-viejo'];
+$compatCliente = CustomerAuth::check(1) === false && CustomerAuth::id(1) === null;
+$_SESSION['_flash'] = 'valor-viejo';
+$compatFlash = Session::pullFlash('error') === null;
+$_SESSION['_csrf_token'] = ['valor-viejo'];
+$compatCsrf = preg_match('/^[0-9a-f]{64}$/', Csrf::token()) === 1;
+$_SESSION['auth_user'] = 'valor-viejo';
+$compatPanel = Auth::user() === null && Auth::check() === false;
+$_SESSION = $sesionAntesCompat;
+check(
+    $compatCarrito && $compatCliente && $compatFlash && $compatCsrf && $compatPanel,
+    'una sesion antigua con datos corruptos no rompe carrito, cliente, flash, CSRF ni panel'
+);
+
+$storefrontTitulos = (string) file_get_contents(TIENDA_BASE . '/app/Controllers/StorefrontController.php');
+$layoutTitulos = (string) file_get_contents(TIENDA_BASE . '/app/Views/layouts/shop.php');
+check(
+    substr_count($storefrontTitulos, 'brandName()') >= 7
+        && !preg_match("/'pageTitle'[^\\n]*tenant->name\\(\\)/", $storefrontTitulos)
+        && str_contains($layoutTitulos, '<title><?= e($pageTitle ?? $brandText) ?></title>'),
+    'las pestanas publicas usan la razon social y no el nombre personal'
 );
 
 echo "\n== Almacenamiento ==\n";

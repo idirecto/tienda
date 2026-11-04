@@ -53,7 +53,7 @@ $headerStyle = preg_replace('/[^a-z0-9_\-]/i', '', $tenant->headerStyle()) ?: 'c
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title><?= e($pageTitle ?? $tenant->name()) ?></title>
+    <title><?= e($pageTitle ?? $brandText) ?></title>
     <meta name="description" content="<?= e($pageDescription ?? $tenant->metaDescription()) ?>">
     <meta name="theme-color" content="<?= e(Appearance::themeColor($tenant)) ?>">
     <?php /* Token para las llamadas AJAX del carrito (mismo que usan los formularios). */ ?>

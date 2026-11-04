@@ -5,6 +5,29 @@ El detalle línea a línea está en `git log`.
 
 ---
 
+## 2026-11-04 · Sesiones antiguas compatibles y título con razón social
+
+**Motivo (petición por chat):** la portada fallaba con la sesión que ya estaba abierta
+en el navegador, pero funcionaba en una pestaña privada. Además, la pestaña del
+navegador seguía mostrando el nombre personal de la tienda en lugar de la razón social.
+
+**Qué se hizo**
+
+- **Sesiones antiguas tolerantes**: `Cart`, `CustomerAuth`, `Auth`, `Session` y `Csrf`
+  normalizan sus claves antes de usarlas. Si una sesión antigua trae texto, objetos o
+  cantidades inválidas donde se espera otra estructura, se descarta solo ese dato y se
+  conserva el resto (por ejemplo, el carrito válido o el cliente que tenía la sesión).
+- **Título de pestaña**: las páginas públicas usan `Tenant::brandName()` para el
+  `<title>`; la portada, catálogo, productos, marcas, contacto y ficha muestran la
+  razón social. El fallback del layout también usa el nombre de marca.
+- **Pruebas**: `verify.php` pasa de 338 a **340** comprobaciones, con una de sesión
+  corrupta y otra de títulos públicos. La sintaxis y ambas pruebas pasan con PHP 8.1.
+
+No se borran sesiones ni se fuerza el cierre de sesión: la sesión antigua se repara al
+vuelo y sigue siendo válida.
+
+---
+
 ## 2026-11-04 · Nombre de sociedad en cabecera y banner
 
 **Motivo (petición por chat):** la cabecera y el banner mostraban el nombre

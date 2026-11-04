@@ -13,10 +13,13 @@ final class Csrf
 
     public static function token(): string
     {
-        if (empty($_SESSION[self::KEY])) {
-            $_SESSION[self::KEY] = bin2hex(random_bytes(32));
+        $token = $_SESSION[self::KEY] ?? null;
+        if (!is_string($token) || strlen($token) < 32) {
+            $token = bin2hex(random_bytes(32));
+            $_SESSION[self::KEY] = $token;
         }
-        return (string) $_SESSION[self::KEY];
+
+        return $token;
     }
 
     /** Campo oculto listo para incrustar en formularios. */

@@ -47,24 +47,40 @@ final class Auth
 
     public static function check(): bool
     {
-        return !empty($_SESSION[self::SESSION_KEY]['id']);
+        $user = self::user();
+
+        return $user !== null && !empty($user['id']);
     }
 
     public static function user(): ?array
     {
-        return $_SESSION[self::SESSION_KEY] ?? null;
+        $user = $_SESSION[self::SESSION_KEY] ?? null;
+        if (!is_array($user) || !is_numeric($user['id'] ?? null)) {
+            return null;
+        }
+
+        $user['id'] = (int) $user['id'];
+        $user['store_id'] = is_numeric($user['store_id'] ?? null) ? (int) $user['store_id'] : 0;
+        foreach (['name', 'email', 'role'] as $field) {
+            if (isset($user[$field]) && !is_scalar($user[$field])) {
+                unset($user[$field]);
+            }
+        }
+
+        return $user;
     }
 
     public static function storeId(): ?int
     {
-        $id = $_SESSION[self::SESSION_KEY]['store_id'] ?? null;
-        return $id === null ? null : (int) $id;
+        $id = self::user()['store_id'] ?? null;
+        return is_numeric($id) ? (int) $id : null;
     }
 
     /** Rol del usuario de la sesion (owner por defecto). */
     public static function role(): string
     {
-        $role = (string) ($_SESSION[self::SESSION_KEY]['role'] ?? '');
+        $role = self::user()['role'] ?? '';
+        $role = is_scalar($role) ? (string) $role : '';
 
         return $role !== '' ? $role : 'owner';
     }
