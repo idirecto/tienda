@@ -41,6 +41,26 @@ final class Config
         return $value;
     }
 
+    /**
+     * Cambia un valor en memoria.
+     *
+     * No se usa para configuración normal (que vive en config/*.php y .env),
+     * sino para las comprobaciones automatizadas que necesitan simular ambos
+     * estados del modo de pruebas dentro de la misma ejecución.
+     */
+    public static function set(string $key, mixed $value): void
+    {
+        $parts = explode('.', $key);
+        $target = &self::$items;
+        foreach ($parts as $part) {
+            if (!isset($target[$part]) || !is_array($target[$part])) {
+                $target[$part] = [];
+            }
+            $target = &$target[$part];
+        }
+        $target = $value;
+    }
+
     public static function all(): array
     {
         return self::$items;

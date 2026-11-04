@@ -37,6 +37,7 @@ use Tienda\Core\Media\ImageOptimizer;
 use Tienda\Core\Media\MediaRules;
 use Tienda\Core\Registration;
 use Tienda\Core\Shipping;
+use Tienda\Core\ShopMode;
 use Tienda\Core\Server;
 use Tienda\Core\Specs;
 use Tienda\Core\Storage\LocalStorage;
@@ -97,6 +98,47 @@ echo "\n== Configuracion ==\n";
 echo '  Driver de almacenamiento: ' . config('storage.driver') . "\n";
 echo '  Base de datos: ' . config('database.name') . ' @ ' . config('database.host') . "\n";
 foreach (TenantResolver::getBaseDomains() as $d) { echo "  Dominio base: $d\n"; }
+
+echo "\n== Modo de pruebas comercial ==\n";
+$mensajePruebas = 'Esta pagina web se encuentra en pruebas y ninguno de los articulos puede ser comprado, los precios y cantidades mostradas son ficticias';
+$modoPruebasInicial = ShopMode::isTestMode();
+echo '  Estado actual: ' . ($modoPruebasInicial ? 'activado' : 'desactivado') . "\n";
+check(
+    is_file(TIENDA_BASE . '/config/shop.php')
+        && str_contains((string) file_get_contents(TIENDA_BASE . '/config/shop.php'), "Env::bool('SHOP_TEST_MODE', true)"),
+    'el modo de pruebas se configura con SHOP_TEST_MODE y viene activo por defecto'
+);
+check(
+    str_contains((string) file_get_contents(TIENDA_BASE . '/.env.example'), 'SHOP_TEST_MODE=true'),
+    '.env.example documenta el interruptor SHOP_TEST_MODE'
+);
+
+\Tienda\Core\Config::set('shop.test_mode', true);
+check(
+    ShopMode::isTestMode() && ShopMode::message() === $mensajePruebas,
+    'en modo de pruebas se devuelve el aviso exacto solicitado'
+);
+\Tienda\Core\Config::set('shop.test_mode', false);
+check(!ShopMode::isTestMode(), 'el modo de pruebas se puede desactivar para abrir la venta');
+\Tienda\Core\Config::set('shop.test_mode', $modoPruebasInicial);
+
+$cartControllerSrc = (string) file_get_contents(TIENDA_BASE . '/app/Controllers/CartController.php');
+$checkoutControllerSrc = (string) file_get_contents(TIENDA_BASE . '/app/Controllers/CheckoutController.php');
+check(
+    str_contains($cartControllerSrc, 'ShopMode::isTestMode()')
+        && str_contains($cartControllerSrc, 'ShopMode::message()'),
+    'el alta del carrito se bloquea en el servidor y devuelve el aviso'
+);
+check(
+    substr_count($checkoutControllerSrc, 'ShopMode::isTestMode()') >= 3
+        && str_contains($checkoutControllerSrc, "'code' => 'test_mode'"),
+    'abrir el checkout, registrar el pedido y cotizar el envio quedan bloqueados'
+);
+check(
+    str_contains((string) file_get_contents(TIENDA_BASE . '/app/Core/Cart.php'), 'ShopMode::isTestMode()')
+        && str_contains((string) file_get_contents(TIENDA_BASE . '/app/Core/Checkout.php'), 'ShopMode::assertCanSell()'),
+    'el nucleo del carrito y del pedido tambien aplican el bloqueo'
+);
 
 echo "\n== Conexion y esquema ==\n";
 try {
@@ -745,6 +787,10 @@ check(StoreUser::findBy('email', $emailPrueba) === null, 'la prueba de registro 
 
 echo "\n== Compra del cliente final (carrito, cuenta y pedido) ==\n";
 
+// Las pruebas funcionales de compra se hacen con la venta abierta; el bloqueo
+// del modo de pruebas se comprueba por separado al terminar esta seccion.
+\Tienda\Core\Config::set('shop.test_mode', false);
+
 // -----------------------------------------------------------------------------
 // Precio de venta de la tienda: tarifa + beneficio, con IVA en la web
 // -----------------------------------------------------------------------------
@@ -1005,6 +1051,27 @@ if ($carritoAntes === null) {
     $_SESSION['cart'] = $carritoAntes;
 }
 Catalog::forStore(null, 0, 21, false);
+
+// El bloqueo se prueba de punta a punta en los dos nucleos: carrito y pedido.
+\Tienda\Core\Config::set('shop.test_mode', true);
+$unidadesAntesBloqueo = Cart::count(1);
+$carritoBloqueado = Cart::add(1, 'catalog', 254967, 1);
+check(
+    $carritoBloqueado['ok'] === false
+        && $carritoBloqueado['message'] === ShopMode::message()
+        && Cart::count(1) === $unidadesAntesBloqueo,
+    'en modo de pruebas el carrito rechaza el alta y no guarda unidades'
+);
+try {
+    Checkout::place([], [], [], [], [], []);
+    check(false, 'en modo de pruebas el pedido no se puede registrar');
+} catch (\Tienda\Core\ValidationException $e) {
+    check(
+        $e->getMessage() === ShopMode::message(),
+        'en modo de pruebas el pedido se rechaza con el aviso exacto'
+    );
+}
+\Tienda\Core\Config::set('shop.test_mode', $modoPruebasInicial);
 
 echo "\n== Pedidos de la tienda ==\n";
 // Enlace con el mayorista (migracion 003): cuenta y tarifa de cada tienda.

@@ -1,7 +1,7 @@
 # STATE — Estado del proyecto
 
 > **El agente actualiza este fichero al terminar cada sesión.**
-> Última actualización: **2026-10-21**
+> Última actualización: **2026-11-04**
 
 ---
 
@@ -9,9 +9,10 @@
 
 La plataforma está **funcionando** en http://local.tienda: storefront con
 catálogo real, ficha de producto, panel completo y **pedidos con envío por líneas
-al mayorista**. Falta el ciclo de compra en la tienda (carrito y pago) para que
-los pedidos entren solos: hoy se dan de alta a mano o los meterá el futuro
-checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
+al mayorista**. El ciclo de compra (carrito, cuenta, direcciones y checkout) está
+implementado, pero la web está en **modo de pruebas comercial** por defecto:
+el carrito y los pedidos se rechazan con un aviso hasta poner
+`SHOP_TEST_MODE=false`.
 
 > ✅ **Entorno (2026-10-03).** `idirecto_db` está **completa** (239 tablas:
 > catálogo con 41.289 productos con stock, 33 categorías con stock, y las `mt_`),
@@ -41,6 +42,7 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
 | **Subdominio de plataforma configurable (`prueba.ecom-era.com`)** | ✅ Completo (se elige en **Panel > Dominios**, con validación, reservados y comprobación DNS/TLS) |
 | **Registro de tiendas (solo con cuenta activa del mayorista)** | ✅ Completo |
 | **Compra del cliente final (carrito, cuenta, direcciones y pedido)** | ✅ Completo (**sin pasarela de pago**) |
+| **Modo de pruebas comercial (`SHOP_TEST_MODE`)** | ✅ Activo por defecto: bloquea carrito y checkout con el aviso solicitado |
 | **Carrito: botón «Agregar al carrito» + mini-carrito lateral (AJAX, responsive, stock real)** | ✅ Completo |
 | Catálogo central (stock, búsqueda, paginación) | ✅ Completo (**listados de 40 productos y tarjeta entera enlazada**, ~20-60 ms) |
 | **Navegación: Menú Compacto y Menú Catalogo (un solo árbol de 3 niveles)** | ✅ Completo (14 categorías / 83 grupos / 346 destinos) |
@@ -74,6 +76,23 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
 ---
 
 ## Hecho
+
+### Modo de pruebas comercial (2026-11-04)
+- **`Core/ShopMode`** centraliza el interruptor `SHOP_TEST_MODE` (activo por
+  defecto) y el aviso exacto solicitado. No es solo un botón desactivado: el
+  rechazo se aplica en servidor.
+- **Alta al carrito**: `CartController::add()` responde JSON con el aviso en AJAX
+  (lo pinta el toast existente) o deja un flash y vuelve a `/carrito` sin
+  JavaScript. `Cart::add()` también rechaza la operación como segunda barrera.
+- **Pedido**: abrir `/checkout`, enviar el formulario y pedir la cotización de
+  envío se rechazan con el mismo aviso. `Checkout::place()` no crea ninguna fila
+  aunque se llame directamente.
+- **Pruebas**: `verify.php` añade 9 comprobaciones (328 → 337) y ejecuta las
+  pruebas funcionales de compra con la venta abierta para no falsear el resto.
+  Con un PHP 8.1 aislado se validó la sintaxis y el bloqueo directo de
+  `Cart::add()`/`Checkout::place()`. La verificación completa se detiene en la
+  conexión porque este checkout no tiene `.env` y no existe la base
+  `idirecto_db`; queda pendiente ejecutarla contra la base real con PHP 8.4.
 
 ### Infraestructura
 - MVC propio con autoload PSR-4 (`Tienda\` → `app/`), sin framework.
@@ -556,12 +575,12 @@ checkout por el mismo modelo (`mt_orders`/`mt_order_items`).
   en **nginx + PHP-FPM** (`sudo bash deploy/setup-nginx-domain.sh ecom-era.com`).
 - La app detecta el servidor (`app/Core/Server.php`): ruta pública de `/public`,
   esquema real (incluido proxy) y host de las URLs canónicas.
-- `tools/verify.php`: 328 comprobaciones automáticas (diseño, facetas, filtros
+- `tools/verify.php`: 337 comprobaciones automáticas (diseño, facetas, filtros
   estructurados del mayorista, catálogo, paginación y enlaces de las tarjetas, caché y
-  precios en vivo, carrito y mini-carrito, favicon de la tienda y predeterminado de
-  Valduran, **subdominios de plataforma y wildcard DNS/TLS**, almacenamiento, DNS,
-  servidor, registro de tiendas, pedidos, envío al mayorista, ausencia de
-  credenciales por defecto y diagnóstico del nivel de cliente).
+  precios en vivo, carrito y mini-carrito, **modo de pruebas comercial**, favicon de
+  la tienda y predeterminado de Valduran, **subdominios de plataforma y wildcard
+  DNS/TLS**, almacenamiento, DNS, servidor, registro de tiendas, pedidos, envío al
+  mayorista, ausencia de credenciales por defecto y diagnóstico del nivel de cliente).
 - Documentación interna en `.agents/`, blindada frente a la web.
 - Repositorio publicado en GitHub (`main`).
 

@@ -11,6 +11,7 @@ use Tienda\Core\CustomerAuth;
 use Tienda\Core\Logger;
 use Tienda\Core\Session;
 use Tienda\Core\ShippingZone;
+use Tienda\Core\ShopMode;
 use Tienda\Core\ValidationException;
 use Tienda\Models\CustomerAddress;
 use Tienda\Models\Order;
@@ -27,6 +28,10 @@ final class CheckoutController extends Controller
     /** Formulario de cierre (dos columnas: direccion + resumen del pedido). */
     public function start(array $params = []): string
     {
+        if (ShopMode::isTestMode()) {
+            $this->redirectTestMode();
+        }
+
         $storeId = $this->tenant->id();
         $store = $this->tenant->toArray();
 
@@ -112,6 +117,10 @@ final class CheckoutController extends Controller
     public function place(array $params = []): string
     {
         $this->requireCsrf('checkout');
+
+        if (ShopMode::isTestMode()) {
+            $this->redirectTestMode();
+        }
 
         $storeId = $this->tenant->id();
         $store = $this->tenant->toArray();
@@ -199,6 +208,14 @@ final class CheckoutController extends Controller
     public function quote(array $params = []): string
     {
         $this->requireCsrf('checkout');
+
+        if (ShopMode::isTestMode()) {
+            return $this->json([
+                'ok' => false,
+                'code' => 'test_mode',
+                'message' => ShopMode::message(),
+            ], 422);
+        }
 
         $storeId = (int) $this->tenant->id();
         $store = $this->tenant->toArray();
@@ -307,6 +324,18 @@ final class CheckoutController extends Controller
     // =====================================================================
     // INTERNOS
     // =====================================================================
+
+    /**
+     * Vuelve al carrito con el aviso de modo de pruebas.
+     *
+     * Se usa tanto al abrir el checkout como al recibir un POST directo: el
+     * pedido no llega a validarse ni a crearse.
+     */
+    private function redirectTestMode(): never
+    {
+        Session::flash('error', ShopMode::message());
+        $this->redirect('carrito');
+    }
 
     /**
      * Direccion de envio del formulario: la elegida de la libreta, o una nueva

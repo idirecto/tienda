@@ -5,6 +5,45 @@ El detalle línea a línea está en `git log`.
 
 ---
 
+## 2026-11-04 · Modo de pruebas comercial: carrito y pedidos bloqueados
+
+**Motivo (petición por chat):** mientras la web está en pruebas, ningún artículo
+puede comprarse. Al intentar añadir al carrito o tramitar un pedido debe aparecer
+el aviso «Esta pagina web se encuentra en pruebas y ninguno de los articulos puede
+ser comprado, los precios y cantidades mostradas son ficticias», y la acción debe
+quedar prohibida de verdad.
+
+**Qué se hizo**
+
+- **`Core/ShopMode`** centraliza el estado y el texto. El interruptor es
+  `SHOP_TEST_MODE` (`config/shop.php`) y **viene activo por defecto**: una
+  instalación sin configurar no puede vender por accidente. Para abrir la venta
+  real se pone `SHOP_TEST_MODE=false` en el `.env`; queda documentado en
+  `.env.example`.
+- **Carrito**: `CartController::add()` comprueba el modo antes de tocar el
+  carrito. En AJAX devuelve el mismo JSON de error que ya consume `shop.js`, así
+  que el toast muestra el aviso exacto; sin JavaScript guarda un flash y
+  redirige a `/carrito`. `Cart::add()` aplica además el bloqueo en el núcleo.
+- **Pedido**: `CheckoutController` rechaza abrir `/checkout`, enviar el
+  formulario y pedir la cotización de envío (`code: test_mode`). `Checkout::place()`
+  lanza `ValidationException` con el mismo mensaje antes de crear ninguna fila.
+- **Pruebas**: `verify.php` pasa de 328 a **337** comprobaciones: configuración,
+  mensaje exacto, interruptor, bloqueo del carrito y del pedido. Las pruebas
+  funcionales de compra se ejecutan con la venta abierta y el modo se restaura al
+  terminar.
+- **Verificación de la sesión:** con un PHP 8.1 aislado en `/tmp` se validó la
+  sintaxis de todos los ficheros tocados y las comprobaciones del modo de pruebas.
+  También se probó directamente que `Cart::add()` rechaza el alta y que
+  `Checkout::place()` lanza el aviso. La ejecución completa de `verify.php` se
+  detiene en la conexión porque este checkout no tiene `.env` y la base
+  `idirecto_db` no existe en el entorno; no se declara «TODO OK» hasta ejecutarlo
+  contra la base real con PHP 8.4.
+
+**No se toca** ninguna tabla ni migración: es un interruptor de configuración y
+comprobaciones de servidor.
+
+---
+
 ## 2026-10-21 · Subdominio de tienda configurable (`prueba.ecom-era.com`)
 
 **Motivo (petición por chat):** la plataforma está en **ecom-era.com** y cada tienda debe

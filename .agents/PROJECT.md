@@ -75,7 +75,7 @@ app/
                            design_preview.php)
     themes/idirecto/       Tema público (home, _hero, catalog, product, page, _card, cart,
                            checkout, thanks, account/*)
-config/                    app, appearance, brand, database, storage, tenant, catalog, idirecto, cache
+config/                    app, appearance, brand, database, storage, tenant, catalog, idirecto, cache, shop
 database/
   migrations/001_schema.sql      13 tablas mt_ (idempotente)
   migrations/002_design_tokens.sql  Columnas de identidad visual en mt_stores
@@ -127,6 +127,7 @@ tools/logs.php             Consulta los logs por consola (filtros, resumen, día
 | `Core/Idirecto/OrderGateway` | Vista previa y envío de líneas a `pedidos_addr`/`pedidos`/`pedidos_det` |
 | `Registration` | Alta de una tienda desde una cuenta del mayorista (alta pública `/registro`) |
 | `Cart` | Carrito del cliente final: en sesión por tienda, con precios y stock en vivo |
+| `ShopMode` | Modo de pruebas comercial global: bloquea carrito y pedidos con un aviso único (`SHOP_TEST_MODE`) |
 | `Shipping` | Gastos de envío de la tienda (tarifa plana + gratis desde X €) |
 | `Checkout` | Cierra el pedido: valida direcciones/pago y crea `mt_orders` + líneas |
 | `CustomerAuth` | Sesión del cliente de la tienda (registro, entrada, invitado) |
@@ -325,6 +326,13 @@ El comprador **no es el tendero**: tiene su propia cuenta y su propia sesión
   el precio, el nombre y el stock se leen del catálogo en cada visita, así que nunca
   se compra a un precio viejo. Los productos que dejan de estar disponibles se
   quitan solos con un aviso.
+- **Modo de pruebas comercial** (`ShopMode` + `SHOP_TEST_MODE`): viene **activado por
+  defecto**. Mientras esté encendido, `POST /carrito/anadir`, abrir o enviar
+  `/checkout` y la cotización de envío se rechazan en el servidor con el aviso
+  «Esta pagina web se encuentra en pruebas y ninguno de los articulos puede ser
+  comprado, los precios y cantidades mostradas son ficticias». La comprobación está
+  también en `Cart::add()` y `Checkout::place()`, no solo en los botones. Para abrir
+  la venta real hay que poner `SHOP_TEST_MODE=false`.
 - **Precio de venta**: `tarifa de la tienda (mt_stores.id_margen) + beneficio
   (mt_stores.markup)`, y en la web **con IVA incluido** (`Catalog::forStore()` fija
   ese contexto en cada petición; el panel usa la base sin IVA). El pedido guarda la

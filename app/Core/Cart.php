@@ -35,6 +35,12 @@ final class Cart
      */
     public static function add(int $storeId, string $source, int $productId, int $qty = 1): array
     {
+        // El modo de pruebas se comprueba tambien aqui, en el nucleo: asi una
+        // llamada interna futura no puede saltarse el bloqueo del controlador.
+        if (ShopMode::isTestMode()) {
+            return ['ok' => false, 'message' => ShopMode::message()];
+        }
+
         $qty = max(1, min(self::MAX_QTY, $qty));
         $product = self::loadProduct($storeId, $source, $productId);
 

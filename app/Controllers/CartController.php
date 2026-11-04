@@ -8,6 +8,7 @@ use Tienda\Core\Cart;
 use Tienda\Core\Controller;
 use Tienda\Core\Session;
 use Tienda\Core\Shipping;
+use Tienda\Core\ShopMode;
 use Tienda\Core\View;
 
 /**
@@ -63,6 +64,10 @@ final class CartController extends Controller
     public function add(array $params = []): string
     {
         $this->requireCsrf('carrito');
+
+        if (ShopMode::isTestMode()) {
+            $this->rejectTestMode();
+        }
 
         if (!$this->tenant->allowOrders()) {
             $message = 'Esta tienda no esta aceptando pedidos en este momento.';
@@ -155,6 +160,32 @@ final class CartController extends Controller
     // =====================================================================
     // RESPUESTA AJAX DEL CARRITO
     // =====================================================================
+
+    /**
+     * Rechaza el alta en modo de pruebas.
+     *
+     * En AJAX devuelve el mismo JSON que un error de carrito (el toast muestra
+     * el aviso exacto); sin JavaScript deja el aviso en la sesion y vuelve al
+     * carrito, que es el flujo normal de los formularios.
+     */
+    private function rejectTestMode(): never
+    {
+        $message = ShopMode::message();
+
+        if ($this->isAjax()) {
+            // No hace falta cargar ni renderizar el carrito: la accion no se ha
+            // ejecutado y el JS solo necesita el error para mostrar el toast.
+            $this->json([
+                'ok'      => false,
+                'type'    => 'error',
+                'message' => $message,
+                'open'    => false,
+            ]);
+        }
+
+        Session::flash('error', $message);
+        $this->redirect('carrito');
+    }
 
     /** Envia el estado del carrito como JSON y termina la peticion. */
     private function cartJson(bool $ok, string $message, string $type = 'success', bool $open = false): never

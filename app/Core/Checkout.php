@@ -84,6 +84,10 @@ final class Checkout
         array $data,
         array $items
     ): array {
+        // Ningun pedido puede nacer mientras la web este en pruebas, aunque
+        // otra ruta o una llamada interna intente saltarse el controlador.
+        ShopMode::assertCanSell();
+
         $storeId = (int) $store['id'];
 
         if (empty($store['allow_orders'])) {

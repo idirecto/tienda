@@ -21,6 +21,19 @@ _(vacío — sin petición pendiente)_
 
 Cada petición terminada se anota aquí con la fecha, qué se pidió y qué se hizo.
 
+### 2026-11-04 · Modo de pruebas: no se puede comprar (petición por chat)
+
+**Pedido:** al intentar añadir un producto al carrito o tramitar un pedido, mostrar
+«Esta pagina web se encuentra en pruebas y ninguno de los articulos puede ser comprado,
+los precios y cantidades mostradas son ficticias» y no permitir la acción.
+
+**Hecho:** `Core/ShopMode` + `SHOP_TEST_MODE` (activo por defecto). El alta al carrito
+responde con ese aviso por AJAX/toast o flash sin JavaScript; `/checkout` y su envío
+redirigen al carrito con el aviso; la cotización de envío devuelve `test_mode`; y
+`Cart::add()`/`Checkout::place()` bloquean también en el núcleo. 9 comprobaciones nuevas
+en `verify.php` (328 → 337). Para abrir la venta: `SHOP_TEST_MODE=false`. Ver
+`CHANGELOG.md` y `STATE.md`.
+
 ### 2026-10-21 · Subdominio de tienda configurable en ecom-era.com (petición por chat)
 
 **Pedido:** como desarrollador senior full-stack experto en PHP 8.4, MySQL/MariaDB, DNS y
