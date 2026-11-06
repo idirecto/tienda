@@ -126,5 +126,6 @@ foreach ([
     <p>
         Estas guías explican lo que el panel permite hacer hoy. Cuando una función no existe
         o está pendiente, se indica en el artículo y en «Solución de problemas».
+        Cada artículo describe dónde está la pantalla; esta primera versión no incluye capturas.
     </p>
 </section>

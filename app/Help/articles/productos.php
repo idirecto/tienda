@@ -71,7 +71,7 @@ return [
             <p>El precio de la web se calcula con la <strong>tarifa de la tienda en el mayorista</strong> más el <strong>beneficio</strong> configurado en Ajustes. La web muestra ese precio con IVA incluido. El pedido guarda la base sin IVA y suma el impuesto al total.</p>
             <div class="help-callout help-callout--info">
                 <strong>Dos porcentajes distintos</strong>
-                <p>El IVA no es un beneficio. El beneficio es lo que añades sobre el coste de la tarifa; el IVA es el impuesto que se suma al precio final. Cambiar uno no cambia automáticamente el otro.</p>
+                <p>El IVA no es un beneficio. El beneficio es lo que añades sobre la tarifa del mayorista; el IVA es el impuesto que se suma al precio final. Cambiar uno no cambia automáticamente el otro.</p>
             </div>
 
             <h3>Productos propios</h3>

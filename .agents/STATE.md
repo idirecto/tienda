@@ -1,7 +1,7 @@
 # STATE — Estado del proyecto
 
 > **El agente actualiza este fichero al terminar cada sesión.**
-> Última actualización: **2026-11-04**
+> Última actualización: **2026-11-06**
 
 ---
 
@@ -13,6 +13,13 @@ al mayorista**. El ciclo de compra (carrito, cuenta, direcciones y checkout) est
 implementado, pero la web está en **modo de pruebas comercial** por defecto:
 el carrito y los pedidos se rechazan con un aviso hasta poner
 `SHOP_TEST_MODE=false`.
+
+> 🆕 **Centro de Ayuda (2026-11-06).** Integrado en `/panel/ayuda`: 38 artículos,
+> 21 preguntas frecuentes, 11 categorías (la de plataforma solo para rol
+> `platform`), buscador en servidor sin acentos/mayúsculas, enlaces contextuales
+> desde las pantallas reales y diseño responsive/accesible. El contenido vive en
+> `app/Help` y no usa ninguna tabla ni migración. La ficha de pedido ya no muestra
+> el coste interno del mayorista.
 
 > ✅ **Entorno (2026-10-03).** `idirecto_db` está **completa** (239 tablas:
 > catálogo con 41.289 productos con stock, 33 categorías con stock, y las `mt_`),
@@ -59,6 +66,8 @@ el carrito y los pedidos se rechazan con un aviso hasta poner
 | **Filtros avanzados (socket, gráfica, memoria, formato, almacenamiento, marca, precio)** | ✅ Completo (**ahora sí filtran**; el WHERE los ignoraba) |
 | **Buscador del catálogo (en vivo, estilo PuntoByZE)** | ✅ Completo (solo el catálogo visible en el menú de la tienda + sus productos propios; `/buscar/live`; **rejilla adaptativa: 1 tarjeta por línea en el móvil y 5-7 en un monitor grande**) |
 | Panel de la tienda (diseño, banners, avisos, productos, dominios, ajustes) | ✅ Completo (sin usuario demo: se crea en `/registro`) |
+| **Centro de Ayuda del panel (`/panel/ayuda`)** | ✅ Completo: 38 artículos + 21 FAQ, buscador en servidor, enlaces contextuales y ayuda de plataforma restringida por rol |
+| **Coste interno en pedidos** | ✅ Oculto de `/panel/pedidos/{id}` (la tarifa del mayorista sigue visible) |
 | **Pedidos: listado por estados, ficha y envío por líneas a idirecto** | ✅ Completo |
 | Dominios propios + verificación DNS | ✅ Completo |
 | Almacenamiento (local / S3) | ✅ Completo (S3 sin probar contra bucket real) |
@@ -78,6 +87,42 @@ el carrito y los pedidos se rechazan con un aviso hasta poner
 ---
 
 ## Hecho
+
+### Centro de Ayuda integrado y coste interno oculto (2026-11-06)
+- **Contenido en archivos**: `app/Core/Help.php` + `app/Help/categories.php`,
+  `app/Help/faq.php` y `app/Help/articles/*.php`. No hay tabla ni migración nueva.
+- **38 artículos y 21 preguntas frecuentes** en 11 categorías. La categoría
+  `plataforma` solo se sirve al rol `platform`; para el resto, la categoría, el
+  artículo y los resultados de búsqueda no existen (404 / filtrado).
+- **Rutas**: `/panel/ayuda`, `/panel/ayuda/categoria/{category}` y
+  `/panel/ayuda/{category}/{slug}`. Todas exigen sesión.
+- **Buscador en servidor**: coincidencias parciales en título, resumen, palabras
+  clave y contenido, sin mayúsculas ni acentos, ordenadas por relevancia, con
+  palabras vacías filtradas y estado sin resultados.
+- **Integración visual**: enlace «Ayuda» en la barra lateral, enlace contextual
+  «Ayuda de esta pantalla» en las páginas reales y ayuda propia dentro de cada
+  artículo. Diseño responsive con navegación por teclado, foco visible, enlace
+  de salto al contenido, FAQ con `<details>` y tablas apiladas en móvil.
+- **Sin datos de tienda**: el contenido es idéntico entre dos sesiones de tiendas
+  distintas; no contiene nombres, pedidos, clientes ni información sensible.
+- **Coste interno**: se retiraron la columna y el valor `cost_idirecto` de
+  `/panel/pedidos/{id}`; la tarifa del mayorista y los importes del flujo siguen
+  visibles.
+- **Pruebas**: Chrome headless/CDP autenticado (desktop y móvil, búsqueda con
+  teclado, FAQ, 38 artículos, 21 anclas, enlaces internos, sin errores de consola),
+  sesiones HTTP reales de dos tiendas, roles tienda/plataforma y smoke test en
+  Apache. `verify.php` suma **20 comprobaciones** del Centro de Ayuda (todas pasan;
+  total 349). Se mantienen **9 fallos antiguos** de las pruebas de registro,
+  precios, compra y menú porque usan fixtures que no coinciden con la base
+  restaurada; no afectan a los archivos tocados en esta sesión.
+- **Limitaciones conocidas documentadas en la propia ayuda**: sin editor de
+  páginas legales, facturación, emails, pasarela de pago ni seguimiento de
+  transporte; el bloque de añadir líneas de un pedido existente puede duplicar
+  líneas; los roles del panel todavía no restringen secciones; persisten
+  desbordamientos horizontales previos en pedidos en móvil. No se corrigió la
+  lógica de negocio.
+- **Pendiente de esta función**: añadir capturas reales cuando se haga una QA
+  visual definitiva; la primera versión usa descripciones de ubicación.
 
 ### Sesiones antiguas compatibles y título de pestaña (2026-11-04)
 - `Cart` sanea la estructura de `cart`; `CustomerAuth` y `Auth` validan sus sesiones;

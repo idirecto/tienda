@@ -98,7 +98,8 @@ $isActive = static function (string $path) use ($current, $base): bool {
 
         <nav class="sidebar-nav" aria-label="Secciones del panel">
             <?php foreach ($nav as [$path, $label, $hint]): ?>
-                <a href="<?= e($base . '/' . $path) ?>" class="<?= $isActive($path) ? 'active' : '' ?>" title="<?= e($hint) ?>">
+                <?php $active = $isActive($path); ?>
+                <a href="<?= e($base . '/' . $path) ?>" class="<?= $active ? 'active' : '' ?>" title="<?= e($hint) ?>"<?= $active ? ' aria-current="page"' : '' ?>>
                     <span class="nav-label"><?= e($label) ?></span>
                 </a>
             <?php endforeach; ?>

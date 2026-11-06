@@ -57,7 +57,7 @@ return [
                 <li>Dirección de entrega y, si es distinta, dirección de facturación.</li>
                 <li>Forma de pago y estado del cobro.</li>
                 <li>Comentario del cliente y notas internas.</li>
-                <li>Líneas con producto, unidades, precio de cliente, tarifa del mayorista, coste e importe.</li>
+                <li>Líneas con producto, unidades, precio de cliente, tarifa del mayorista e importe.</li>
                 <li>Estado de envío de cada línea: pendiente, enviada o producto propio.</li>
                 <li>Cuenta del mayorista y tarifa utilizada.</li>
             </ul>

@@ -5,6 +5,66 @@ El detalle línea a línea está en `git log`.
 
 ---
 
+## 2026-11-06 · Centro de Ayuda integrado y coste interno fuera de la ficha de pedido
+
+**Motivo (petición por chat):** crear un Centro de Ayuda para personas sin
+conocimientos técnicos dentro del panel de cada tienda, basado en la auditoría
+real del panel, y dejar de mostrar el coste interno del mayorista en la ficha de
+pedido.
+
+**Qué se hizo**
+
+- Se auditó el panel autenticado con datos reales: Panel, Pedidos, Clientes,
+  Menu, Diseno, Banners, Avisos, Productos propios, Dominios, Ajustes, Logs y
+  Menu plataforma. La revisión visual se hizo con Chrome headless/CDP y sesiones
+  temporales de QA, sin modificar usuarios ni datos de las tiendas.
+- **Centro de Ayuda** en `/panel/ayuda`: portada con buscador, accesos rápidos,
+  categorías, artículos, FAQ y estado sin resultados. Enlace **Ayuda** en la barra
+  lateral y enlace contextual «Ayuda de esta pantalla» en las pantallas reales.
+- **38 artículos + 21 preguntas frecuentes** en 11 categorías. Incluye guías
+  completas de creación de tienda y de pedidos, enlaces de vuelta a las rutas
+  reales y artículos relacionados.
+- **Contenido en archivos**: `app/Core/Help.php` carga `app/Help/categories.php`,
+  `app/Help/faq.php` y `app/Help/articles/*.php`. No se creó ninguna tabla ni
+  migración.
+- **Buscador en servidor**: búsqueda parcial en títulos, resúmenes, palabras clave
+  y contenido, sin distinguir mayúsculas ni acentos, con orden por relevancia,
+  filtrado de palabras vacías y estado sin resultados con categorías sugeridas.
+- **Acceso**: todas las rutas exigen sesión. La categoría y el artículo de
+  plataforma solo existen para el rol `platform`; para el resto devuelven 404.
+  Se comprobó que el contenido es idéntico entre dos tiendas y no contiene datos
+  de ninguna.
+- **Respuesta accesible y responsive**: navegación por teclado, FAQ con
+  `<details>`, textos alternativos reservados para futuras capturas, foco visible,
+  enlace para saltar al contenido, navegación móvil compacta y tablas apiladas.
+- **Transparencia**: los artículos separan las funciones reales de las limitaciones
+  actuales (textos legales, facturación, emails, permisos, transporte, plan y
+  soporte). No se inventaron canales de soporte, contenidos legales ni datos
+  fiscales/comerciales.
+- **Coste interno**: se eliminó la columna «Coste» y el valor `cost_idirecto` de
+  `/panel/pedidos/{id}`. La tarifa y los importes necesarios para el flujo siguen
+  visibles; el coste de la tabla de stock no se muestra.
+- **Pruebas**: `verify.php` incorpora 20 comprobaciones del Centro de Ayuda
+  (catálogo, relaciones, búsqueda, permisos, rutas, estilos, 404 y ausencia del
+  coste en pedidos). Las 20 pasan. La suite completa queda en 349 comprobaciones;
+  se mantienen 9 fallos antiguos de pruebas de registro/precios/compra/menú que
+  dependen de fixtures concretos de la base restaurada, fuera de los archivos
+  tocados.
+
+**Limitaciones conocidas que la propia ayuda documenta**
+
+- No hay editor de páginas de contenido ni textos legales.
+- No hay facturación, pasarela de pago, emails automáticos ni seguimiento de
+  transporte.
+- La ficha de pedido no permite editar cliente, dirección o gastos de envío.
+- El formulario «Anadir lineas» de un pedido existente aparece precargado y puede
+  duplicar líneas si se guarda; se avisa en la ayuda.
+- Los roles de usuario todavía no limitan el acceso a las secciones de la tienda.
+- Persisten desbordamientos horizontales previos en la ficha de pedido y en el
+  listado de pedidos en móvil; no se tocó esa lógica en esta sesión.
+
+---
+
 ## 2026-11-04 · Sesiones antiguas compatibles y título con razón social
 
 **Motivo (petición por chat):** la portada fallaba con la sesión que ya estaba abierta

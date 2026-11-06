@@ -1489,4 +1489,48 @@ body.help-page .sidebar-nav::-webkit-scrollbar-thumb {
     }
 }
 
+/* Objetivos tactiles comodos en las acciones del Centro de Ayuda. */
+.help-search-row .btn,
+.help-action-box .btn,
+.help-back-row .btn,
+.help-faq-item summary {
+    min-height: 44px;
+}
+body.help-page .sidebar-nav a {
+    min-height: 44px;
+}
+
+.sr-only {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
+}
+
+.help-side-search {
+    display: flex;
+    align-items: center;
+    gap: .35rem;
+    min-width: 0;
+}
+.help-side-search input {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: .45rem .55rem;
+    font-size: .8rem;
+}
+.help-side-search .btn {
+    flex: 0 0 auto;
+    min-width: 36px;
+    padding: .38rem .45rem;
+}
+.help-side-search .btn svg {
+    width: 16px;
+    height: 16px;
+}
 

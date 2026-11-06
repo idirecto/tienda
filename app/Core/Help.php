@@ -25,6 +25,13 @@ final class Help
     /** Resultado de busqueda para una consulta normalizada. */
     private const MIN_QUERY_LENGTH = 2;
 
+    /** Palabras demasiado comunes: no aportan relevancia por si solas. */
+    private const STOPWORDS = [
+        'a', 'al', 'algo', 'como', 'con', 'de', 'del', 'el', 'en', 'es', 'esta',
+        'este', 'la', 'las', 'lo', 'los', 'mi', 'mis', 'no', 'o', 'para', 'por',
+        'que', 'se', 'si', 'sin', 'su', 'sus', 'tu', 'tus', 'un', 'una', 'y',
+    ];
+
     /**
      * Categorias visibles, con el numero de contenidos de cada una.
      *
@@ -454,8 +461,13 @@ final class Help
     private static function tokens(string $folded): array
     {
         $tokens = preg_split('/\s+/u', trim($folded)) ?: [];
+        $tokens = array_values(array_filter($tokens, static fn (string $token): bool => $token !== ''));
+        $meaningful = array_values(array_filter(
+            $tokens,
+            static fn (string $token): bool => !in_array($token, self::STOPWORDS, true)
+        ));
 
-        return array_values(array_filter($tokens, static fn (string $token): bool => $token !== ''));
+        return $meaningful;
     }
 
     /** @param array<int, string> $tokens */

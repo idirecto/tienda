@@ -40,6 +40,16 @@ $activeCategory = $activeCategory ?? null;
         <?php endforeach; ?>
     </nav>
 
+    <?php if (empty($hideSideSearch)): ?>
+        <form class="help-side-search" method="get" action="<?= e(Help::homeUrl()) ?>" role="search">
+            <label class="sr-only" for="help-side-q">Buscar en la ayuda</label>
+            <input id="help-side-q" type="search" name="q" placeholder="Buscar en la ayuda…" autocomplete="off">
+            <button class="btn btn-ghost btn-sm" type="submit" aria-label="Buscar en la ayuda">
+                <?= icon_svg('search') ?>
+            </button>
+        </form>
+    <?php endif; ?>
+
     <div class="help-side-note">
         <strong>Consejo</strong>
         <p>Usa el buscador para encontrar una palabra concreta: «pedido», «banner», «envío» o «dominio».</p>

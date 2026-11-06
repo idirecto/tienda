@@ -228,7 +228,6 @@ $sendFormId = 'send-order-' . (int) $order['id'];
                     <th class="ta-r">Uds.</th>
                     <th class="ta-r">Precio cliente</th>
                     <th class="ta-r">Tarifa idirecto</th>
-                    <th class="ta-r">Coste</th>
                     <th class="ta-r">Importe</th>
                     <th>Envio</th>
                     <th></th>
@@ -270,9 +269,6 @@ $sendFormId = 'send-order-' . (int) $order['id'];
                         <?php else: ?>
                             <span class="muted">&mdash;</span>
                         <?php endif; ?>
-                    </td>
-                    <td class="ta-r muted">
-                        <?= $linea !== null ? e(euros($linea['coste'])) : '&mdash;' ?>
                     </td>
                     <td class="ta-r"><strong><?= e(euros($importe)) ?></strong></td>
                     <td>

@@ -11,6 +11,7 @@ use Tienda\Core\Help;
 
 $activeCategory = 'preguntas-frecuentes';
 $query = '';
+$hideSideSearch = true;
 $total = Help::faqCount();
 ?>
 <div class="help-layout">

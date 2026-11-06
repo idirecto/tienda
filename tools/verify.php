@@ -30,6 +30,7 @@ use Tienda\Core\CustomerAuth;
 use Tienda\Core\Database;
 use Tienda\Core\Dns;
 use Tienda\Core\Favicon;
+use Tienda\Core\Help;
 use Tienda\Core\Idirecto\Account;
 use Tienda\Core\Idirecto\OrderGateway;
 use Tienda\Core\Idirecto\Pricing;
@@ -2585,6 +2586,106 @@ check(
     str_contains((string) file_get_contents(TIENDA_BASE . '/.htaccess'), 'ExpiresByType image/x-icon')
         && str_contains((string) file_get_contents(TIENDA_BASE . '/.htaccess'), 'ExpiresByType image/svg+xml'),
     'las imagenes se sirven con cache razonable (Apache; nginx ya usa expires 30d)'
+);
+
+// --- Centro de Ayuda ---------------------------------------------------------
+echo "\n== Centro de Ayuda ==\n";
+
+$ayudaTodas = Help::categories(true);
+$ayudaNormales = Help::categories(false);
+$ayudaArticulos = [];
+$ayudaRelacionadosOk = true;
+$ayudaContenidoOk = true;
+$ayudaRutasPanelOk = true;
+foreach ($ayudaTodas as $categoriaSlug => $categoriaAyuda) {
+    if (($categoriaAyuda['type'] ?? 'articles') === 'faq') {
+        continue;
+    }
+    foreach (Help::articlesForCategory((string) $categoriaSlug, true) as $articuloAyuda) {
+        $ayudaArticulos[] = $articuloAyuda;
+        if (trim((string) $articuloAyuda['title']) === ''
+            || trim((string) $articuloAyuda['summary']) === ''
+            || trim(strip_tags((string) $articuloAyuda['body'])) === '') {
+            $ayudaContenidoOk = false;
+        }
+        $rutaPanel = (string) $articuloAyuda['panel_path'];
+        if ($rutaPanel !== '' && $rutaPanel !== 'panel' && !str_starts_with($rutaPanel, 'panel/')) {
+            $ayudaRutasPanelOk = false;
+        }
+        foreach ((array) $articuloAyuda['related'] as $relacionado) {
+            if (Help::find((string) $relacionado, true) === null) {
+                $ayudaRelacionadosOk = false;
+            }
+        }
+    }
+}
+
+check(count($ayudaTodas) === 11, 'el Centro de Ayuda tiene las 11 categorias aprobadas');
+check(count($ayudaNormales) === 10 && !isset($ayudaNormales['plataforma']), 'la tienda no ve la categoria de plataforma');
+check(count($ayudaArticulos) === 38, 'el Centro de Ayuda contiene 38 articulos normales y de plataforma');
+check(Help::faqCount() === 21, 'el Centro de Ayuda contiene 21 preguntas frecuentes');
+check($ayudaContenidoOk, 'todos los articulos tienen titulo, resumen y contenido');
+check($ayudaRelacionadosOk, 'todos los enlaces a articulos relacionados existen');
+check($ayudaRutasPanelOk, 'todas las rutas de vuelta al panel tienen un formato valido');
+check(
+    Help::find('plataforma/menu-plataforma', false) === null
+        && Help::find('plataforma/menu-plataforma', true) !== null,
+    'el articulo de plataforma exige el rol platform'
+);
+
+$busquedaParcial = array_column(Help::search('ban', false, 100), 'path');
+$busquedaAcento = array_column(Help::search('PEDÍDOS', false, 100), 'path');
+$busquedaVacia = Help::search('contenidoquenoexiste', false, 100);
+$busquedaPlataformaTienda = array_filter(
+    Help::search('plataforma', false, 100),
+    static fn (array $r): bool => str_starts_with((string) $r['path'], 'plataforma/')
+);
+$busquedaPlataformaAdmin = array_filter(
+    Help::search('plataforma', true, 100),
+    static fn (array $r): bool => str_starts_with((string) $r['path'], 'plataforma/')
+);
+check(in_array('diseno/banners', $busquedaParcial, true), 'el buscador resuelve coincidencias parciales');
+check(in_array('pedidos/guia-pedidos', $busquedaAcento, true), 'el buscador ignora mayusculas y acentos');
+check($busquedaVacia === [], 'el buscador devuelve un estado vacio sin resultados');
+check($busquedaPlataformaTienda === [] && $busquedaPlataformaAdmin !== [], 'el buscador oculta la ayuda de plataforma a las tiendas');
+check(Help::search('a', false, 100) === [], 'el buscador exige al menos dos caracteres');
+
+$contexto = Help::contextual('/panel/diseno', false);
+check(
+    is_array($contexto) && ($contexto['path'] ?? '') === 'diseno/identidad-visual',
+    'el enlace contextual del panel apunta al articulo correcto'
+);
+
+$indiceFuente = (string) file_get_contents(TIENDA_BASE . '/index.php');
+$layoutPanel = (string) file_get_contents(TIENDA_BASE . '/app/Views/layouts/panel.php');
+$cssPanel = (string) file_get_contents(TIENDA_BASE . '/public/assets/css/panel.css');
+check(
+    str_contains($indiceFuente, "'/panel/ayuda'")
+        && str_contains($indiceFuente, "'/panel/ayuda/categoria/{category}'")
+        && str_contains($indiceFuente, "'/panel/ayuda/{category}/{slug}'")
+        && is_file(TIENDA_BASE . '/app/Controllers/Admin/HelpController.php'),
+    'las rutas del Centro de Ayuda estan registradas en el front controller'
+);
+check(
+    str_contains($layoutPanel, 'panel/ayuda') && str_contains($layoutPanel, 'help-context-link'),
+    'el panel enlaza con la Ayuda y muestra un enlace contextual'
+);
+check(
+    str_contains($cssPanel, '.help-layout') && str_contains($cssPanel, '@media (max-width: 900px)'),
+    'el Centro de Ayuda usa estilos propios y una adaptacion responsive'
+);
+check(
+    str_contains((string) file_get_contents(TIENDA_BASE . '/app/Views/panel/help_index.php'), 'No hemos encontrado nada')
+        && str_contains((string) file_get_contents(TIENDA_BASE . '/app/Views/panel/help_faq.php'), '<details'),
+    'la ayuda tiene estado sin resultados y FAQ accesibles por teclado'
+);
+check(
+    str_contains((string) file_get_contents(TIENDA_BASE . '/app/Views/panel/help_404.php'), 'No hemos encontrado esa página de ayuda'),
+    'el Centro de Ayuda tiene una pagina 404 propia dentro del panel'
+);
+check(
+    !preg_match('/\bCoste\b|\bcost_idirecto\b|\$linea\[.coste.\]/i', (string) file_get_contents(TIENDA_BASE . '/app/Views/panel/order.php')),
+    'la ficha del pedido no muestra el coste interno del mayorista'
 );
 
 echo "\n==============================================================\n";
