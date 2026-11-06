@@ -10,6 +10,7 @@
  */
 use Tienda\Core\Auth;
 use Tienda\Core\Favicon;
+use Tienda\Core\Help;
 use Tienda\Core\Session;
 use Tienda\Core\Tenant;
 use Tienda\Models\Store;
@@ -32,6 +33,19 @@ if ($authStoreId !== null && $authStoreId > 0 && $authStoreId !== $tenant->id())
 }
 $panelStoreUrl = $panelStore->publicUrl();
 
+// Enlace contextual a la ayuda que corresponde a esta pantalla. El propio
+// Centro de Ayuda no muestra otro enlace de ayuda encima.
+$helpContext = null;
+$isHelpPage = false;
+if (Auth::check()) {
+    $helpScreenPath = $current;
+    if ($base !== '' && str_starts_with($helpScreenPath, $base)) {
+        $helpScreenPath = substr($helpScreenPath, strlen($base));
+    }
+    $isHelpPage = str_starts_with('/' . trim($helpScreenPath, '/'), '/panel/ayuda');
+    $helpContext = Help::contextual($helpScreenPath, Auth::isPlatform());
+}
+
 $nav = [
     ['panel',          'Panel',            'Resumen de tu tienda'],
     ['panel/pedidos',  'Pedidos',          'Pedidos de tus clientes'],
@@ -44,6 +58,7 @@ $nav = [
     ['panel/dominios', 'Dominios',         'Tu direccion web'],
     ['panel/ajustes',  'Ajustes',          'Datos y usuarios'],
     ['panel/logs',     'Logs',             'Actividad, compras y errores por dia'],
+    ['panel/ayuda',    'Ayuda',            'Guias y respuestas para usar el panel'],
 ];
 
 // El menu de la plataforma solo lo ve el rol `platform`.
@@ -64,13 +79,14 @@ $isActive = static function (string $path) use ($current, $base): bool {
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title><?= e($pageTitle ?? 'Panel') ?> · <?= e($panelStore->name()) ?></title>
+    <title><?= e($documentTitle ?? $pageTitle ?? 'Panel') ?> · <?= e($panelStore->name()) ?></title>
     <?php /* Mismo favicon que la tienda publica (el suyo o el de Valduran). */ ?>
     <?= Favicon::linkTags($panelStore) ?>
     <link rel="stylesheet" href="<?= e(asset('assets/css/panel.css')) ?>">
     <style>:root{--brand: <?= e($panelStore->colorPrimary()) ?>;}</style>
 </head>
-<body class="panel">
+<body class="panel<?= $isHelpPage ? ' help-page' : '' ?>">
+<a class="skip-link" href="#panel-content">Saltar al contenido</a>
 <div class="shell">
     <aside class="sidebar">
         <div class="sidebar-brand">
@@ -80,7 +96,7 @@ $isActive = static function (string $path) use ($current, $base): bool {
             </div>
         </div>
 
-        <nav class="sidebar-nav">
+        <nav class="sidebar-nav" aria-label="Secciones del panel">
             <?php foreach ($nav as [$path, $label, $hint]): ?>
                 <a href="<?= e($base . '/' . $path) ?>" class="<?= $isActive($path) ? 'active' : '' ?>" title="<?= e($hint) ?>">
                     <span class="nav-label"><?= e($label) ?></span>
@@ -97,12 +113,20 @@ $isActive = static function (string $path) use ($current, $base): bool {
         <header class="topbar">
             <h1><?= e($pageTitle ?? 'Panel') ?></h1>
             <div class="topbar-right">
+                <?php if ($helpContext !== null): ?>
+                    <a class="btn btn-ghost btn-sm help-context-link"
+                       href="<?= e((string) $helpContext['url']) ?>"
+                       aria-label="Abrir la ayuda sobre esta pantalla: <?= e((string) $helpContext['title']) ?>">
+                        <span class="help-context-mark" aria-hidden="true">?</span>
+                        <span class="help-context-label">Ayuda de esta pantalla</span>
+                    </a>
+                <?php endif; ?>
                 <span class="user"><?= e($auth_user['name'] ?? '') ?></span>
                 <a class="btn btn-ghost" href="<?= e($base) ?>/panel/logout">Salir</a>
             </div>
         </header>
 
-        <div class="content">
+        <div class="content" id="panel-content" tabindex="-1">
             <?php if ($success): ?><div class="alert alert-success"><?= e($success) ?></div><?php endif; ?>
             <?php if ($warning): ?><div class="alert alert-warning"><?= e($warning) ?></div><?php endif; ?>
             <?php if ($error): ?><div class="alert alert-error"><?= e($error) ?></div><?php endif; ?>
