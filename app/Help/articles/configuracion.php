@@ -46,7 +46,7 @@ return [
                 <li>El plan de la tienda.</li>
                 <li>El estado técnico de la tienda.</li>
                 <li>Las páginas legales: no tienen editor en el panel.</li>
-                <li>El NIF/CIF de la cuenta del mayorista: se muestra, pero se gestiona en idirecto.</li>
+                <li>El NIF/CIF y la tarifa de la cuenta del mayorista: se gestionan en idirecto.</li>
             </ul>
         HTML,
         'panel_path' => 'panel/ajustes',
@@ -58,7 +58,7 @@ return [
         'slug'    => 'venta-cobro-pagos',
         'title'   => 'Venta, cobro y formas de pago',
         'summary' => 'Configura el beneficio, el envío general y las formas de pago. Entiende qué se cobra automáticamente y qué se marca a mano.',
-        'keywords' => ['beneficio', 'margen', 'markup', 'precio venta', 'pago', 'transferencia', 'contra reembolso', 'recogida', 'cobro', 'datos bancarios'],
+        'keywords' => ['beneficio', 'markup', 'precio venta', 'pago', 'transferencia', 'contra reembolso', 'recogida', 'cobro', 'datos bancarios'],
         'location' => 'En Ajustes, tarjeta «Venta y cobro». Las zonas y sus costes de envío están en la tarjeta inferior «Zonas de venta y envío».',
         'body' => <<<'HTML'
             <h3>Beneficio sobre la tarifa</h3>
@@ -112,45 +112,45 @@ return [
 
     [
         'slug'    => 'cuenta-idirecto',
-        'title'   => 'Cuenta de idirecto, tarifa y nivel de cliente',
-        'summary' => 'Qué significan la cuenta del mayorista, la tarifa y el nivel de cliente, y por qué no se editan todos desde este panel.',
-        'keywords' => ['idirecto', 'cuenta', 'mayorista', 'tarifa', 'margen', 'nivel cliente', 'categoría cliente', 'nif'],
-        'location' => 'En Ajustes, tarjeta «Cuenta en idirecto (mayorista)», al final de la página.',
+        'title'   => 'Cuenta del mayorista y nivel de cliente',
+        'summary' => 'Qué datos se gestionan en idirecto, cómo afectan a los pedidos y por qué no se configuran en Ajustes.',
+        'keywords' => ['idirecto', 'cuenta', 'mayorista', 'tarifa', 'nivel cliente', 'categoría cliente', 'nif', 'vinculación'],
+        'location' => 'La cuenta y la tarifa se gestionan en idirecto. En este panel solo se reflejan en la ficha del pedido y en los enlaces del menú.',
         'body' => <<<'HTML'
-            <h3>Para qué sirve esta cuenta</h3>
-            <p>El <strong>mayorista</strong> es quien proporciona el catálogo central y a quien se envían los pedidos. La cuenta de idirecto indica con qué cliente del mayorista compra tu tienda.</p>
+            <h3>Qué se gestiona en idirecto</h3>
+            <p>El <strong>mayorista</strong> es quien proporciona el catálogo central y a quien se envían los pedidos. La cuenta de idirecto indica con qué cliente del mayorista compra tu tienda. Desde idirecto se gestionan la cuenta, la tarifa aplicada, el NIF/CIF, la dirección de facturación y el nivel de cliente.</p>
 
-            <h3>Los dos números</h3>
-            <ul>
-                <li><strong>Id de cuenta en idirecto:</strong> identifica tu cuenta en el mayorista. Si no existe, el panel lo rechaza.</li>
-                <li><strong>Tarifa o margen:</strong> es la lista de precios que el mayorista aplica a esa cuenta. Si se deja vacía, se usa la tarifa de la propia cuenta.</li>
-            </ul>
-            <p>No confundas la tarifa del mayorista con el <strong>beneficio</strong> de tu tienda. La tarifa es el precio de compra; el beneficio es el porcentaje que añades para calcular el precio de venta.</p>
-
-            <h3>Cómo revisar la cuenta</h3>
-            <ol class="help-steps">
-                <li>Comprueba el id de cuenta y la tarifa.</li>
-                <li>Pulsa <strong>Guardar cuenta</strong>.</li>
-                <li>Lee el recuadro de resumen: muestra la razón social, el NIF/CIF y la tarifa efectiva.</li>
-                <li>Si vas a enviar pedidos al mayorista, confirma con Logs o con una prueba autorizada que el puente responde.</li>
-            </ol>
-
-            <h3>Nivel de cliente de la tienda</h3>
-            <p>El nivel de cliente sale de la ficha de la cuenta en idirecto. Puede hacer que algunos enlaces del menú solo se muestren a determinados niveles. El panel no permite cambiar ese nivel: si aparece «sin asignar», quien gestiona la cuenta en idirecto debe revisar la categoría de cliente.</p>
             <div class="help-callout help-callout--info">
-                <strong>No es un precio especial para tus clientes</strong>
-                <p>El nivel de cliente de la tienda no crea tarifas distintas para las personas que compran en tu web. Solo condiciona la visibilidad de determinados nodos del menú.</p>
+                <strong>No hay configuración de cuenta ni tarifa en Ajustes</strong>
+                <p>El panel de la tienda no muestra campos para cambiar esos datos. Si necesitas modificar la cuenta, la tarifa o el nivel de cliente, debe hacerse desde idirecto o por quien administra la plataforma.</p>
             </div>
+
+            <h3>Cómo afecta a tu tienda</h3>
+            <ul>
+                <li><strong>Pedidos:</strong> se envían al mayorista con la cuenta vinculada a la tienda.</li>
+                <li><strong>Precios:</strong> se calculan con la tarifa que idirecto aplica a tu cuenta más el beneficio que configuras en Ajustes.</li>
+                <li><strong>Menú:</strong> el nivel de cliente de la cuenta puede limitar qué enlaces con nivel mínimo se muestran.</li>
+            </ul>
+
+            <h3>Qué puedes hacer desde este panel</h3>
+            <ul>
+                <li>Comprobar en la ficha de un pedido qué cuenta del mayorista se utiliza.</li>
+                <li>Cambiar el <strong>beneficio</strong> de tu tienda en Ajustes, dentro de «Venta y cobro».</li>
+                <li>Revisar los enlaces visibles del menú.</li>
+            </ul>
+
+            <h3>Si falta la cuenta o el nivel</h3>
+            <p>El panel no permite corregirlo. Solicita a quien administra idirecto que revise la cuenta de la tienda, su tarifa y la categoría de cliente. Si el problema continúa, reúne el número de pedido, el mensaje exacto y la hora, y contacta por el canal externo que la plataforma te haya indicado.</p>
 
             <h3>Errores frecuentes</h3>
             <ul>
-                <li>La cuenta no existe: revisa el identificador con el mayorista.</li>
-                <li>No aparece el nivel: la cuenta existe, pero no tiene categoría de cliente asignada.</li>
-                <li>No se pueden enviar pedidos: falta la cuenta, la tarifa o el puente del mayorista.</li>
+                <li>La cuenta vinculada ya no existe en el mayorista.</li>
+                <li>La cuenta existe, pero no tiene categoría de cliente asignada.</li>
+                <li>No se pueden enviar pedidos porque falta la vinculación o el puente con el mayorista.</li>
             </ul>
         HTML,
-        'panel_path' => 'panel/ajustes',
-        'panel_label' => 'Ir a la cuenta del mayorista',
+        'panel_path' => 'panel/pedidos',
+        'panel_label' => 'Ir a Pedidos',
         'related' => ['pedidos/enviar-idirecto', 'menu/categorias-visibles-propias', 'problemas/no-envio-idirecto'],
     ],
 

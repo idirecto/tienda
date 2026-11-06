@@ -13,16 +13,17 @@ use Tienda\Core\Env;
  * `web = 1`, `estado = NULL` (activo), `referencia` con el pedido de la tienda
  * y `fecha = NOW()`.
  *
- * Cada tienda dice con que cuenta compra en `mt_stores.id_tienda_idirecto` y con
- * que tarifa en `mt_stores.id_margen` (ambos se editan en el panel > Ajustes).
+ * La cuenta se vincula en `mt_stores.id_tienda_idirecto`. La tarifa se lee
+ * siempre de la ficha de esa cuenta en idirecto (`tiendas.id_margen`); no se
+ * configura ni se muestra en el panel de la tienda.
  */
 return [
     // Interruptor general. Con `false` el panel muestra el listado de pedidos
     // pero no ofrece enviar nada al mayorista.
     'enabled' => Env::bool('IDIRECTO_ENABLED', true),
 
-    // Tarifa usada si la tienda no tiene `id_margen`. 12 es el margen por
-    // defecto con el que trabaja idirecto para sus clientes web.
+    // Tarifa usada si la cuenta de idirecto no trae una asignada. 12 es la
+    // tarifa por defecto con la que trabaja idirecto para sus clientes web.
     'default_id_margen' => Env::int('IDIRECTO_DEFAULT_ID_MARGEN', 12),
 
     // Descuenta stock y suma reserva en los almacenes externos (tipo 0 y 4),
@@ -44,8 +45,9 @@ return [
     // Solo puede registrarse quien tenga una cuenta ACTIVA en el mayorista: el
     // tendero entra en /registro con su email y contrasena de idirecto, se
     // comprueban contra `tiendas` (activo = 2, ni cerrada ni borrada) y se crea
-    // su tienda ya enlazada (`id_tienda_idirecto` + `id_margen`) con su propio
-    // usuario de panel. Su contrasena del mayorista NO se guarda.
+    // su tienda ya enlazada (`id_tienda_idirecto`) con su propio usuario de
+    // panel. La tarifa se consulta en `tiendas.id_margen`; no se configura aqui.
+    // Su contrasena del mayorista NO se guarda.
     // -------------------------------------------------------------------------
     // Interruptor del registro (con `false`, /registro solo informa).
     'register' => Env::bool('IDIRECTO_REGISTER', true),

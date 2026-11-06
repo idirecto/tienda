@@ -145,17 +145,17 @@ return [
     [
         'slug'    => 'no-envio-idirecto',
         'title'   => 'No puedo enviar líneas a idirecto',
-        'summary' => 'Revisa la cuenta del mayorista, la tarifa, las líneas pendientes y el estado del pedido.',
-        'keywords' => ['no envía idirecto', 'error mayorista', 'cuenta', 'tarifa', 'producto propio', 'línea enviada', 'puente'],
-        'location' => 'En la ficha del pedido, sección «Lineas del pedido», y en Ajustes, tarjeta «Cuenta en idirecto».',
+        'summary' => 'Revisa la vinculación con el mayorista, las líneas pendientes y el estado del pedido.',
+        'keywords' => ['no envía idirecto', 'error mayorista', 'cuenta', 'producto propio', 'línea enviada', 'puente'],
+        'location' => 'En la ficha del pedido, sección «Lineas del pedido». La cuenta del mayorista se gestiona en idirecto.',
         'body' => <<<'HTML'
             <h3>Revisa estos puntos en orden</h3>
             <ol class="help-steps">
-                <li><strong>Cuenta configurada:</strong> en Ajustes debe aparecer un id de cuenta válido del mayorista.</li>
+                <li><strong>Cuenta vinculada:</strong> la ficha del pedido debe mostrar una cuenta válida del mayorista. Si no aparece, solicita a idirecto que revise la vinculación de la tienda.</li>
                 <li><strong>Puente disponible:</strong> si el panel indica que las tablas del mayorista no están disponibles, el envío está apagado o hay un problema técnico.</li>
                 <li><strong>Líneas pendientes:</strong> selecciona al menos una línea del catálogo central que todavía no se haya enviado.</li>
                 <li><strong>Producto propio:</strong> las líneas propias no se envían al mayorista.</li>
-                <li><strong>Tarifa:</strong> si no se encuentra una tarifa para el producto, la línea no se puede enviar.</li>
+                <li><strong>Precio de la cuenta:</strong> si no se encuentra un precio para el producto en la tarifa de la cuenta, la línea no se puede enviar. La tarifa se gestiona en idirecto.</li>
                 <li><strong>Estado:</strong> no envíes desde un pedido cancelado o en la papelera. Para el flujo normal, usa Activo o Preparado.</li>
                 <li><strong>Línea ya enviada:</strong> no se puede volver a enviar ni borrar.</li>
             </ol>
@@ -168,7 +168,7 @@ return [
             <h3>Mensajes que pueden aparecer</h3>
             <ul>
                 <li>«Las tablas de pedidos del mayorista no están disponibles».</li>
-                <li>«Esta tienda no tiene cuenta del mayorista».</li>
+                <li>«Esta tienda no tiene una cuenta del mayorista vinculada».</li>
                 <li>«No has seleccionado ninguna línea pendiente de enviar».</li>
                 <li>«No se ha encontrado tarifa para…».</li>
                 <li>Un producto propio no se puede enviar.</li>

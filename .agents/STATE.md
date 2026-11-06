@@ -20,6 +20,11 @@ el carrito y los pedidos se rechazan con un aviso hasta poner
 > desde las pantallas reales y diseño responsive/accesible. El contenido vive en
 > `app/Help` y no usa ninguna tabla ni migración. La ficha de pedido ya no muestra
 > el coste interno del mayorista.
+>
+> 🔒 **Cuenta y tarifa (2026-11-06).** Ajustes ya no muestra ni guarda la cuenta
+> del mayorista, la tarifa, el margen ni el nivel de cliente. Se gestionan en
+> idirecto y los precios usan siempre `tiendas.id_margen`; la copia local
+> `mt_stores.id_margen` queda como dato histórico sin efecto.
 
 > ✅ **Entorno (2026-10-03).** `idirecto_db` está **completa** (239 tablas:
 > catálogo con 41.289 productos con stock, 33 categorías con stock, y las `mt_`),
@@ -67,7 +72,8 @@ el carrito y los pedidos se rechazan con un aviso hasta poner
 | **Buscador del catálogo (en vivo, estilo PuntoByZE)** | ✅ Completo (solo el catálogo visible en el menú de la tienda + sus productos propios; `/buscar/live`; **rejilla adaptativa: 1 tarjeta por línea en el móvil y 5-7 en un monitor grande**) |
 | Panel de la tienda (diseño, banners, avisos, productos, dominios, ajustes) | ✅ Completo (sin usuario demo: se crea en `/registro`) |
 | **Centro de Ayuda del panel (`/panel/ayuda`)** | ✅ Completo: 38 artículos + 21 FAQ, buscador en servidor, enlaces contextuales y ayuda de plataforma restringida por rol |
-| **Coste interno en pedidos** | ✅ Oculto de `/panel/pedidos/{id}` (la tarifa del mayorista sigue visible) |
+| **Cuenta y tarifa del mayorista** | ✅ Solo lectura desde idirecto: Ajustes no muestra ni guarda cuenta, tarifa, margen ni nivel |
+| **Coste interno en pedidos** | ✅ Oculto de `/panel/pedidos/{id}`; el identificador de margen tampoco se muestra y la columna de precio de tarifa sigue visible |
 | **Pedidos: listado por estados, ficha y envío por líneas a idirecto** | ✅ Completo |
 | Dominios propios + verificación DNS | ✅ Completo |
 | Almacenamiento (local / S3) | ✅ Completo (S3 sin probar contra bucket real) |
@@ -76,7 +82,7 @@ el carrito y los pedidos se rechazan con un aviso hasta poner
 | Entorno local (`http://local.tienda`) | ✅ Completo |
 | **Despliegue Apache y nginx** | ✅ Completo (nginx verificado con binario real) |
 | **Checkout: carrito, pago y envío** | ✅ Completo (cobro **sin pasarela**: transferencia, contra reembolso y recogida) |
-| **Precio de venta de la tienda** | ✅ Completo: tarifa (`id_margen`) + beneficio (`mt_stores.markup`), con IVA incluido en la web y base sin IVA en el pedido |
+| **Precio de venta de la tienda** | ✅ Completo: tarifa de la cuenta en idirecto (`tiendas.id_margen`) + beneficio (`mt_stores.markup`), con IVA incluido en la web y base sin IVA en el pedido |
 | **Gastos de envío** | ⚠️ Tarifa plana + gratis desde X €; falta el cálculo por **peso y provincia** de puntobyze |
 | **Emails al cliente y a la tienda** | ❌ No existe (no hay envío de correo: ni confirmación ni recuperar contraseña) |
 | **Logs por día y por tienda (compras, accesos y errores)** | ✅ Completo (ficheros en `storage/logs/<canal>/<día>/<tienda>.log` + visor `/panel/logs` + `tools/logs.php`; retención 30 días) |
@@ -87,6 +93,31 @@ el carrito y los pedidos se rechazan con un aviso hasta poner
 ---
 
 ## Hecho
+
+### Cuenta y márgenes del mayorista fuera de Ajustes (2026-11-06)
+- Se eliminó de **Ajustes** la tarjeta completa «Cuenta en idirecto (mayorista)»:
+  id de cuenta, tarifa/margen, resumen de tarifa efectiva, NIF/dirección de
+  facturación y nivel de cliente. Tampoco se aceptan ni guardan esos campos al
+  enviar el formulario.
+- La cuenta y la tarifa se gestionan en **idirecto**. `Account::marginForStore()`
+  lee siempre `tiendas.id_margen`; `mt_stores.id_margen` queda como copia
+  histórica y ya no decide precios.
+- El storefront (`Controller::bootPricing`) y el panel de pedidos
+  (`OrderController::bootStorePricing`) fijan el contexto de precios con la tarifa
+  de la cuenta. El envío al mayorista y las comprobaciones de nivel usan la misma
+  fuente.
+- Se retiraron de la ficha y del listado de pedidos los identificadores de
+  margen/origen y los enlaces a una configuración inexistente. Los avisos de
+  nivel, los mensajes de envío y la ayuda remiten a idirecto, no a Ajustes.
+- **Pruebas**: 4 comprobaciones nuevas en `verify.php` (origen de la tarifa,
+  uso en storefront/panel, Ajustes sin cuenta/margen, pedidos y ayuda sin la
+  tarjeta antigua). Total actual: **353 comprobaciones**, con los mismos 9 fallos
+  antiguos de fixtures de registro/precios/compra/menú. QA autenticada en Chrome:
+  Ajustes desktop y 390 px sin tarjeta ni desbordamiento, consola sin errores;
+  Ajustes, pedidos, menú y ayuda responden 200.
+- **Sin cambios de esquema**: no se ejecutaron migraciones ni se crearon tablas.
+  La columna histórica `mt_stores.id_margen` se conserva, pero no se usa para
+  precios ni se muestra en el panel.
 
 ### Centro de Ayuda integrado y coste interno oculto (2026-11-06)
 - **Contenido en archivos**: `app/Core/Help.php` + `app/Help/categories.php`,
@@ -106,13 +137,13 @@ el carrito y los pedidos se rechazan con un aviso hasta poner
 - **Sin datos de tienda**: el contenido es idéntico entre dos sesiones de tiendas
   distintas; no contiene nombres, pedidos, clientes ni información sensible.
 - **Coste interno**: se retiraron la columna y el valor `cost_idirecto` de
-  `/panel/pedidos/{id}`; la tarifa del mayorista y los importes del flujo siguen
-  visibles.
+  `/panel/pedidos/{id}`; la columna de precio de tarifa y los importes del flujo
+  siguen visibles, pero el identificador de margen ya no se muestra.
 - **Pruebas**: Chrome headless/CDP autenticado (desktop y móvil, búsqueda con
   teclado, FAQ, 38 artículos, 21 anclas, enlaces internos, sin errores de consola),
   sesiones HTTP reales de dos tiendas, roles tienda/plataforma y smoke test en
   Apache. `verify.php` suma **20 comprobaciones** del Centro de Ayuda (todas pasan;
-  total 349). Se mantienen **9 fallos antiguos** de las pruebas de registro,
+  total actual 353). Se mantienen **9 fallos antiguos** de las pruebas de registro,
   precios, compra y menú porque usan fixtures que no coinciden con la base
   restaurada; no afectan a los archivos tocados en esta sesión.
 - **Limitaciones conocidas documentadas en la propia ayuda**: sin editor de

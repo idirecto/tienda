@@ -2,9 +2,6 @@
 /**
  * Ajustes de la tienda y usuarios.
  * @var array $store @var array $users @var string $base
- * @var array $account cuenta del mayorista resuelta
- * @var array $nivel estado del nivel de cliente (nivel, cuenta y motivo)
- * @var string $nivelAviso frase accionable cuando la cuenta no tiene nivel
  * @var array<string,array<string,mixed>> $shippingZones
  * @var string $shippingBlockedMessage
  */
@@ -202,71 +199,4 @@ $globalFreeLabel = $globalFree !== null && (float) $globalFree > 0
             <button class="btn btn-primary" type="submit">Guardar zonas y envio</button>
         </div>
     </form>
-</section>
-
-<section class="card">
-    <h2>Cuenta en idirecto (mayorista)</h2>
-    <p class="muted small">
-        Para enviar los pedidos de tus clientes al mayorista, indica con que cuenta compras.
-        El id de cuenta es el que aparece en idirecto (<code>tiendas.id</code>) y la tarifa es
-        el margen con el que te factura (<code>precios.id_margen</code>). Si dejas la tarifa
-        vacia se usa la de la propia cuenta.
-    </p>
-
-    <?php if (!$idirectoReady): ?>
-        <div class="alert alert-error">
-            No se encuentran las tablas de pedidos del mayorista, asi que el envio esta desactivado.
-        </div>
-    <?php endif; ?>
-
-    <form method="post" action="<?= e($base) ?>/panel/ajustes" class="stack">
-        <?= Csrf::field() ?>
-        <div class="field-grid">
-            <label>Id de cuenta en idirecto
-                <input type="number" name="id_tienda_idirecto" min="0" step="1"
-                       value="<?= (int) ($store['id_tienda_idirecto'] ?? 0) ?>">
-            </label>
-            <label>Tarifa / margen (opcional)
-                <input type="number" name="id_margen" min="0" step="1"
-                       value="<?= (int) ($store['id_margen'] ?? 0) ?>">
-            </label>
-        </div>
-        <div class="actions">
-            <button class="btn btn-primary" type="submit">Guardar cuenta</button>
-        </div>
-    </form>
-
-    <?php if (!empty($account['configurada'])): ?>
-        <div class="hint-box">
-            <strong>Cuenta <?= (int) $account['id_tienda'] ?>: <?= e($account['razon_social'] ?: $account['nombre']) ?></strong>
-            <p>
-                NIF/CIF: <?= e($account['nif'] ?: 'sin datos') ?> ·
-                Tarifa efectiva: <strong><?= (int) $account['id_margen'] ?></strong>
-                <span class="muted small">(<?= e($account['margen_origen'] === 'tienda' ? 'puesta en la tienda' : ($account['margen_origen'] === 'cuenta' ? 'la de la cuenta' : 'por defecto')) ?>)</span>
-            </p>
-            <p class="muted small">
-                Los pedidos se facturan a: <?= e($account['razon_social']) ?> ·
-                <?= e($account['direccion'] ?: 'sin direccion') ?>
-                <?= e(trim(($account['cp'] ?? '') . ' ' . ($account['poblacion'] ?? ''))) ?>
-            </p>
-            <p class="muted small">
-                Nivel de cliente de la tienda:
-                <?php if (($nivel['level'] ?? null) !== null): ?>
-                    <strong><?= e((string) $nivel['level']['label']) ?></strong>
-                    (nivel <?= (int) $nivel['level']['order'] ?>).
-                    Los nodos del menu con nivel minimo igual o menor se te muestran.
-                <?php else: ?>
-                    <strong>sin asignar</strong>.
-                <?php endif; ?>
-            </p>
-        </div>
-    <?php endif; ?>
-
-    <?php /* El nivel no se edita aqui: `tiendas.id_categ_cliente` es del
-             mayorista. Se explica el motivo y quien tiene que cambiarlo. */ ?>
-    <?php if (($nivel['level'] ?? null) === null): ?>
-        <div class="alert alert-warning">
-            <?= e((string) $nivelAviso) ?>
-        </div>
-    <?php endif; ?>
 </section>

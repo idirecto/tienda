@@ -122,7 +122,7 @@ tools/logs.php             Consulta los logs por consola (filtros, resumen, día
 | `Specs` | Parsea características y especificaciones; `quickHighlights()` alimenta los chips de la tarjeta |
 | `Str` | `slugify()` (mismo criterio que idirecto) y `excerpt()` |
 | `Dns` | Verificación de dominios por A/CNAME/TXT (con *lookup* inyectable) |
-| `Core/Idirecto/Account` | Cuenta del mayorista de la tienda: tarifa, sucursal, comercial, forma de pago, país/provincia |
+| `Core/Idirecto/Account` | Cuenta del mayorista de la tienda: tarifa de idirecto, sucursal, comercial, forma de pago, país/provincia |
 | `Core/Idirecto/Pricing` | Tarifa, coste, almacén, IVA, sujeto y canon de un producto del catálogo |
 | `Core/Idirecto/OrderGateway` | Vista previa y envío de líneas a `pedidos_addr`/`pedidos`/`pedidos_det` |
 | `Registration` | Alta de una tienda desde una cuenta del mayorista (alta pública `/registro`) |
@@ -208,9 +208,9 @@ Todas con `utf8mb4_unicode_ci` y FK a `mt_stores(id) ON DELETE CASCADE`.
 `custom_css`. Los colores opcionales en `NULL` significan «usa el valor del tema».
 
 `mt_stores` guarda además el **enlace con el mayorista** (migración `003`):
-`id_tienda_idirecto` (cuenta en `tiendas.id`) e `id_margen` (`precios.id_margen`).
-Se editan en Ajustes; la tarifa vacía cae a la de la cuenta y, si no hay, a
-`IDIRECTO_DEFAULT_ID_MARGEN`.
+`id_tienda_idirecto` (cuenta en `tiendas.id`). La cuenta y la tarifa se gestionan
+en idirecto: la tarifa efectiva sale siempre de `tiendas.id_margen`;
+`mt_stores.id_margen` solo se conserva como copia histórica y no decide precios.
 
 `mt_stores` guarda el **favicon propio** (migración `010`): `favicon_url` (ya venía
 del esquema `001`), `favicon_key` (clave en el almacenamiento, para comprobar que el
@@ -333,7 +333,7 @@ El comprador **no es el tendero**: tiene su propia cuenta y su propia sesión
   comprado, los precios y cantidades mostradas son ficticias». La comprobación está
   también en `Cart::add()` y `Checkout::place()`, no solo en los botones. Para abrir
   la venta real hay que poner `SHOP_TEST_MODE=false`.
-- **Precio de venta**: `tarifa de la tienda (mt_stores.id_margen) + beneficio
+- **Precio de venta**: `tarifa de la cuenta en idirecto (tiendas.id_margen) + beneficio
   (mt_stores.markup)`, y en la web **con IVA incluido** (`Catalog::forStore()` fija
   ese contexto en cada petición; el panel usa la base sin IVA). El pedido guarda la
   base en `mt_order_items.price_customer` y el IVA se calcula al totalizar.
@@ -368,8 +368,8 @@ mismo criterio que el login de idirecto:
 1. `mt_stores`: slug único (el pedido o derivado del nombre), plan por defecto
    (`IDIRECTO_REGISTER_PLAN`), `status = 1`, datos fiscales/de contacto copiados de
    la cuenta (razón social, NIF, dirección, población, provincia y país resueltos
-   por id) y, sobre todo, **`id_tienda_idirecto` + `id_margen`**: la tienda nace
-   enlazada y puede enviar pedidos sin configurar nada.
+   por id) y, sobre todo, **`id_tienda_idirecto`**: la tienda nace enlazada y puede
+   enviar pedidos sin configurar nada. La tarifa se consulta en `tiendas.id_margen`.
 2. `mt_store_users`: usuario `owner` con el email de la cuenta y **contraseña
    propia** (`password_hash`). La contraseña del mayorista no se guarda.
 
@@ -543,8 +543,8 @@ ejemplo 2 de 4) y `OrderGateway::send()` escribe en el mayorista:
    `price_idirecto`, `cost_idirecto`), actualiza `mt_orders` y, si ya no queda
    ninguna línea del catálogo pendiente, pasa el pedido a **enviado**.
 
-La tarifa sale de `precios` con el `id_margen` de la tienda (respaldo:
-`tiendas.id_margen` → `IDIRECTO_DEFAULT_ID_MARGEN`) y el coste de `stock` +
+La tarifa sale de `precios` con el `id_margen` de la cuenta en idirecto
+(`tiendas.id_margen`; respaldo `IDIRECTO_DEFAULT_ID_MARGEN`) y el coste de `stock` +
 `tarifas`, con los mismos criterios que `getPrecio()`/`getCosto()` de idirecto
 (`app/Core/Idirecto/Pricing.php`). Los **productos propios** no se pueden enviar
 (no existen en el catálogo del mayorista): el panel los marca y quedan fuera.

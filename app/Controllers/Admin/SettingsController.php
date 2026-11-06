@@ -6,17 +6,16 @@ namespace Tienda\Controllers\Admin;
 
 use Tienda\Core\Auth;
 use Tienda\Core\Controller;
-use Tienda\Core\Idirecto\Account;
 use Tienda\Core\Session;
 use Tienda\Core\ShippingZone;
 use Tienda\Models\Catalog;
-use Tienda\Models\Menu;
 use Tienda\Models\Store;
 use Tienda\Models\StoreUser;
 
 /**
- * Ajustes de la tienda: datos fiscales/de contacto, cuenta del mayorista y
- * usuarios del panel.
+ * Ajustes de la tienda: datos fiscales/de contacto, venta y cobro, envío y
+ * usuarios del panel. La cuenta y la tarifa del mayorista se gestionan en
+ * idirecto y no se editan ni se muestran aquí.
  */
 final class SettingsController extends Controller
 {
@@ -26,10 +25,6 @@ final class SettingsController extends Controller
         $storeId = $this->storeId();
 
         $store = Store::findWithPlan($storeId) ?? [];
-
-        // Nivel de cliente del mayorista: se muestra junto a la cuenta, con el
-        // motivo cuando la cuenta no lo tiene asignado.
-        $nivel = Menu::storeLevelStatus($storeId);
 
         $shippingZones = ShippingZone::storeConfig($storeId);
         $shippingOld = Session::get('shipping_zone_old', []);
@@ -59,10 +54,6 @@ final class SettingsController extends Controller
             'pageTitle' => 'Ajustes',
             'store'     => $store,
             'users'     => StoreUser::forStore($storeId),
-            'account'   => Account::forStore($store),
-            'idirectoReady' => Account::enabled(),
-            'nivel'     => $nivel,
-            'nivelAviso' => $nivel['level'] === null ? Menu::levelWarning($nivel) : '',
             'shippingZones' => $shippingZones,
             'shippingBlockedMessage' => $shippingMessage,
         ], 'panel');
@@ -88,13 +79,8 @@ final class SettingsController extends Controller
             return $this->saveShippingZones($storeId);
         }
 
-        // Cuenta del mayorista: si se informa, tiene que existir de verdad.
-        $idTienda = (int) $this->input('id_tienda_idirecto', 0);
-        if ($idTienda > 0 && Account::findTienda($idTienda) === null) {
-            Session::flash('error', 'La cuenta #' . $idTienda . ' no existe en el mayorista.');
-            $this->redirect('panel/ajustes');
-        }
-
+        // El enlace con el mayorista y su tarifa son datos de idirecto. Este
+        // formulario no los lee ni los sobrescribe.
         Store::updateById($storeId, [
             'name'        => (string) $this->input('name', 'Mi tienda'),
             'legal_name'  => (string) $this->input('legal_name', ''),
@@ -104,8 +90,6 @@ final class SettingsController extends Controller
             'city'        => (string) $this->input('city', ''),
             'province'    => (string) $this->input('province', ''),
             'tax_rate'    => (float) str_replace(',', '.', (string) $this->input('tax_rate', '21')),
-            'id_tienda_idirecto' => $idTienda > 0 ? $idTienda : null,
-            'id_margen'   => max(0, (int) $this->input('id_margen', 0)) ?: null,
         ]);
 
         Session::flash('success', 'Datos de la tienda actualizados.');

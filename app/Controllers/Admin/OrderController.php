@@ -432,15 +432,16 @@ final class OrderController extends Controller
      * Fija el precio de venta de la tienda (sin IVA) para el catalogo del panel.
      *
      * Asi el buscador de productos ofrece el mismo precio base que usara el
-     * pedido de la web: tarifa de la tienda + su beneficio. Sin esto, el panel
-     * mostraria el precio mas barato publicado, que puede ser menor que el coste.
+     * pedido de la web: tarifa de la cuenta en idirecto + su beneficio. Sin
+     * esto, el panel mostraria el precio mas barato publicado, que puede ser
+     * menor que el coste.
      */
     private function bootStorePricing(int $storeId): void
     {
         $store = $this->storeRow($storeId);
 
         Catalog::forStore(
-            (int) ($store['id_margen'] ?? 0) ?: null,
+            Account::marginForStore($store),
             $store['markup'] ?? 0,
             (float) ($store['tax_rate'] ?? 21),
             false

@@ -5,6 +5,46 @@ El detalle línea a línea está en `git log`.
 
 ---
 
+## 2026-11-06 · Cuenta y margen del mayorista fuera de Ajustes
+
+**Motivo (petición por chat):** la tienda no debe ver ni configurar el margen ni
+la tarifa del mayorista en `panel/ajustes`. Todo lo que aparecía bajo «Cuenta en
+idirecto (mayorista)», incluida la «Tarifa efectiva: id_margen (puesta en la
+tienda)», se gestiona en el panel de administración de idirecto.
+
+**Qué se hizo**
+
+- Se eliminó de Ajustes la tarjeta completa: id de cuenta, tarifa/margen, resumen
+  de cuenta, tarifa efectiva, NIF/dirección de facturación y nivel de cliente.
+- El formulario de datos de la tienda ya no lee ni guarda `id_tienda_idirecto` ni
+  `id_margen`. Un POST manipulado tampoco puede cambiar esos campos.
+- `Account::marginForStore()` lee siempre `tiendas.id_margen` de la cuenta
+  vinculada. `mt_stores.id_margen` queda como copia histórica sin efecto sobre
+  precios, envíos ni nivel.
+- `Controller::bootPricing()` y `OrderController::bootStorePricing()` usan esa
+  tarifa de idirecto. El envío y las comprobaciones de nivel usan la misma fuente.
+- Se retiraron los identificadores internos de margen/origen de la ficha y el
+  listado de pedidos, y los avisos que enviaban a configurar esa tarjeta en Ajustes.
+- Se actualizaron los mensajes de error, los avisos del menú y la ayuda para
+  indicar que la cuenta, la tarifa y el nivel se gestionan en idirecto.
+- README, PROJECT, STATE y CHANGELOG reflejan que Ajustes ya no administra esos
+  datos.
+
+**Pruebas**
+
+- Cuatro comprobaciones nuevas en `verify.php`: origen de la tarifa en idirecto,
+  uso en storefront y panel, Ajustes sin cuenta/margen y pedidos/ayuda sin la
+  tarjeta antigua. Total actual: **353** comprobaciones.
+- Las comprobaciones nuevas pasan; se mantienen los mismos 9 fallos antiguos de
+  fixtures de registro/precios/compra/menú.
+- QA autenticada en Chrome: Ajustes en escritorio y a 390 px sin la tarjeta, sin
+  desbordamiento y sin errores de consola. Ajustes, pedidos, menú y ayuda
+  responden 200.
+- No se ejecutaron migraciones ni se cambiaron tablas ni datos. La columna
+  histórica `mt_stores.id_margen` se conserva, pero ya no se usa en precios.
+
+---
+
 ## 2026-11-06 · Centro de Ayuda integrado y coste interno fuera de la ficha de pedido
 
 **Motivo (petición por chat):** crear un Centro de Ayuda para personas sin

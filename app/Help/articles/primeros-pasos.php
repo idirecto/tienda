@@ -39,7 +39,7 @@ return [
 
             <h3>3. Qué se configura automáticamente</h3>
             <ul>
-                <li>El enlace con tu cuenta del mayorista y su tarifa.</li>
+                <li>La vinculación con tu cuenta del mayorista, que se gestiona en idirecto.</li>
                 <li>El nombre comercial, la razón social y los datos de contacto que constan en esa cuenta.</li>
                 <li>La dirección, ciudad, provincia, código postal y país, cuando están disponibles.</li>
                 <li>Un IVA por defecto del 21 %. Puedes revisarlo en Ajustes.</li>
@@ -49,7 +49,7 @@ return [
 
             <h3>4. Qué debes revisar después</h3>
             <ol class="help-steps">
-                <li><strong>Ajustes:</strong> datos de contacto, IVA, beneficio, envío, formas de pago y cuenta del mayorista.</li>
+                <li><strong>Ajustes:</strong> datos de contacto, IVA, beneficio, envío y formas de pago.</li>
                 <li><strong>Diseño:</strong> nombre visible, eslogan, logotipo, favicon, colores y textos.</li>
                 <li><strong>Menú:</strong> crear el menú o copiar el de referencia y publicarlo.</li>
                 <li><strong>Banners y avisos:</strong> si quieres destacar algo en la portada.</li>
@@ -97,7 +97,7 @@ return [
                 <dt>Avisos</dt><dd>Mensajes breves para la portada.</dd>
                 <dt>Productos propios</dt><dd>Productos que añades tú y que no salen del catálogo central.</dd>
                 <dt>Dominios</dt><dd>Subdominio de la plataforma y dominios propios con verificación DNS.</dd>
-                <dt>Ajustes</dt><dd>Datos de la tienda, venta, cobro, usuarios, zonas de envío y cuenta del mayorista.</dd>
+                <dt>Ajustes</dt><dd>Datos de la tienda, venta, cobro, usuarios y zonas de envío.</dd>
                 <dt>Logs</dt><dd>Registro de actividad para revisar avisos, compras y errores.</dd>
                 <dt>Ayuda</dt><dd>Este centro de ayuda.</dd>
             </dl>

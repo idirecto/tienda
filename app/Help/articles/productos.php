@@ -68,10 +68,10 @@ return [
         'location' => 'El beneficio y el IVA por defecto están en Ajustes. El precio y el stock de los productos propios se editan en Productos propios.',
         'body' => <<<'HTML'
             <h3>Precio del catálogo central</h3>
-            <p>El precio de la web se calcula con la <strong>tarifa de la tienda en el mayorista</strong> más el <strong>beneficio</strong> configurado en Ajustes. La web muestra ese precio con IVA incluido. El pedido guarda la base sin IVA y suma el impuesto al total.</p>
+            <p>El precio de la web se calcula con la <strong>tarifa que idirecto aplica a tu cuenta</strong> más el <strong>beneficio</strong> configurado en Ajustes. La web muestra ese precio con IVA incluido. El pedido guarda la base sin IVA y suma el impuesto al total.</p>
             <div class="help-callout help-callout--info">
                 <strong>Dos porcentajes distintos</strong>
-                <p>El IVA no es un beneficio. El beneficio es lo que añades sobre la tarifa del mayorista; el IVA es el impuesto que se suma al precio final. Cambiar uno no cambia automáticamente el otro.</p>
+                <p>El IVA no es un beneficio. El beneficio es lo que añades sobre la tarifa de tu cuenta en idirecto; el IVA es el impuesto que se suma al precio final. Cambiar uno no cambia automáticamente el otro.</p>
             </div>
 
             <h3>Productos propios</h3>
@@ -90,7 +90,7 @@ return [
 
             <h3>Qué revisar antes de cambiar precios</h3>
             <ol class="help-steps">
-                <li>Comprueba la tarifa y el beneficio en Ajustes.</li>
+                <li>Comprueba el beneficio configurado en Ajustes.</li>
                 <li>Revisa una categoría y una ficha en la web pública.</li>
                 <li>Comprueba que el precio final incluye el IVA esperado.</li>
                 <li>Recuerda que los pedidos ya creados conservan los importes con los que nacieron.</li>

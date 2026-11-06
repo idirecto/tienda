@@ -59,7 +59,7 @@ return [
                 <li>Comentario del cliente y notas internas.</li>
                 <li>Líneas con producto, unidades, precio de cliente, tarifa del mayorista e importe.</li>
                 <li>Estado de envío de cada línea: pendiente, enviada o producto propio.</li>
-                <li>Cuenta del mayorista y tarifa utilizada.</li>
+                <li>Cuenta del mayorista vinculada.</li>
             </ul>
 
             <h3>Qué puedes hacer</h3>
@@ -225,7 +225,7 @@ return [
             <h3>Antes de enviar</h3>
             <ol class="help-steps">
                 <li>Abre la ficha del pedido y revisa el cliente y la dirección.</li>
-                <li>Comprueba la cuenta del mayorista y la tarifa en Ajustes.</li>
+                <li>Comprueba que la ficha del pedido muestra la cuenta del mayorista vinculada. La cuenta y la tarifa se gestionan en idirecto.</li>
                 <li>Deja el pedido en estado Activo o Preparado.</li>
                 <li>Revisa las líneas, las cantidades y los importes de la vista previa.</li>
             </ol>
@@ -249,7 +249,7 @@ return [
 
             <h3>Errores habituales</h3>
             <ul>
-                <li>No hay cuenta de idirecto configurada.</li>
+                <li>La tienda no tiene una cuenta del mayorista vinculada.</li>
                 <li>El puente con el mayorista no está disponible.</li>
                 <li>No se ha seleccionado ninguna línea pendiente.</li>
                 <li>Un producto no tiene tarifa para la cuenta.</li>

@@ -1204,6 +1204,40 @@ if (OrderGateway::isAvailable()) {
         'cuenta del mayorista resuelta (tarifa ' . ($cuenta['id_margen'] ?? '?') . ', origen ' . ($cuenta['margen_origen'] ?? '?') . ')'
     );
 
+    // La tarifa se toma de la cuenta de idirecto, no de la copia local.
+    $filaMargen = Database::first(
+        'SELECT s.id, s.id_tienda_idirecto, t.id_margen AS margen_cuenta
+         FROM mt_stores s
+         INNER JOIN tiendas t ON t.id = s.id_tienda_idirecto
+         WHERE t.id_margen > 0
+         ORDER BY s.id ASC LIMIT 1'
+    );
+    if ($filaMargen !== null) {
+        $margenCuenta = (int) $filaMargen['margen_cuenta'];
+        $storeMargenFalso = [
+            'id' => 990000 + (int) $filaMargen['id'],
+            'id_tienda_idirecto' => (int) $filaMargen['id_tienda_idirecto'],
+            'id_margen' => $margenCuenta + 1,
+        ];
+        Account::resetCache();
+        $cuentaMargen = Account::forStore($storeMargenFalso);
+        check(
+            (int) $cuentaMargen['id_margen'] === $margenCuenta
+                && ($cuentaMargen['margen_origen'] ?? '') === 'cuenta'
+                && Account::marginForStore($storeMargenFalso) === $margenCuenta,
+            'la tarifa de la cuenta de idirecto manda sobre la copia local de mt_stores'
+        );
+        Account::resetCache();
+    } else {
+        check(false, 'hay una cuenta de idirecto con tarifa para comprobar el origen');
+    }
+    check(
+        str_contains((string) file_get_contents(TIENDA_BASE . '/app/Core/Controller.php'), 'Account::marginForStore($this->tenant->toArray())')
+            && str_contains((string) file_get_contents(TIENDA_BASE . '/app/Controllers/Admin/OrderController.php'), 'Account::marginForStore($store)'),
+        'el precio publico y el del panel se fijan con la tarifa de la cuenta de idirecto'
+    );
+    $cuenta = Account::forStore($tiendaVerificada);
+
     $margen = (int) $cuenta['id_margen'];
     $productoId = (int) Database::scalar(
         'SELECT pr.id_producto
@@ -2128,17 +2162,17 @@ foreach (Database::select('SELECT id, id_tienda_idirecto FROM mt_stores ORDER BY
 }
 check($coherente, 'storeLevelStatus: cuando no hay nivel siempre explica el motivo');
 
-// 'sin_cuenta' dice donde se arregla (Ajustes) y lo pinta el editor.
+// 'sin_cuenta' explica el motivo y que la gestión corresponde a idirecto.
 if ($sinCuenta !== null) {
     $aviso = Menu::levelWarning($sinCuenta);
     check(
         ($sinCuenta['reason'] ?? '') === 'sin_cuenta'
-            && str_contains($aviso, 'Ajustes')
+            && str_contains($aviso, 'idirecto')
             && !str_contains($aviso, '<'),
-        'una tienda sin cuenta enlazada dice el motivo y que se arregla en Ajustes (texto plano)'
+        'una tienda sin cuenta enlazada dice el motivo y que se gestiona en idirecto (texto plano)'
     );
 } else {
-    check(true, 'una tienda sin cuenta enlazada dice el motivo y que se arregla en Ajustes (no hay tiendas sin cuenta)');
+    check(true, 'una tienda sin cuenta enlazada dice el motivo y que se gestiona en idirecto (no hay tiendas sin cuenta)');
 }
 
 // Un id de cuenta que no existe ya no se confunde con «cuenta sin categoria».
@@ -2158,8 +2192,8 @@ try {
     $stPrueba = Menu::storeLevelStatus($storePrueba);
     check(
         ($stPrueba['reason'] ?? '') === 'cuenta_inexistente'
-            && str_contains(Menu::levelWarning($stPrueba), 'Ajustes'),
-        'una cuenta que no existe en el mayorista se detecta aparte y manda a Ajustes'
+            && str_contains(Menu::levelWarning($stPrueba), 'idirecto'),
+        'una cuenta que no existe en el mayorista se detecta aparte y se deriva a idirecto'
     );
 } catch (\Throwable $e) {
     check(false, 'diagnostico de la cuenta inexistente (' . $e->getMessage() . ')');
@@ -2175,18 +2209,25 @@ check(
     'una cuenta sin categoria de cliente explica que la asigna idirecto (texto plano)'
 );
 
-// Ajustes muestra el nivel y el editor y la plataforma pintan el aviso.
+// Ajustes no debe mostrar ni guardar cuenta, tarifa, margen ni nivel.
 $settingsView = (string) file_get_contents(TIENDA_BASE . '/app/Views/panel/settings.php');
+$settingsController = (string) file_get_contents(TIENDA_BASE . '/app/Controllers/Admin/SettingsController.php');
 $menuView = (string) file_get_contents(TIENDA_BASE . '/app/Views/panel/menu.php');
 $plataformaView = (string) file_get_contents(TIENDA_BASE . '/app/Views/panel/menu_plataforma.php');
 check(
-    str_contains($settingsView, 'Nivel de cliente') && str_contains($settingsView, 'nivelAviso'),
-    'Ajustes muestra el nivel de cliente de la cuenta y el aviso cuando falta'
+    !str_contains($settingsView, 'Cuenta en idirecto')
+        && !str_contains($settingsView, 'Tarifa efectiva')
+        && !str_contains($settingsView, 'Nivel de cliente')
+        && !str_contains($settingsView, 'name="id_margen"')
+        && !str_contains($settingsView, 'name="id_tienda_idirecto"')
+        && !str_contains($settingsController, "'id_margen'")
+        && !str_contains($settingsController, "'id_tienda_idirecto'"),
+    'Ajustes no muestra ni guarda la cuenta, la tarifa, el margen ni el nivel de cliente'
 );
 check(
-    str_contains($menuView, 'nivelAviso') && str_contains($menuView, '/panel/ajustes')
+    str_contains($menuView, 'nivelAviso') && !str_contains($menuView, '/panel/ajustes')
         && str_contains($plataformaView, 'storeLevelWarning'),
-    'el editor del menu y el panel de plataforma pintan el aviso accionable'
+    'el editor del menu y el panel de plataforma explican el nivel sin enlazar a una configuracion inexistente'
 );
 
 // =============================================================================
@@ -2686,6 +2727,26 @@ check(
 check(
     !preg_match('/\bCoste\b|\bcost_idirecto\b|\$linea\[.coste.\]/i', (string) file_get_contents(TIENDA_BASE . '/app/Views/panel/order.php')),
     'la ficha del pedido no muestra el coste interno del mayorista'
+);
+$orderViewFinal = (string) file_get_contents(TIENDA_BASE . '/app/Views/panel/order.php');
+check(
+    !str_contains($orderViewFinal, 'margen_origen')
+        && !str_contains($orderViewFinal, "['id_margen']")
+        && !str_contains($orderViewFinal, '· tarifa')
+        && !str_contains((string) file_get_contents(TIENDA_BASE . '/app/Views/panel/orders.php'), 'Configura la cuenta'),
+    'el panel de pedidos no muestra identificadores de tarifa o margen ni enlaces a una configuracion inexistente'
+);
+$helpSources = (string) file_get_contents(TIENDA_BASE . '/app/Help/categories.php')
+    . (string) file_get_contents(TIENDA_BASE . '/app/Help/faq.php');
+foreach (glob(TIENDA_BASE . '/app/Help/articles/*.php') ?: [] as $helpFile) {
+    $helpSources .= (string) file_get_contents($helpFile);
+}
+check(
+    !str_contains($helpSources, 'Cuenta en idirecto')
+        && !str_contains($helpSources, 'Tarifa efectiva')
+        && !str_contains($helpSources, 'Guardar cuenta')
+        && !str_contains($helpSources, 'Ajustes > Cuenta en idirecto'),
+    'la ayuda no envia a una tarjeta de cuenta o margen que ya no existe'
 );
 
 echo "\n==============================================================\n";
