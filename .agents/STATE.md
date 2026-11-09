@@ -14,9 +14,10 @@ implementado, pero la web está en **modo de pruebas comercial** por defecto:
 el carrito y los pedidos se rechazan con un aviso hasta poner
 `SHOP_TEST_MODE=false`.
 
-> 🆕 **Centro de Ayuda (2026-11-06).** Integrado en `/panel/ayuda`: 38 artículos,
-> 22 preguntas frecuentes, 11 categorías (la de plataforma solo para rol
-> `platform`), buscador en servidor sin acentos/mayúsculas, enlaces contextuales
+> 🆕 **Centro de Ayuda (2026-11-06, actualizado 2026-11-09).** Integrado en
+> `/panel/ayuda`: 38 artículos, 22 preguntas frecuentes, 11 categorías (la de
+> plataforma solo para rol `platform`), buscador en servidor sin
+> acentos/mayúsculas, enlaces contextuales
 > desde las pantallas reales y diseño responsive/accesible. El contenido vive en
 > `app/Help` y no usa ninguna tabla ni migración. La ficha de pedido ya no muestra
 > el coste interno del mayorista.
@@ -264,10 +265,11 @@ el carrito y los pedidos se rechazan con un aviso hasta poner
   reembolso o recogida) y **comentario**. Crea `mt_orders` + `mt_order_items` con
   los importes recalculados en el servidor; el pedido nace **pendiente de pago** y
   el tendero lo confirma en el panel («marcar como pagado»).
-- **Precio de venta**: `(tarifa de la tienda (mt_stores.id_margen) + markup_fixed)
-  × (1 + markup / 100)`, con el **IVA incluido** en la web y la **base sin IVA** en
-  el pedido (que es lo que se manda al mayorista). Los gastos de envío son tarifa
-  plana + gratis desde X € (en Ajustes). Todo se ve en el carrito antes de pagar.
+- **Precio de venta**: `(tarifa de la cuenta en idirecto (tiendas.id_margen) +
+  markup_fixed) × (1 + markup / 100)`, con el **IVA incluido** en la web y la
+  **base sin IVA** en el pedido (que es lo que se manda al mayorista). Los gastos
+  de envío son tarifa plana + gratis desde X € (en Ajustes). Todo se ve en el
+  carrito antes de pagar.
 - **Al mayorista le llega la dirección del cliente** (no la de la tienda), con sus
   ids de país/provincia/población, celular, el email en `localidad` y su comentario
   en `pedidos.detalles`, igual que hace puntobyze.
@@ -719,9 +721,9 @@ No hay ninguno. Prioridad: `Specs` (parseo de especificaciones),
   a esa cuenta y con su tarifa. Se entra al panel con un **usuario propio** (no
   con las credenciales del mayorista, que no se guardan).
 - **La tienda vende con tarifa + beneficio fijo + porcentaje, con IVA incluido**:
-  el precio de la web es `(tarifa de la tienda (id_margen) + markup_fixed) ×
-  (1 + markup / 100)`, **con el IVA incluido** (es lo que paga el cliente). El
-  pedido guarda la **base sin IVA** en
+  el precio de la web es `(tarifa de la cuenta en idirecto (tiendas.id_margen) +
+  markup_fixed) × (1 + markup / 100)`, **con el IVA incluido** (es lo que paga el
+  cliente). El pedido guarda la **base sin IVA** en
   `mt_order_items.price_customer` y el IVA se suma en los totales, de modo que la
   cuenta cuadra con el precio que vio el cliente y con lo que factura el mayorista.
   Decisión del dueño: nada de mostrar el precio más barato publicado, que en muchos

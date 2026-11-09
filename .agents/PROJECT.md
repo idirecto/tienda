@@ -343,7 +343,7 @@ El comprador **no es el tendero**: tiene su propia cuenta y su propia sesión
   comprado, los precios y cantidades mostradas son ficticias». La comprobación está
   también en `Cart::add()` y `Checkout::place()`, no solo en los botones. Para abrir
   la venta real hay que poner `SHOP_TEST_MODE=false`.
-- **Precio de venta**: `(tarifa de la tienda (mt_stores.id_margen) +
+- **Precio de venta**: `(tarifa de la cuenta en idirecto (tiendas.id_margen) +
   mt_stores.markup_fixed) × (1 + mt_stores.markup / 100)`, y después el IVA en la web
   (`Catalog::forStore()` fija ese contexto en cada petición; el panel usa la base sin
   IVA). El pedido guarda la base en `mt_order_items.price_customer` y el IVA se

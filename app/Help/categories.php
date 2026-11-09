@@ -20,7 +20,7 @@ return [
     ],
     'configuracion' => [
         'title'       => 'Configuración de la tienda',
-        'description' => 'Datos fiscales y de contacto, venta, pagos y usuarios del panel.',
+        'description' => 'Datos fiscales y de contacto, precios, venta, pagos y usuarios del panel.',
         'icon'        => 'wrench',
         'order'       => 20,
         'type'        => 'articles',
