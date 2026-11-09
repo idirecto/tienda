@@ -5,6 +5,37 @@ El detalle línea a línea está en `git log`.
 
 ---
 
+## 2026-11-09 · Ayuda actualizada: configurar beneficio fijo y porcentual
+
+**Motivo (petición por chat):** el Centro de Ayuda debe explicar la nueva tarifa
+combinada y cómo se configura, sin seguir diciendo que el precio se calcula solo
+con un porcentaje ni atribuir la tarifa base a una pantalla que ya no la edita.
+
+**Qué se hizo**
+
+- **Guía «Venta, precios, cobro y formas de pago»**: explica la fórmula
+  `(tarifa de la cuenta + beneficio fijo) × (1 + beneficio porcentual / 100)`, el
+  orden exacto (fijo, porcentaje y IVA), dos ejemplos con 1 € y 500 €, los límites
+  de cada campo (200 % y 999.999,99 €), el guardado paso a paso y que los productos
+  propios no pasan por esta fórmula.
+- **Artículos conectados**: se actualizaron «Precios, IVA, beneficios y stock»,
+  «Catálogo central», «Primeros pasos» y «Cuenta del mayorista y nivel de cliente»
+  para distinguir la tarifa de idirecto de los beneficios que sí se editan en la
+  tienda.
+- **Nueva FAQ** «¿Cómo se calcula el precio de venta del catálogo?». El Centro de
+  Ayuda mantiene **38 artículos** y pasa de **21 a 22 preguntas frecuentes**.
+- **Enlace contextual**: `/panel/ajustes` abre ahora la guía de precios y cobro,
+  que es la pantalla donde se configuran los dos beneficios.
+- **Pruebas**: `verify.php` 371 → **374** comprobaciones. Se comprueba el contenido
+  de la guía, que el buscador devuelve la guía y la FAQ al buscar «beneficio fijo»
+  y que la ayuda contextual de Ajustes apunta al artículo correcto.
+- **QA HTTP real**: con un usuario temporal (borrado) se abrieron la guía, la FAQ y
+  la búsqueda, y se comprobó que el enlace contextual de Ajustes apunta a la guía.
+  Todas las páginas respondieron 200 y mostraron la fórmula y los nombres exactos
+  de los campos.
+
+---
+
 ## 2026-11-09 · Tarifa por tienda: beneficio fijo + beneficio porcentual
 
 **Motivo (petición por chat):** un único porcentaje no sirve para todo el catálogo.
