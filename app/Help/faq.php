@@ -79,6 +79,17 @@ return [
                 'article' => 'productos/cuotas-productos-no-aparecen',
             ],
             [
+                'slug' => 'calculo-precio-venta',
+                'question' => '¿Cómo se calcula el precio de venta del catálogo?',
+                'answer' => <<<'HTML'
+                    <p>Se parte de la <strong>tarifa que idirecto aplica a tu cuenta</strong>. Primero se suma el <strong>beneficio fijo en euros</strong> y después se aplica el <strong>beneficio porcentual</strong>:</p>
+                    <p><code>(tarifa + beneficio fijo) × (1 + beneficio porcentual / 100)</code></p>
+                    <p>El IVA se suma al final para el precio que se muestra en la web. Los dos beneficios se configuran por tienda en <strong>Ajustes &gt; Venta y cobro</strong>; la tarifa base se gestiona en idirecto.</p>
+                HTML,
+                'keywords' => ['precio de venta', 'calcular precio', 'beneficio fijo', 'beneficio porcentual', 'margen', 'markup', 'tarifa', 'iva'],
+                'article' => 'configuracion/venta-cobro-pagos',
+            ],
+            [
                 'slug' => 'stock-cero',
                 'question' => '¿Qué significa que un producto propio tenga stock 0?',
                 'answer' => <<<'HTML'

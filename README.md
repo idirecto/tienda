@@ -601,7 +601,7 @@ tienda/
 │   │                        011..012 banners/zonas · 013_store_markup_fixed.sql (mt_)
 │   ├── seeds/               001_seed.sql (planes, temas, tienda demo)
 │   └── migrate.php          Ejecutor de migraciones y semillas
-├── tools/verify.php         Comprobacion automatica (347)
+├── tools/verify.php         Comprobacion automatica (374)
 ├── tools/cache-clear.php    Gestion de la cache de datos (estado, vaciar, patrones, gc)
 ├── tools/logs.php           Consulta los logs por consola (filtros, resumen, dias, gc)
 └── deploy/                  Vhosts/plantillas de Apache y nginx + scripts
@@ -792,9 +792,9 @@ pay_transfer / pay_cod / pay_pickup   # formas de pago que acepta
 bank_details         # datos que ve el cliente al pagar por transferencia
 ```
 
-- **Precio de venta**: primero se suma el beneficio fijo a la tarifa y después se
-  aplica el porcentaje:
-  `(tarifa de la tienda + markup_fixed) × (1 + markup / 100)`. En la web se muestra
+- **Precio de venta**: primero se suma el beneficio fijo a la tarifa que idirecto
+  aplica a la cuenta y después se aplica el porcentaje:
+  `(tarifa de la cuenta + markup_fixed) × (1 + markup / 100)`. En la web se muestra
   **con el IVA incluido** (`Catalog::forStore()`). El pedido guarda la **base sin IVA**
   en `mt_order_items.price_customer` y el IVA se suma al totalizar, así que el total
   coincide con lo que vio el cliente. Sin tarifa asignada se usa la más barata

@@ -46,10 +46,11 @@ return [
                 <li>Las cuatro zonas de envío activadas y la transferencia bancaria como forma de pago inicial.</li>
                 <li>La tienda queda técnicamente activa desde el primer momento.</li>
             </ul>
+            <p>La <strong>tarifa base</strong> no se copia en el panel: se lee de tu cuenta de idirecto. Los <strong>beneficios fijo y porcentual</strong> sí son propios de tu tienda y se configuran en Ajustes.</p>
 
             <h3>4. Qué debes revisar después</h3>
             <ol class="help-steps">
-                <li><strong>Ajustes:</strong> datos de contacto, IVA, beneficio, envío y formas de pago.</li>
+                <li><strong>Ajustes:</strong> datos de contacto, IVA, beneficio fijo, beneficio porcentual, envío y formas de pago. Revisa el ejemplo de precio que muestra el propio formulario.</li>
                 <li><strong>Diseño:</strong> nombre visible, eslogan, logotipo, favicon, colores y textos.</li>
                 <li><strong>Menú:</strong> crear el menú o copiar el de referencia y publicarlo.</li>
                 <li><strong>Banners y avisos:</strong> si quieres destacar algo en la portada.</li>

@@ -62,21 +62,37 @@ return [
 
     [
         'slug'    => 'precios-iva-stock',
-        'title'   => 'Precios, IVA, beneficio y stock',
-        'summary' => 'Cómo se calcula el precio del catálogo, qué cambia en un producto propio y qué limitaciones tiene el stock.',
-        'keywords' => ['precio', 'iva', 'beneficio', 'tarifa', 'stock', 'stock 0', 'precio oferta', 'precio final'],
-        'location' => 'El beneficio y el IVA por defecto están en Ajustes. El precio y el stock de los productos propios se editan en Productos propios.',
+        'title'   => 'Precios, IVA, beneficios y stock',
+        'summary' => 'Cómo se calcula el precio del catálogo con beneficio fijo y porcentual, qué cambia en un producto propio y qué limitaciones tiene el stock.',
+        'keywords' => ['precio', 'iva', 'beneficio', 'beneficio fijo', 'beneficio porcentual', 'margen', 'markup', 'tarifa', 'stock', 'stock 0', 'precio oferta', 'precio final'],
+        'location' => 'El beneficio fijo, el porcentual y el IVA por defecto están en Ajustes. El precio y el stock de los productos propios se editan en Productos propios.',
         'body' => <<<'HTML'
             <h3>Precio del catálogo central</h3>
-            <p>El precio de la web se calcula con la <strong>tarifa que idirecto aplica a tu cuenta</strong> más el <strong>beneficio</strong> configurado en Ajustes. La web muestra ese precio con IVA incluido. El pedido guarda la base sin IVA y suma el impuesto al total.</p>
+            <p>Se parte de la <strong>tarifa que idirecto aplica a tu cuenta</strong>. Primero se suma el <strong>beneficio fijo en euros</strong> y después se aplica el <strong>beneficio porcentual</strong>:</p>
+            <p><code>precio base = (tarifa + beneficio fijo) × (1 + beneficio porcentual / 100)</code></p>
+            <p>La web muestra ese precio con el IVA incluido. El pedido guarda la base sin IVA y suma el impuesto al total. El orden importa: el porcentaje se aplica después de sumar el fijo.</p>
+
+            <table class="help-table">
+                <thead>
+                    <tr><th>Concepto</th><th>Qué hace</th><th>Dónde se configura</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td>Beneficio fijo</td><td>Suma un importe en euros a la tarifa. Ayuda a que los artículos baratos dejen margen.</td><td>Ajustes &gt; Venta y cobro</td></tr>
+                    <tr><td>Beneficio porcentual</td><td>Aplica un porcentaje al resultado anterior. Mantiene el margen en los artículos caros.</td><td>Ajustes &gt; Venta y cobro</td></tr>
+                    <tr><td>IVA</td><td>Se suma al final. No es un beneficio.</td><td>Tipo del producto; IVA por defecto en Ajustes</td></tr>
+                </tbody>
+            </table>
+
             <div class="help-callout help-callout--info">
-                <strong>Dos porcentajes distintos</strong>
-                <p>El IVA no es un beneficio. El beneficio es lo que añades sobre la tarifa de tu cuenta en idirecto; el IVA es el impuesto que se suma al precio final. Cambiar uno no cambia automáticamente el otro.</p>
+                <strong>Ejemplo</strong>
+                <p>Con una tarifa de 1 €, 2 € de beneficio fijo y un 20 %: <code>(1 + 2) × 1,20 = 3,60 €</code> antes de IVA. Con una tarifa de 500 € y los mismos valores: <code>(500 + 2) × 1,20 = 602,40 €</code>.</p>
+                <p>El bloque «Ejemplo con tus valores guardados» de Ajustes muestra estos cálculos con tu configuración real.</p>
             </div>
 
             <h3>Productos propios</h3>
             <ul>
                 <li>Tienen un <strong>precio</strong> y, opcionalmente, un <strong>precio de oferta</strong>.</li>
+                <li>El beneficio fijo y el porcentual <strong>no se aplican a los productos propios</strong>: se usa el precio que escribes en su ficha.</li>
                 <li>El formulario no incluye un campo para elegir el IVA. El sistema usa el tipo guardado en la ficha del producto, que por defecto es el 21 %.</li>
                 <li>No hay precios distintos por nivel de cliente para los compradores de la tienda.</li>
             </ul>
@@ -90,16 +106,16 @@ return [
 
             <h3>Qué revisar antes de cambiar precios</h3>
             <ol class="help-steps">
-                <li>Comprueba el beneficio configurado en Ajustes.</li>
+                <li>Comprueba el beneficio fijo y el porcentual configurados en Ajustes.</li>
                 <li>Revisa una categoría y una ficha en la web pública.</li>
                 <li>Comprueba que el precio final incluye el IVA esperado.</li>
                 <li>Recuerda que los pedidos ya creados conservan los importes con los que nacieron.</li>
             </ol>
 
-            <p>No hay una pantalla de tarifas por cliente ni de reglas de precio por provincia. La zona de envío no cambia el IVA ni el precio del producto.</p>
+            <p>No hay una pantalla de tarifas por cliente ni de reglas de precio por provincia o categoría. La zona de envío no cambia el IVA ni el precio del producto.</p>
         HTML,
         'panel_path' => 'panel/ajustes',
-        'panel_label' => 'Ir a Venta y cobro',
+        'panel_label' => 'Ir a Configurar precios y cobro',
         'related' => ['configuracion/venta-cobro-pagos', 'productos/productos-propios', 'productos/cuotas-productos-no-aparecen'],
     ],
 

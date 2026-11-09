@@ -94,7 +94,7 @@ public/                    ÚNICO directorio servido como estático
   uploads/                 Archivos locales (si STORAGE_DRIVER=local)
 storage/                   cache/ y logs/ (escritura de la app; la caché se limpia sola)
   logs/<canal>/<día>/       Un fichero JSON-lines por día y tienda (`Logger`)
-tools/verify.php           347 comprobaciones automáticas
+tools/verify.php           374 comprobaciones automáticas
 tools/cache-clear.php      Gestiona la caché de datos (estado, vaciar, patrones, gc)
 tools/logs.php             Consulta los logs por consola (filtros, resumen, días, tiendas, gc)
 ```
@@ -217,7 +217,7 @@ en idirecto: la tarifa efectiva sale siempre de `tiendas.id_margen`;
 La **tarifa comercial** de cada tienda se guarda en dos columnas (migración `013`):
 `markup` es el beneficio porcentual y `markup_fixed` el beneficio fijo en euros.
 El precio base se calcula siempre en este orden:
-`(tarifa de la tienda + markup_fixed) × (1 + markup / 100)`; después se suma el IVA
+`(tarifa de la cuenta en idirecto + markup_fixed) × (1 + markup / 100)`; después se suma el IVA
 en la web. Las tiendas existentes nacen con `markup_fixed = 0,00`, así que conservan
 exactamente los precios que tenían. Los dos valores se editan por tienda en
 **Panel > Ajustes** y se validan en servidor (0–200 % y hasta 999.999,99 EUR).
@@ -700,7 +700,7 @@ servidores no los traen en `/etc/mime.types` y servirían la imagen sin
 
 ```bash
 sudo bash deploy/setup-local-domain.sh     # /etc/hosts + VirtualHost + permisos
-php tools/verify.php                       # 347 comprobaciones
+php tools/verify.php                       # 374 comprobaciones
 php -S 127.0.0.1:8099 index.php            # servidor embebido (alternativa)
 ```
 
@@ -736,7 +736,7 @@ certificado wildcard; el panel los comprueba en **Dominios > Comprobar que carga
 ## 10. Verificación antes de dar algo por hecho
 
 ```bash
-php tools/verify.php                 # debe decir: TODO OK (347 comprobaciones)
+php tools/verify.php                 # debe decir: TODO OK (374 comprobaciones)
 curl -s -o /dev/null -w '%{http_code}\n' http://local.tienda/
 curl -s -o /dev/null -w '%{http_code}\n' -H 'Host: idirecto-demo.local.tienda' http://127.0.0.1/
 curl -s -o /dev/null -w '%{http_code}\n' http://local.tienda/catalogo

@@ -311,7 +311,7 @@ final class Help
             '#^/panel/avisos#'                    => 'diseno/avisos',
             '#^/panel/productos#'                 => 'productos/productos-propios',
             '#^/panel/dominios$#'                 => 'dominios/subdominio',
-            '#^/panel/ajustes$#'                  => 'configuracion/datos-contacto-iva',
+            '#^/panel/ajustes$#'                  => 'configuracion/venta-cobro-pagos',
             '#^/panel/logs$#'                     => 'problemas/registro-actividad',
             '#^/panel/plataforma/menu#'            => 'plataforma/menu-plataforma',
         ];

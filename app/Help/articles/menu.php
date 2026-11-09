@@ -185,7 +185,7 @@ return [
                 <li>Productos que tienen stock disponible según la regla del mayorista.</li>
                 <li>Sus categorías y subcategorías reales.</li>
                 <li>Sus marcas, imágenes, características y variaciones disponibles.</li>
-                <li>El precio se calcula con la tarifa que idirecto asigna a tu cuenta y el beneficio configurado, con IVA incluido en la web.</li>
+                <li>El precio se calcula con la tarifa que idirecto asigna a tu cuenta, más el <strong>beneficio fijo</strong> y después el <strong>beneficio porcentual</strong> configurados en Ajustes. La web lo muestra con IVA incluido.</li>
             </ul>
 
             <h3>Qué no aparece en los listados</h3>
@@ -196,7 +196,7 @@ return [
                 <li>Qué categorías enseña en el menú y cuáles oculta.</li>
                 <li>El nombre del enlace del menú, sin cambiar el nombre del catálogo compartido.</li>
                 <li>Los productos propios que añade.</li>
-                <li>El beneficio que añade sobre la tarifa de su cuenta.</li>
+                <li>Los beneficios fijo y porcentual que añade sobre la tarifa de su cuenta. La tarifa base se gestiona en idirecto.</li>
             </ul>
 
             <h3>Qué no controla la tienda</h3>

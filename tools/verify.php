@@ -2785,10 +2785,21 @@ foreach ($ayudaTodas as $categoriaSlug => $categoriaAyuda) {
 check(count($ayudaTodas) === 11, 'el Centro de Ayuda tiene las 11 categorias aprobadas');
 check(count($ayudaNormales) === 10 && !isset($ayudaNormales['plataforma']), 'la tienda no ve la categoria de plataforma');
 check(count($ayudaArticulos) === 38, 'el Centro de Ayuda contiene 38 articulos normales y de plataforma');
-check(Help::faqCount() === 21, 'el Centro de Ayuda contiene 21 preguntas frecuentes');
+check(Help::faqCount() === 22, 'el Centro de Ayuda contiene 22 preguntas frecuentes');
 check($ayudaContenidoOk, 'todos los articulos tienen titulo, resumen y contenido');
 check($ayudaRelacionadosOk, 'todos los enlaces a articulos relacionados existen');
 check($ayudaRutasPanelOk, 'todas las rutas de vuelta al panel tienen un formato valido');
+
+$ayudaPrecios = Help::find('configuracion/venta-cobro-pagos', true);
+check(
+    is_array($ayudaPrecios)
+        && str_contains((string) $ayudaPrecios['body'], 'Beneficio fijo (EUR)')
+        && str_contains((string) $ayudaPrecios['body'], 'Beneficio porcentual (%)')
+        && str_contains((string) $ayudaPrecios['body'], '(tarifa + beneficio fijo)')
+        && str_contains((string) $ayudaPrecios['body'], 'Guardar venta y cobro')
+        && str_contains((string) $ayudaPrecios['body'], 'productos propios'),
+    'la ayuda explica la formula, los dos campos y como guardar la configuracion'
+);
 check(
     Help::find('plataforma/menu-plataforma', false) === null
         && Help::find('plataforma/menu-plataforma', true) !== null,
@@ -2797,6 +2808,7 @@ check(
 
 $busquedaParcial = array_column(Help::search('ban', false, 100), 'path');
 $busquedaAcento = array_column(Help::search('PEDÍDOS', false, 100), 'path');
+$busquedaBeneficios = array_column(Help::search('beneficio fijo', false, 100), 'path');
 $busquedaVacia = Help::search('contenidoquenoexiste', false, 100);
 $busquedaPlataformaTienda = array_filter(
     Help::search('plataforma', false, 100),
@@ -2808,6 +2820,11 @@ $busquedaPlataformaAdmin = array_filter(
 );
 check(in_array('diseno/banners', $busquedaParcial, true), 'el buscador resuelve coincidencias parciales');
 check(in_array('pedidos/guia-pedidos', $busquedaAcento, true), 'el buscador ignora mayusculas y acentos');
+check(
+    in_array('configuracion/venta-cobro-pagos', $busquedaBeneficios, true)
+        && in_array('preguntas-frecuentes/calculo-precio-venta', $busquedaBeneficios, true),
+    'el buscador encuentra la guia y la FAQ de beneficios fijo y porcentual'
+);
 check($busquedaVacia === [], 'el buscador devuelve un estado vacio sin resultados');
 check($busquedaPlataformaTienda === [] && $busquedaPlataformaAdmin !== [], 'el buscador oculta la ayuda de plataforma a las tiendas');
 check(Help::search('a', false, 100) === [], 'el buscador exige al menos dos caracteres');
@@ -2816,6 +2833,11 @@ $contexto = Help::contextual('/panel/diseno', false);
 check(
     is_array($contexto) && ($contexto['path'] ?? '') === 'diseno/identidad-visual',
     'el enlace contextual del panel apunta al articulo correcto'
+);
+$contextoAjustes = Help::contextual('/panel/ajustes', false);
+check(
+    is_array($contextoAjustes) && ($contextoAjustes['path'] ?? '') === 'configuracion/venta-cobro-pagos',
+    'la ayuda contextual de Ajustes abre la guia de precios y cobro'
 );
 
 $indiceFuente = (string) file_get_contents(TIENDA_BASE . '/index.php');
