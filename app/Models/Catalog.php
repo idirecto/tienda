@@ -46,6 +46,17 @@ final class Catalog
     private const MAX_PER_PAGE = 120;
 
     /**
+     * Limites del beneficio que puede configurar una tienda.
+     *
+     * El porcentaje conserva el tope historico de 200 %. El importe fijo es
+     * independiente y se expresa en euros; el tope evita que un error de tecleo
+     * convierta un catalogo entero en precios absurdos. El panel valida contra
+     * estos mismos valores.
+     */
+    public const MAX_MARKUP_PERCENT = 200.0;
+    public const MAX_MARKUP_FIXED = 999999.99;
+
+    /**
      * TTL de la cache del contador total (segundos).
      *
      * Contar los productos con stock de TODO el catalogo cuesta ~1 s en esta
@@ -86,9 +97,13 @@ final class Catalog
     // El catalogo central guarda la tarifa del mayorista (`precios.precio`), que
     // es un precio SIN IVA. Lo que paga el cliente final lo decide cada tienda:
     //
-    //     precio de venta = tarifa de la tienda (id_margen)
-    //                       + beneficio de la tienda (mt_stores.markup)
-    //                       [+ IVA, si se muestra con IVA incluido]
+    //     precio base = (tarifa de la tienda (id_margen)
+    //                    + beneficio fijo (mt_stores.markup_fixed en EUR))
+    //                   * (1 + beneficio porcentual (mt_stores.markup) / 100)
+    //
+    // El IVA se suma DESPUES del beneficio, y solo cuando el contexto es de la
+    // web publica. El orden importa: con 2 EUR fijos y un 20 %, una tarifa de
+    // 100 EUR da (100 + 2) * 1,20 = 122,40 EUR, no 100 * 1,20 + 2.
     //
     // El contexto se fija una vez por peticion con `forStore()`:
     //   - Storefront: con IVA incluido (es lo que paga el cliente).
@@ -100,6 +115,7 @@ final class Catalog
 
     private static ?int $pricingMargin = null;
     private static float $pricingMarkup = 0.0;
+    private static float $pricingMarkupFixed = 0.0;
     private static float $pricingTax = 21.0;
     private static bool $pricingWithTax = false;
     private static bool $pricingSet = false;
@@ -107,15 +123,22 @@ final class Catalog
     /**
      * Fija el precio de venta de la tienda para esta peticion.
      *
-     * @param int|null $idMargen Tarifa de la tienda en el mayorista (precios.id_margen)
-     * @param mixed    $markup   Beneficio de la tienda en % (columna mt_stores.markup)
-     * @param float    $tax      IVA por defecto (%) para productos sin tipo propio
-     * @param bool     $withTax  true = los precios llevan el IVA incluido
+     * @param int|null $idMargen     Tarifa de la tienda en el mayorista (precios.id_margen)
+     * @param mixed    $markup       Beneficio porcentual (columna mt_stores.markup)
+     * @param float    $tax          IVA por defecto (%) para productos sin tipo propio
+     * @param bool     $withTax      true = los precios llevan el IVA incluido
+     * @param mixed    $markupFixed  Beneficio fijo en EUR (columna mt_stores.markup_fixed)
      */
-    public static function forStore(?int $idMargen, mixed $markup = 0, float $tax = 21.0, bool $withTax = false): void
-    {
+    public static function forStore(
+        ?int $idMargen,
+        mixed $markup = 0,
+        float $tax = 21.0,
+        bool $withTax = false,
+        mixed $markupFixed = 0
+    ): void {
         self::$pricingMargin = $idMargen !== null && $idMargen > 0 ? $idMargen : null;
-        self::$pricingMarkup = max(0.0, min(200.0, (float) $markup));
+        self::$pricingMarkup = self::normalizeMarkupPercent($markup);
+        self::$pricingMarkupFixed = self::normalizeMarkupFixed($markupFixed);
         self::$pricingTax = $tax > 0 ? $tax : 21.0;
         self::$pricingWithTax = $withTax;
         self::$pricingSet = true;
@@ -127,10 +150,53 @@ final class Catalog
         return self::$pricingSet;
     }
 
-    /** Beneficio aplicado (1 = sin beneficio). */
+    /** Beneficio porcentual aplicado (1 = sin porcentaje). */
     public static function markupFactor(): float
     {
         return 1 + self::$pricingMarkup / 100;
+    }
+
+    /** Beneficio fijo en euros configurado en el contexto actual. */
+    public static function markupFixed(): float
+    {
+        return self::$pricingMarkupFixed;
+    }
+
+    /** Normaliza el beneficio porcentual a un valor seguro (0..200). */
+    private static function normalizeMarkupPercent(mixed $value): float
+    {
+        $number = (float) $value;
+        if (!is_finite($number)) {
+            return 0.0;
+        }
+
+        return max(0.0, min(self::MAX_MARKUP_PERCENT, $number));
+    }
+
+    /** Normaliza el beneficio fijo a un importe seguro (0..999999,99 EUR). */
+    private static function normalizeMarkupFixed(mixed $value): float
+    {
+        $number = (float) $value;
+        if (!is_finite($number)) {
+            return 0.0;
+        }
+
+        return round(max(0.0, min(self::MAX_MARKUP_FIXED, $number)), 2);
+    }
+
+    /**
+     * Aplica la formula combinada a una base SIN IVA:
+     * `(base + fijo) * (1 + porcentaje / 100)`.
+     *
+     * Es un metodo puro para que el panel pueda enseñar ejemplos con los valores
+     * configurados sin alterar el contexto de precios de la peticion.
+     */
+    public static function applyStoreMargin(float $base, mixed $fixedMarkup = 0, mixed $markupPercent = 0): float
+    {
+        $fixed = self::normalizeMarkupFixed($fixedMarkup);
+        $percent = self::normalizeMarkupPercent($markupPercent);
+
+        return round(($base + $fixed) * (1 + $percent / 100), 2);
     }
 
     /** Factor para pasar de base sin IVA a precio con IVA. */
@@ -147,20 +213,32 @@ final class Catalog
     }
 
     /**
+     * Precio de venta sin IVA a partir de la tarifa de la tienda.
+     *
+     * Aplica primero el beneficio fijo y despues el porcentual. El resultado se
+     * redondea a dos decimales antes de sumar el IVA, igual que hace la consulta
+     * SQL que pinta los listados.
+     */
+    public static function salePriceFromTariff(float $tariff): float
+    {
+        return self::applyStoreMargin($tariff, self::$pricingMarkupFixed, self::$pricingMarkup);
+    }
+
+    /**
      * Precio de venta a partir del COSTE del mayorista.
      *
      * Solo se usa cuando el producto no tiene tarifa publicada para la tarifa de
-     * la tienda: entonces el precio de venta se calcula desde el coste con el
-     * beneficio de la tienda (y el IVA, si toca).
+     * la tienda: entonces el precio de venta se calcula desde el coste con la
+     * misma formula combinada (y el IVA, si toca).
      */
     public static function salePriceFromCost(float $cost, ?float $taxRate = null): float
     {
-        $value = $cost * self::markupFactor();
+        $value = self::salePriceFromTariff($cost);
         if (self::$pricingWithTax) {
-            $value *= self::taxFactor($taxRate);
+            $value = round($value * self::taxFactor($taxRate), 2);
         }
 
-        return round($value, 2);
+        return $value;
     }
 
     /**
@@ -185,7 +263,9 @@ final class Catalog
     /** Clave corta del contexto de precios, para las caches. */
     private static function pricingKey(): string
     {
-        return 'p' . (self::$pricingMargin ?? 0) . 'm' . number_format(self::$pricingMarkup, 2, '', '')
+        return 'p' . (self::$pricingMargin ?? 0)
+            . 'm' . number_format(self::$pricingMarkup, 2, '', '')
+            . 'f' . number_format(self::$pricingMarkupFixed, 2, '', '')
             . (self::$pricingWithTax ? 't' . number_format(self::$pricingTax, 2, '', '') : 'n');
     }
 
@@ -217,8 +297,8 @@ final class Catalog
      *
      * Solo queda el rango de precios del filtro (el deslizador), que si guarda
      * importes. Los destacados ya **no** guardan precios: cachean solo los ids y
-     * el precio se resuelve en vivo, asi que un cambio de beneficio de la tienda
-     * se ve al momento sin tocar la cache.
+     * el precio se resuelve en vivo, asi que un cambio del beneficio fijo o del
+     * porcentual se ve al momento sin tocar la cache.
      */
     public static function forgetPriceCache(): int
     {
@@ -262,11 +342,14 @@ final class Catalog
      * Precio de VENTA del producto (el que ve el cliente de la tienda).
      *
      * Parte de la tarifa de la tienda (`precios.id_margen`); si la tienda no
-     * tiene tarifa asignada se usa la mas barata publicada (como antes). Encima
-     * se aplica el beneficio de la tienda y, cuando el contexto es de tienda
-     * publica, el IVA del producto. La tarifa se incrusta como numero (es un
-     * entero de configuracion) porque con `EMULATE_PREPARES = false` un
-     * parametro nombrado no puede repetirse en la misma consulta.
+     * tiene tarifa asignada se usa la mas barata publicada (como antes). Sobre
+     * esa base se suma el beneficio fijo y despues se aplica el porcentual; por
+     * ultimo, cuando el contexto es de tienda publica, el IVA del producto.
+     *
+     * El orden SQL es el mismo que `Catalog::applyStoreMargin()`:
+     * `ROUND((tarifa + fijo) * (1 + porcentaje / 100), 2)`, y luego el IVA. La
+     * tarifa se incrusta como numero (es un entero de configuracion) porque con
+     * `EMULATE_PREPARES = false` un parametro nombrado no puede repetirse.
      */
     private static function precioSql(): string
     {
@@ -277,8 +360,10 @@ final class Catalog
             . ')';
 
         $factor = self::markupFactor();
-        if ($factor !== 1.0) {
-            $sql = 'ROUND((' . $sql . ') * ' . number_format($factor, 4, '.', '') . ', 2)';
+        $fixed = self::$pricingMarkupFixed;
+        if ($fixed > 0.0 || $factor !== 1.0) {
+            $sql = 'ROUND((' . $sql . ' + ' . number_format($fixed, 2, '.', '') . ') * '
+                . number_format($factor, 4, '.', '') . ', 2)';
         }
         if (self::$pricingWithTax) {
             $sql = 'ROUND((' . $sql . ') * (1 + COALESCE(NULLIF(p.impuestos, 0), '

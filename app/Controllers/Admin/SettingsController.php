@@ -113,20 +113,42 @@ final class SettingsController extends Controller
     }
 
     /**
-     * Guarda el beneficio, los gastos de envio y las formas de pago.
+     * Guarda el beneficio (fijo y porcentual), los gastos de envio y las formas
+     * de pago.
      *
-     * De aqui sale lo que paga el cliente en la web: precio = tarifa de la tienda
-     * + este beneficio (+ IVA), y el envio segun la tarifa y el minimo gratis.
+     * De aqui sale lo que paga el cliente en la web:
+     * `(tarifa + beneficio fijo) * (1 + porcentaje / 100)`, mas el IVA. El envio
+     * se calcula aparte segun la tarifa y el minimo gratis.
      */
     private function saveShop(int $storeId): string
     {
-        $markup = (float) str_replace(',', '.', (string) $this->input('markup', '15'));
+        $errors = [];
+        $markup = $this->marginValue(
+            $this->input('markup', '15'),
+            'Beneficio porcentual',
+            Catalog::MAX_MARKUP_PERCENT,
+            '%',
+            $errors
+        );
+        $markupFixed = $this->marginValue(
+            $this->input('markup_fixed', '0'),
+            'Beneficio fijo',
+            Catalog::MAX_MARKUP_FIXED,
+            'EUR',
+            $errors
+        );
+        if ($errors !== []) {
+            Session::flash('error', implode(' ', $errors));
+            $this->redirect('panel/ajustes');
+        }
+
         $flat = (float) str_replace(',', '.', (string) $this->input('shipping_flat', '0'));
         $freeRaw = trim((string) $this->input('free_shipping_from', ''));
         $free = $freeRaw === '' ? null : (float) str_replace(',', '.', $freeRaw);
 
         Store::updateById($storeId, [
-            'markup'             => max(0, min(200, $markup)),
+            'markup'             => $markup,
+            'markup_fixed'       => $markupFixed,
             'shipping_flat'      => max(0, $flat),
             'free_shipping_from' => $free !== null && $free > 0 ? $free : null,
             'pay_transfer'       => (string) $this->input('pay_transfer', '') === '1' ? 1 : 0,
@@ -136,11 +158,38 @@ final class SettingsController extends Controller
         ]);
 
         // Los precios del catalogo van cacheados por tienda (tarifa + beneficio):
-        // al cambiar el beneficio hay que olvidar la cache de precios.
+        // al cambiar cualquiera de los dos componentes hay que olvidar la cache.
         Catalog::forgetPriceCache();
 
         Session::flash('success', 'Ajustes de venta y cobro guardados.');
         $this->redirect('panel/ajustes');
+    }
+
+    /**
+     * Lee un beneficio no negativo con hasta dos decimales (admite coma).
+     *
+     * No se convierte en silencio un valor invalido a 0: en un dato financiero
+     * eso cambiaria todos los precios sin que el tendero se enterase. Se acumula
+     * el error y no se guarda ningun cambio.
+     */
+    private function marginValue(mixed $value, string $label, float $max, string $unit, array &$errors): float
+    {
+        $raw = trim(str_replace(',', '.', (string) $value));
+        if ($raw === '') {
+            $raw = '0';
+        }
+        if (!preg_match('/^\d+(?:\.\d{1,2})?$/', $raw)) {
+            $errors[] = $label . ': escribe un numero positivo con hasta dos decimales.';
+            return 0.0;
+        }
+
+        $number = (float) $raw;
+        if ($number > $max) {
+            $errors[] = $label . ': el maximo es ' . rtrim(rtrim(number_format($max, 2, '.', ''), '0'), '.') . ' ' . $unit . '.';
+            return 0.0;
+        }
+
+        return round($number, 2);
     }
 
     /** Configura las cuatro zonas fijas y el mensaje de rechazo. */

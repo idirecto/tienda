@@ -28,10 +28,12 @@ return [
     // Margen (%) aplicado cuando el producto no tiene precio propio de tarifa.
     'markup'    => (float) Env::get('CATALOG_MARKUP', 30),
 
-    // Beneficio (%) con el que vende una tienda que no tenga el suyo propio
-    // (`mt_stores.markup`): el precio de venta es la tarifa de la tienda mas
-    // este beneficio. Se cambia por tienda en el panel > Ajustes.
-    'default_markup' => (float) Env::get('CATALOG_DEFAULT_MARKUP', 15),
+    // Beneficios con los que vende una tienda que no tenga los suyos propios.
+    // El precio de venta es `(tarifa + beneficio fijo) * (1 + porcentaje / 100)`
+    // y despues se suma el IVA. Se cambian por tienda en el panel > Ajustes;
+    // estos valores solo son el respaldo de una tienda sin configuracion.
+    'default_markup'       => (float) Env::get('CATALOG_DEFAULT_MARKUP', 15),
+    'default_markup_fixed' => (float) Env::get('CATALOG_DEFAULT_MARKUP_FIXED', 0),
 
     // Productos por pagina en los LISTADOS (catalogo, categoria, subcategoria,
     // busqueda, filtros y etiquetas).

@@ -305,6 +305,8 @@ CATALOG_IMAGE_URL=https://idirecto.es/img_products
 CATALOG_IMAGE_PATH=               # ruta en disco (opcional, solo desarrollo local)
 CATALOG_CARD_IMAGE_SIZE=l         # talla de imagen en los listados: c | l | f
 CATALOG_MARKUP=30                 # % aplicado si no hay precio de tarifa
+CATALOG_DEFAULT_MARKUP=15         # % de respaldo de una tienda sin ajuste propio
+CATALOG_DEFAULT_MARKUP_FIXED=0     # EUR de respaldo sumados antes del porcentaje
 CATALOG_PER_PAGE=40               # productos por pagina en los listados (todas las pantallas)
 CATALOG_SEARCH_PER_PAGE=16        # resultados del buscador en vivo de la cabecera
 CATALOG_HOME_FEATURED=12          # destacados de la portada (seleccion editorial)
@@ -595,10 +597,11 @@ tienda/
 ├── public/uploads/          destino del driver local (no versionado)
 ├── database/
 │   ├── migrations/          001_schema.sql · 002_design_tokens.sql · 003_orders.sql ·
-│   │                        004_checkout.sql · 005..009 menu · 010_favicon.sql (mt_)
+│   │                        004_checkout.sql · 005..009 menu · 010_favicon.sql ·
+│   │                        011..012 banners/zonas · 013_store_markup_fixed.sql (mt_)
 │   ├── seeds/               001_seed.sql (planes, temas, tienda demo)
 │   └── migrate.php          Ejecutor de migraciones y semillas
-├── tools/verify.php         Comprobacion automatica (312)
+├── tools/verify.php         Comprobacion automatica (347)
 ├── tools/cache-clear.php    Gestion de la cache de datos (estado, vaciar, patrones, gc)
 ├── tools/logs.php           Consulta los logs por consola (filtros, resumen, dias, gc)
 └── deploy/                  Vhosts/plantillas de Apache y nginx + scripts
@@ -778,18 +781,21 @@ El comprador **no es el tendero**: tiene su propia cuenta y su propia sesión
 
 ```bash
 # Lo que configura la tienda en Panel > Ajustes (mt_stores):
-markup               # beneficio sobre su tarifa del mayorista (15 % por defecto)
+markup               # beneficio porcentual sobre (tarifa + beneficio fijo)
+markup_fixed         # beneficio fijo en EUR sumado a la tarifa (0 por defecto)
 shipping_flat        # gastos de envío fijos
 free_shipping_from   # envío gratis desde este importe (vacío = nunca)
 pay_transfer / pay_cod / pay_pickup   # formas de pago que acepta
 bank_details         # datos que ve el cliente al pagar por transferencia
 ```
 
-- **Precio de venta**: `tarifa de la tienda (mt_stores.id_margen) + beneficio`, y en
-  la web **con el IVA incluido** (`Catalog::forStore()`). El pedido guarda la **base
-  sin IVA** en `mt_order_items.price_customer` y el IVA se suma al totalizar, así que
-  el total coincide con lo que vio el cliente. Sin tarifa asignada se usa la más
-  barata publicada; si el producto no tiene ninguna, se calcula desde el coste.
+- **Precio de venta**: primero se suma el beneficio fijo a la tarifa y después se
+  aplica el porcentaje:
+  `(tarifa de la tienda + markup_fixed) × (1 + markup / 100)`. En la web se muestra
+  **con el IVA incluido** (`Catalog::forStore()`). El pedido guarda la **base sin IVA**
+  en `mt_order_items.price_customer` y el IVA se suma al totalizar, así que el total
+  coincide con lo que vio el cliente. Sin tarifa asignada se usa la más barata
+  publicada; si el producto no tiene ninguna, se calcula desde el coste.
 - **Carrito** (`Core/Cart`): en la sesión y por tienda. Solo guarda producto y
   cantidad; precio, nombre y stock se leen del catálogo en cada visita.
 - **Se compra con cuenta o como invitado**. El invitado deja su email y su dirección
@@ -886,7 +892,8 @@ php database/migrate.php --seed     # + semillas
 **Hecho y verificado:** núcleo MVC, configuración BD/S3, migraciones y semillas,
 multi-tenant por hostname, **registro de tiendas solo con cuenta activa del
 mayorista**, **compra del cliente final** (carrito, cuenta, direcciones, comentario
-y pedido, con el precio a tarifa + beneficio e IVA incluido), storefront con
+y pedido, con el precio a `(tarifa + beneficio fijo) × (1 + porcentaje)` e IVA
+incluido), storefront con
 **sistema de diseño tokenizado** (claro/oscuro/auto, presets y vista previa en vivo),
 portada con slider y accesos rápidos, tarjetas de producto con especificaciones clave
 y etiqueta de stock, filtros avanzados por socket/gráfica/memoria/formato/marca/precio,

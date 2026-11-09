@@ -25,8 +25,9 @@ abstract class Controller
      * Fija el precio de venta de LA TIENDA en el catalogo.
      *
      * El catalogo central guarda tarifas sin IVA; cada tienda vende con su
-     * tarifa mas su beneficio. Las paginas publicas muestran el precio con IVA
-     * incluido; las del panel usan la base sin IVA (el IVA se suma en el pedido).
+     * tarifa, su beneficio fijo y su porcentaje. Las paginas publicas muestran
+     * el precio con IVA incluido; las del panel usan la base sin IVA (el IVA se
+     * suma en el pedido).
      */
     protected function bootPricing(bool $withTax = true): void
     {
@@ -34,7 +35,8 @@ abstract class Controller
             (int) $this->tenant->get('id_margen', 0) ?: null,
             $this->tenant->get('markup', Config::get('catalog.default_markup', 15)),
             (float) ($this->tenant->get('tax_rate') ?: 21),
-            $withTax
+            $withTax,
+            $this->tenant->get('markup_fixed', Config::get('catalog.default_markup_fixed', 0))
         );
     }
 

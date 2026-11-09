@@ -143,7 +143,7 @@ web (403). Se anotan con `Logger::info('compras', ...)`; el lector es `LogReader
 ## Verificación
 
 ```bash
-php tools/verify.php                        # 328 comprobaciones del proyecto
+php tools/verify.php                        # 347 comprobaciones del proyecto
 bash .agents/scripts/check-privacidad.sh    # la documentación NO debe ser web
 ```
 

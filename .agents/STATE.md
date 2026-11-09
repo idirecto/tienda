@@ -1,7 +1,7 @@
 # STATE — Estado del proyecto
 
 > **El agente actualiza este fichero al terminar cada sesión.**
-> Última actualización: **2026-11-04**
+> Última actualización: **2026-11-09**
 
 ---
 
@@ -67,7 +67,7 @@ el carrito y los pedidos se rechazan con un aviso hasta poner
 | Entorno local (`http://local.tienda`) | ✅ Completo |
 | **Despliegue Apache y nginx** | ✅ Completo (nginx verificado con binario real) |
 | **Checkout: carrito, pago y envío** | ✅ Completo (cobro **sin pasarela**: transferencia, contra reembolso y recogida) |
-| **Precio de venta de la tienda** | ✅ Completo: tarifa (`id_margen`) + beneficio (`mt_stores.markup`), con IVA incluido en la web y base sin IVA en el pedido |
+| **Precio de venta de la tienda** | ✅ Completo: `(tarifa + markup_fixed) × (1 + markup / 100)`, con IVA incluido en la web y base sin IVA en el pedido; cada tienda configura sus dos componentes |
 | **Gastos de envío** | ⚠️ Tarifa plana + gratis desde X €; falta el cálculo por **peso y provincia** de puntobyze |
 | **Emails al cliente y a la tienda** | ❌ No existe (no hay envío de correo: ni confirmación ni recuperar contraseña) |
 | **Logs por día y por tienda (compras, accesos y errores)** | ✅ Completo (ficheros en `storage/logs/<canal>/<día>/<tienda>.log` + visor `/panel/logs` + `tools/logs.php`; retención 30 días) |
@@ -78,6 +78,25 @@ el carrito y los pedidos se rechazan con un aviso hasta poner
 ---
 
 ## Hecho
+
+### Tarifa combinada por tienda: beneficio fijo + porcentual (2026-11-09)
+- **Cada tienda configura dos componentes independientes** en Ajustes:
+  `markup_fixed` (EUR, se suma a la tarifa) y `markup` (porcentaje que se aplica
+  después). La fórmula es `(tarifa + fijo) × (1 + porcentaje / 100)` y el IVA se
+  suma al final en la web.
+- **Migración `013`**: `mt_stores.markup_fixed decimal(12,2) DEFAULT 0,00`. Las
+  tiendas existentes conservan sus precios porque el valor de partida es 0.
+- **Precio en un solo sitio**: `Catalog::applyStoreMargin()` / `salePriceFromCost()`
+  y `precioSql()` aplican el mismo orden (fijo, porcentaje, IVA), así que listados,
+  ficha, filtros, carrito, pedidos y buscador del panel dan el mismo importe.
+- **Validación real**: el panel rechaza importes inválidos, negativos o fuera de
+  rango (0–200 % y hasta 999.999,99 EUR) antes de guardar; no convierte en 0 un
+  error de tecleo. El guardado sigue limitado al `store_id` de la sesión.
+- **QA**: `verify.php` 340 → **347** comprobaciones (fórmula pura, IVA después,
+  contraste contra SQL, aislamiento entre dos tiendas y Ajustes). Prueba HTTP real
+  con un usuario temporal en una tienda existente (usuario borrado y valores
+  restaurados): guardado con coma decimal, rechazo de valor inválido, precio de
+  ficha recalculado y otra tienda intacta.
 
 ### Sesiones antiguas compatibles y título de pestaña (2026-11-04)
 - `Cart` sanea la estructura de `cart`; `CustomerAuth` y `Auth` validan sus sesiones;
@@ -234,8 +253,8 @@ el carrito y los pedidos se rechazan con un aviso hasta poner
   reembolso o recogida) y **comentario**. Crea `mt_orders` + `mt_order_items` con
   los importes recalculados en el servidor; el pedido nace **pendiente de pago** y
   el tendero lo confirma en el panel («marcar como pagado»).
-- **Precio de venta**: `tarifa de la tienda (mt_stores.id_margen) + beneficio
-  (mt_stores.markup)`, con el **IVA incluido** en la web y la **base sin IVA** en
+- **Precio de venta**: `(tarifa de la tienda (mt_stores.id_margen) + markup_fixed)
+  × (1 + markup / 100)`, con el **IVA incluido** en la web y la **base sin IVA** en
   el pedido (que es lo que se manda al mayorista). Los gastos de envío son tarifa
   plana + gratis desde X € (en Ajustes). Todo se ve en el carrito antes de pagar.
 - **Al mayorista le llega la dirección del cliente** (no la de la tienda), con sus
@@ -593,7 +612,7 @@ el carrito y los pedidos se rechazan con un aviso hasta poner
   en **nginx + PHP-FPM** (`sudo bash deploy/setup-nginx-domain.sh ecom-era.com`).
 - La app detecta el servidor (`app/Core/Server.php`): ruta pública de `/public`,
   esquema real (incluido proxy) y host de las URLs canónicas.
-- `tools/verify.php`: 340 comprobaciones automáticas (diseño, facetas, filtros
+- `tools/verify.php`: 347 comprobaciones automáticas (diseño, facetas, filtros
   estructurados del mayorista, catálogo, paginación y enlaces de las tarjetas, caché y
   precios en vivo, carrito y mini-carrito, **modo de pruebas comercial**, **nombre de
   marca con razón social**, **sesiones antiguas y títulos públicos**, favicon de la
@@ -688,9 +707,10 @@ No hay ninguno. Prioridad: `Specs` (parseo de especificaciones),
   (`/registro`) pero exige una cuenta activa en `tiendas`; la tienda nace enlazada
   a esa cuenta y con su tarifa. Se entra al panel con un **usuario propio** (no
   con las credenciales del mayorista, que no se guardan).
-- **La tienda vende a tarifa + beneficio, con IVA incluido**: el precio de la web es
-  `tarifa de la tienda (id_margen) + beneficio (mt_stores.markup)`, **con el IVA
-  incluido** (es lo que paga el cliente). El pedido guarda la **base sin IVA** en
+- **La tienda vende con tarifa + beneficio fijo + porcentaje, con IVA incluido**:
+  el precio de la web es `(tarifa de la tienda (id_margen) + markup_fixed) ×
+  (1 + markup / 100)`, **con el IVA incluido** (es lo que paga el cliente). El
+  pedido guarda la **base sin IVA** en
   `mt_order_items.price_customer` y el IVA se suma en los totales, de modo que la
   cuenta cuadra con el precio que vio el cliente y con lo que factura el mayorista.
   Decisión del dueño: nada de mostrar el precio más barato publicado, que en muchos
@@ -727,10 +747,11 @@ No hay ninguno. Prioridad: `Specs` (parseo de especificaciones),
   aislado en `Core/Idirecto/OrderGateway`, con vista previa obligatoria y
   transacción única, pero una tienda mal configurada podría crear pedidos reales:
   conviene dejar `IDIRECTO_ENABLED=false` hasta tener la cuenta asignada.
-- **El precio depende del beneficio de la tienda**: al cambiarlo (Ajustes) se
-  limpian las cachés de precios, pero un pedido ya registrado conserva los importes
-  con los que nació (es lo correcto: es lo que aceptó el cliente). Si se cambia la
-  tarifa en idirecto, los pedidos nuevos usan la nueva y los viejos no.
+- **El precio depende de los dos beneficios de la tienda**: al cambiar el fijo o el
+  porcentual (Ajustes) se limpian las cachés de precios, pero un pedido ya registrado
+  conserva los importes con los que nació (es lo correcto: es lo que aceptó el
+  cliente). Si se cambia la tarifa en idirecto, los pedidos nuevos usan la nueva y
+  los viejos no.
 - **Sin emails**: el cliente no recibe confirmación ni puede recuperar su
   contraseña; si la pierde, el tendero tendría que tocarla a mano en la base de
   datos. La entrada del cliente tiene límite de intentos por sesión (5 / 15 min),
