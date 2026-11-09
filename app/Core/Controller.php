@@ -25,11 +25,10 @@ abstract class Controller
     /**
      * Fija el precio de venta de LA TIENDA en el catalogo.
      *
-     * El catalogo central guarda tarifas sin IVA; cada tienda vende con la
-     * tarifa que idirecto asigna a su cuenta mas su beneficio. Las paginas
-     * publicas muestran el precio con IVA incluido; las del panel usan la base
-     * sin IVA (el IVA se suma en el pedido). La tarifa no se lee de la copia
-     * local de `mt_stores`: se consulta en la cuenta de idirecto.
+     * El catalogo central guarda tarifas sin IVA; cada tienda vende con su
+     * tarifa, su beneficio fijo y su porcentaje. Las paginas publicas muestran
+     * el precio con IVA incluido; las del panel usan la base sin IVA (el IVA se
+     * suma en el pedido).
      */
     protected function bootPricing(bool $withTax = true): void
     {
@@ -37,7 +36,8 @@ abstract class Controller
             Account::marginForStore($this->tenant->toArray()),
             $this->tenant->get('markup', Config::get('catalog.default_markup', 15)),
             (float) ($this->tenant->get('tax_rate') ?: 21),
-            $withTax
+            $withTax,
+            $this->tenant->get('markup_fixed', Config::get('catalog.default_markup_fixed', 0))
         );
     }
 

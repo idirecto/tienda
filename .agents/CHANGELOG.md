@@ -5,6 +5,43 @@ El detalle línea a línea está en `git log`.
 
 ---
 
+## 2026-11-09 · Tarifa por tienda: beneficio fijo + beneficio porcentual
+
+**Motivo (petición por chat):** un único porcentaje no sirve para todo el catálogo.
+Un 12 % sobre un cable de 1 € deja 0,12 € de beneficio, mientras que subir el
+porcentaje para compensar encarece demasiado los portátiles. Cada tienda necesita
+combinar un importe fijo en euros (que protege los artículos baratos) con un
+porcentaje (que mantiene el margen en los caros).
+
+**Qué se hizo**
+
+- **Fórmula única**: `precio base = (tarifa de la tienda + markup_fixed) ×
+  (1 + markup / 100)`. Primero se suma el fijo, después se aplica el porcentaje y
+  por último el IVA cuando el precio es de la web. El pedido guarda la base sin IVA.
+- **Migración `013`**: nueva columna `mt_stores.markup_fixed decimal(12,2) NOT NULL
+  DEFAULT 0.00`. `markup` sigue siendo el porcentaje. Las tiendas existentes quedan
+  con 0,00 y conservan exactamente sus precios; la migración está probada dos veces.
+- **Cálculo en un solo sitio**: `Catalog::applyStoreMargin()` y
+  `Catalog::salePriceFromCost()` aplican la fórmula en PHP y `precioSql()` en SQL,
+  con el mismo orden y redondeo. Se usa en listados, ficha, filtros, rangos de
+  precio, carrito, checkout y el buscador de productos del panel. La clave de caché
+  incluye también el beneficio fijo.
+- **Panel > Ajustes**: dos campos independientes («Beneficio fijo (EUR)» y
+  «Beneficio porcentual (%)»), explicación de la fórmula y ejemplo con importes de
+  tarifa de 1 € y 500 €. Acepta coma decimal y valida en servidor (0–200 % y hasta
+  999.999,99 EUR) sin convertir en 0 un valor inválido. Cada guardado sigue usando
+  el `store_id` de la sesión.
+- **Configuración de respaldo**: `CATALOG_DEFAULT_MARKUP_FIXED` (0 por defecto) en
+  `config/catalog.php` y `.env.example`, junto a `CATALOG_DEFAULT_MARKUP`.
+- **Pruebas**: `verify.php` 340 → **347**: fórmula pura, IVA después del beneficio,
+  contraste de la fórmula PHP con la consulta SQL, web/pedido, persistencia y
+  aislamiento entre dos tiendas, y presencia/validación de los campos del panel.
+- **QA HTTP real**: con un usuario temporal en una tienda existente (usuario borrado
+  y valores restaurados) se comprobó el rechazo de un valor inválido, el guardado con
+  coma decimal, el cambio del precio de ficha y que otra tienda mantiene sus valores.
+
+---
+
 ## 2026-11-06 · Cuenta y margen del mayorista fuera de Ajustes
 
 **Motivo (petición por chat):** la tienda no debe ver ni configurar el margen ni

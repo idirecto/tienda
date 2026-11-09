@@ -166,6 +166,22 @@ try {
     check(false, 'comprobacion de tablas: ' . $e->getMessage());
 }
 
+try {
+    $storeColumns = Database::select(
+        'SELECT COLUMN_NAME FROM information_schema.COLUMNS
+          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :t',
+        ['t' => 'mt_stores']
+    );
+    $storeColumnNames = array_column($storeColumns, 'COLUMN_NAME');
+    check(
+        in_array('markup', $storeColumnNames, true)
+            && in_array('markup_fixed', $storeColumnNames, true),
+        'mt_stores guarda el beneficio porcentual y el fijo en euros (migracion 013)'
+    );
+} catch (\Throwable $e) {
+    check(false, 'columnas de beneficio en mt_stores (' . $e->getMessage() . ')');
+}
+
 echo "\n== Datos base ==\n";
 try {
     check(count(Plan::active()) >= 3, 'planes activos (' . count(Plan::active()) . ')');
@@ -760,9 +776,12 @@ check(
 check(Account::login('', '') === null && Account::login('no-existe@verificacion.test', 'x') === null, 'credenciales invalidas no dan cuenta');
 check(Registration::isOpen(), 'registro abierto (' . (Registration::isOpen() ? 'si' : 'no') . ')');
 check(Registration::defaultPlanId() !== null, 'plan por defecto del registro (' . (Registration::defaultPlanId() ?? '?') . ')');
+$slugLibre = 'tienda-libre-' . bin2hex(random_bytes(3));
+$slugOcupado = (string) (Database::scalar('SELECT slug FROM mt_stores ORDER BY id ASC LIMIT 1') ?? '');
 check(
-    Registration::uniqueSlug('Mi Tienda SL') === 'mi-tienda-sl'
-        && Registration::uniqueSlug('idirecto-demo') === 'idirecto-demo-2'
+    Registration::uniqueSlug($slugLibre) === $slugLibre
+        && $slugOcupado !== ''
+        && Registration::uniqueSlug($slugOcupado) === $slugOcupado . '-2'
         && Registration::uniqueSlug('') === 'tienda'
         && Registration::uniqueSlug('www') === 'www-tienda',
     'slug unico para la tienda nueva (evita repetidos y reservados)'
@@ -793,8 +812,9 @@ check(
     Registration::dataFromAccount($cuentaPrueba, 'otro-slug')['slug'] === 'otro-slug',
     'se respeta la direccion de tienda pedida'
 );
+$etiquetaHost = 'alta-' . bin2hex(random_bytes(3));
 check(
-    Registration::dataFromAccount($cuentaPrueba, 'prueba.ecom-era.com')['slug'] === 'prueba',
+    Registration::dataFromAccount($cuentaPrueba, $etiquetaHost . '.ecom-era.com')['slug'] === $etiquetaHost,
     'el alta acepta el subdominio escrito como host completo'
 );
 try {
@@ -849,16 +869,25 @@ check(
     'sin tarifa publicada el precio sale del coste con el beneficio de la tienda'
 );
 
-Catalog::forStore(12, 15, 21, false);
-$precioPanel = Catalog::find(254967);
 Catalog::forStore(null, 0, 21, false);
 $precioSinContexto = Catalog::find(254967);
-
-check(
-    Catalog::markupFactor() === 1.0 && $precioSinContexto['price_final'] == 311.17,
-    'sin contexto se mantiene el precio de siempre (' . $precioSinContexto['price_final'] . ')'
+$tarifaMasBarata = (float) Database::scalar(
+    'SELECT MIN(pr.precio) FROM precios pr WHERE pr.id_producto = :id AND pr.precio > 0',
+    ['id' => 254967]
 );
 
+check(
+    $tarifaMasBarata > 0
+        && Catalog::markupFactor() === 1.0
+        && Catalog::markupFixed() === 0.0
+        && abs((float) $precioSinContexto['price_final'] - round($tarifaMasBarata, 2)) < 0.02,
+    'sin contexto se mantiene la tarifa mas barata publicada (' . $precioSinContexto['price_final'] . ')'
+);
+
+// Precio historico con 15 % y sin importe fijo: (tarifa + 0) * 1,15.
+Catalog::forStore(12, 0, 21, false);
+$baseTiendaPanel = Catalog::find(254967);
+$panelEsperado = round((float) $baseTiendaPanel['price_final'] * 1.15, 2);
 Catalog::forStore(12, 15, 21, true);
 $web = Catalog::find(254967);
 Catalog::forStore(12, 15, 21, false);
@@ -867,12 +896,93 @@ $panel = Catalog::find(254967);
 check(
     $web['price_final'] > $panel['price_final']
         && abs($panel['price_final'] - round($web['price_net'], 2)) < 0.02
-        && abs($panel['price_final'] - 363.02) < 0.02,
+        && abs($panel['price_final'] - $panelEsperado) < 0.02,
     'precio de tienda: web ' . $web['price_final'] . ' con IVA / panel ' . $panel['price_final'] . ' sin IVA'
 );
 check(
-    abs($web['price_net'] - 363.02) < 0.02 && abs($web['tax_rate'] - 21.0) < 0.01,
+    abs($web['price_net'] - $panelEsperado) < 0.02 && abs($web['tax_rate'] - 21.0) < 0.01,
     'la base del pedido no lleva IVA y guarda el tipo aplicado'
+);
+
+// Beneficio combinado: primero el importe fijo y despues el porcentaje.
+check(
+    abs(Catalog::applyStoreMargin(1.0, 2.0, 20.0) - 3.60) < 0.001
+        && abs(Catalog::applyStoreMargin(500.0, 2.0, 20.0) - 602.40) < 0.001
+        && abs(Catalog::applyStoreMargin(100.0, 2.0, 0.0) - 102.0) < 0.001
+        && abs(Catalog::applyStoreMargin(100.0, 0.0, 20.0) - 120.0) < 0.001,
+    'formula combinada: (tarifa + fijo) * (1 + porcentaje / 100), y cada componente funciona solo'
+);
+
+Catalog::forStore(12, 20, 21, true, 5.0);
+check(
+    abs(Catalog::salePriceFromCost(100, 21) - 152.46) < 0.01,
+    'el IVA se aplica despues del beneficio fijo y del porcentual'
+);
+
+// Contraste contra la consulta real: fijo solo, porcentaje solo y ambos.
+Catalog::forStore(12, 0, 21, false);
+$tarifaPanel = (float) (Catalog::find(254967)['price_final'] ?? 0);
+Catalog::forStore(12, 0, 21, false, 5.0);
+$precioSoloFijo = (float) (Catalog::find(254967)['price_final'] ?? 0);
+Catalog::forStore(12, 20, 21, false);
+$precioSoloPorcentaje = (float) (Catalog::find(254967)['price_final'] ?? 0);
+Catalog::forStore(12, 20, 21, false, 5.0);
+$precioCombinado = (float) (Catalog::find(254967)['price_final'] ?? 0);
+$precioCombinadoEsperado = round(($tarifaPanel + 5.0) * 1.20, 2);
+check(
+    $tarifaPanel > 0
+        && abs($precioSoloFijo - round($tarifaPanel + 5.0, 2)) < 0.02
+        && abs($precioSoloPorcentaje - round($tarifaPanel * 1.20, 2)) < 0.02
+        && abs($precioCombinado - $precioCombinadoEsperado) < 0.02,
+    'la consulta del catalogo aplica el fijo antes del porcentaje (' . $precioCombinado . ')'
+);
+
+Catalog::forStore(12, 20, 21, true, 5.0);
+$combinadoWeb = Catalog::find(254967);
+check(
+    $combinadoWeb !== null
+        && abs($combinadoWeb['price_final'] - round($precioCombinadoEsperado * 1.21, 2)) < 0.02
+        && abs($combinadoWeb['price_net'] - $precioCombinadoEsperado) < 0.02,
+    'la web y el pedido usan el mismo precio combinado, con y sin IVA'
+);
+
+// Aislamiento: los dos beneficios se guardan por tienda, no en un ajuste global.
+$pdoBeneficios = Database::pdo();
+$pdoBeneficios->beginTransaction();
+try {
+    $slugBenA = 'verificacion-beneficio-a-' . bin2hex(random_bytes(3));
+    $slugBenB = 'verificacion-beneficio-b-' . bin2hex(random_bytes(3));
+    Database::execute('INSERT INTO mt_stores (slug, name) VALUES (:s, :n)', ['s' => $slugBenA, 'n' => 'Beneficio A']);
+    Database::execute('INSERT INTO mt_stores (slug, name) VALUES (:s, :n)', ['s' => $slugBenB, 'n' => 'Beneficio B']);
+    $idBenA = (int) Database::scalar('SELECT id FROM mt_stores WHERE slug = :s', ['s' => $slugBenA]);
+    $idBenB = (int) Database::scalar('SELECT id FROM mt_stores WHERE slug = :s', ['s' => $slugBenB]);
+
+    Store::updateById($idBenA, ['markup' => 20, 'markup_fixed' => 5]);
+    Store::updateById($idBenB, ['markup' => 10, 'markup_fixed' => 0]);
+
+    $benA = Store::findWithPlan($idBenA) ?? [];
+    $benB = Store::findWithPlan($idBenB) ?? [];
+    check(
+        abs((float) ($benA['markup'] ?? 0) - 20.0) < 0.01
+            && abs((float) ($benA['markup_fixed'] ?? 0) - 5.0) < 0.01
+            && abs((float) ($benB['markup'] ?? 0) - 10.0) < 0.01
+            && abs((float) ($benB['markup_fixed'] ?? -1) - 0.0) < 0.01,
+        'cada tienda guarda su beneficio fijo y porcentual sin tocar a las demas'
+    );
+} catch (\Throwable $e) {
+    check(false, 'aislamiento de los beneficios por tienda (' . $e->getMessage() . ')');
+} finally {
+    $pdoBeneficios->rollBack();
+}
+
+$settingsView = (string) file_get_contents(TIENDA_BASE . '/app/Views/panel/settings.php');
+$settingsController = (string) file_get_contents(TIENDA_BASE . '/app/Controllers/Admin/SettingsController.php');
+check(
+    str_contains($settingsView, 'name="markup_fixed"')
+        && str_contains($settingsView, 'Beneficio porcentual')
+        && str_contains($settingsController, "'markup_fixed'")
+        && str_contains($settingsController, 'Catalog::MAX_MARKUP_FIXED'),
+    'Ajustes permite configurar y validar el beneficio fijo y el porcentual'
 );
 
 // -----------------------------------------------------------------------------
@@ -968,9 +1078,10 @@ check(Cart::count(1) === 0, 'el carrito queda limpio tras la prueba de stock');
 // -----------------------------------------------------------------------------
 $pdoCompra = Database::pdo();
 $pdoCompra->beginTransaction();
+$compraStoreId = (int) (Database::scalar('SELECT id FROM mt_stores WHERE status = 1 ORDER BY id ASC LIMIT 1') ?? 0);
 try {
     $emailCompra = 'compra-' . bin2hex(random_bytes(4)) . '@ejemplo.test';
-    $cliente = Customer::findOrCreateGuest(1, [
+    $cliente = Customer::findOrCreateGuest($compraStoreId, [
         'email' => $emailCompra, 'name' => 'Cliente de Prueba', 'phone' => '600111222',
     ]);
     check(
@@ -978,19 +1089,19 @@ try {
         'la compra como invitado crea el cliente sin contrasena'
     );
 
-    $dirId = CustomerAddress::save((int) $cliente['id'], 1, [
+    $dirId = CustomerAddress::save((int) $cliente['id'], $compraStoreId, [
         'name' => 'Cliente de Prueba', 'address' => 'Calle de la Prueba 22', 'detail' => 'Portal 2',
         'postal_code' => '50002', 'city' => 'Zaragoza', 'province' => 'Zaragoza',
         'phone' => '600111222', 'is_default_ship' => true,
     ]);
     check(
-        CustomerAddress::countForCustomer((int) $cliente['id'], 1) === 1
-            && (int) CustomerAddress::findForCustomer($dirId, (int) $cliente['id'], 1)['is_default_ship'] === 1,
+        CustomerAddress::countForCustomer((int) $cliente['id'], $compraStoreId) === 1
+            && (int) CustomerAddress::findForCustomer($dirId, (int) $cliente['id'], $compraStoreId)['is_default_ship'] === 1,
         'la direccion se guarda en la libreta del cliente'
     );
 
     $pedido = Checkout::place(
-        ['id' => 1, 'allow_orders' => 1, 'pay_transfer' => 1, 'shipping_flat' => 4.95],
+        ['id' => $compraStoreId, 'allow_orders' => 1, 'pay_transfer' => 1, 'shipping_flat' => 4.95],
         $cliente,
         ['email' => $emailCompra, 'name' => 'Cliente de Prueba', 'address' => 'Calle de la Prueba 22',
          'detail' => 'Portal 2', 'postal_code' => '50002', 'city' => 'Zaragoza', 'province' => 'Zaragoza',
@@ -1004,7 +1115,7 @@ try {
         ['shipping' => 4.95]
     );
 
-    $row = Order::findForStore($pedido['order_id'], 1, true);
+    $row = Order::findForStore($pedido['order_id'], $compraStoreId, true);
     check(
         $row !== null && (int) $row['customer_id'] === (int) $cliente['id']
             && $row['payment_method'] === Order::PAY_TRANSFER && (int) $row['payment_status'] === 0,
@@ -1026,12 +1137,13 @@ try {
         'la linea guarda la base para el cliente y la tarifa del mayorista'
     );
     check(
-        Order::findForCode(1, $pedido['code']) !== null
-            && Order::findForCustomer(1, (int) $cliente['id'], $pedido['code']) !== null,
+        Order::findForCode($compraStoreId, $pedido['code']) !== null
+            && Order::findForCustomer($compraStoreId, (int) $cliente['id'], $pedido['code']) !== null,
         'el pedido se puede consultar por su numero'
     );
     check(
-        count(Customer::orders((int) $cliente['id'], 1)) === 1 && count(Customer::forStore(1, $emailCompra)) === 1,
+        count(Customer::orders((int) $cliente['id'], $compraStoreId)) === 1
+            && count(Customer::forStore($compraStoreId, $emailCompra)) === 1,
         'el pedido aparece en la cuenta del cliente y en el panel'
     );
 
@@ -1075,7 +1187,7 @@ try {
     $reclamado = Customer::find((int) $cliente['id']);
     check(
         (int) $reclamado['is_guest'] === 0 && password_verify('clave-de-prueba-1234', (string) $reclamado['password_hash'])
-            && count(Customer::orders((int) $reclamado['id'], 1)) === 1,
+            && count(Customer::orders((int) $reclamado['id'], $compraStoreId)) === 1,
         'el invitado que se registra conserva sus pedidos'
     );
 } catch (\Throwable $e) {
@@ -1084,7 +1196,7 @@ try {
     $pdoCompra->rollBack();
 }
 check(
-    Customer::findByEmail(1, $emailCompra ?? '') === null && Cart::count(1) <= 0,
+    Customer::findByEmail($compraStoreId, $emailCompra ?? '') === null && Cart::count(1) <= 0,
     'la prueba de compra no deja rastro (rollback)'
 );
 
@@ -1426,8 +1538,17 @@ check(is_file(TIENDA_BASE . '/app/Views/panel/_menu_tree.php'), 'vista compartid
 echo "\n== Panel del menu: editor, publicacion y aislamiento entre tiendas ==\n";
 // ---------------------------------------------------------------------------
 // Todo lo que sigue escribe en tablas PROPIAS dentro de una transaccion que se
-// deshace al final: la verificacion no deja ni un dato de prueba.
-$editorStore = (int) (Database::scalar('SELECT id FROM mt_stores ORDER BY id ASC LIMIT 1') ?? 0);
+// deshace al final: la verificacion no deja ni un dato de prueba. Se elige una
+// tienda con arbol propio y modo «completo» (las hay que ya usan «elegido»).
+$editorStore = (int) (Database::scalar(
+    "SELECT s.id FROM mt_stores s
+      WHERE s.status = 1 AND s.menu_scope = 'completo'
+        AND EXISTS (SELECT 1 FROM mt_menu_items m WHERE m.store_id = s.id)
+      ORDER BY s.id ASC LIMIT 1"
+) ?? 0);
+if ($editorStore <= 0) {
+    $editorStore = (int) (Database::scalar('SELECT id FROM mt_stores ORDER BY id ASC LIMIT 1') ?? 0);
+}
 
 if (!$editorStore) {
     check(false, 'hay una tienda para probar el editor del menu');

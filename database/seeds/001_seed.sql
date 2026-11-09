@@ -41,7 +41,7 @@ INSERT INTO `mt_stores`
   (`slug`, `name`, `legal_name`, `email`, `phone`, `whatsapp`, `id_plan`, `status`,
    `theme`, `color_primary`, `color_secondary`, `tagline`, `about`,
    `address`, `city`, `province`, `postal_code`, `meta_title`, `meta_description`,
-   `show_prices`, `allow_orders`, `markup`, `shipping_flat`, `free_shipping_from`,
+   `show_prices`, `allow_orders`, `markup`, `markup_fixed`, `shipping_flat`, `free_shipping_from`,
    `pay_transfer`, `pay_cod`, `pay_pickup`, `bank_details`)
 VALUES
   ('idirecto-demo', 'Mi Tienda', 'Mi Tienda S.L.', 'hola@mitienda.test', '600 000 000', '34600000000',
@@ -51,7 +51,7 @@ VALUES
    'Somos una tienda especializada en informatica y telefonia. Trabajamos con las mejores marcas y ofrecemos atencion personalizada.',
    'Calle Mayor 1', 'Zaragoza', 'Zaragoza', '50001',
    'Mi Tienda', 'Tienda online de informatica y telefonia',
-   1, 1, 15.00, 4.95, 60.00,
+   1, 1, 15.00, 0.00, 4.95, 60.00,
    1, 1, 1, 'Titular: Mi Tienda S.L.\nIBAN: ES00 0000 0000 0000 0000 0000')
 ON DUPLICATE KEY UPDATE
   `name` = VALUES(`name`), `tagline` = VALUES(`tagline`), `about` = VALUES(`about`);

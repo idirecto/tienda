@@ -24,6 +24,18 @@ $globalCostLabel = $globalCost > 0 ? number_format($globalCost, 2, ',', '') . ' 
 $globalFreeLabel = $globalFree !== null && (float) $globalFree > 0
     ? number_format((float) $globalFree, 2, ',', '') . ' EUR'
     : 'sin envio gratis';
+$marginInput = static function (mixed $value): string {
+    $numeric = str_replace(',', '.', (string) $value);
+    if (!is_numeric($numeric)) {
+        return '0';
+    }
+
+    return rtrim(rtrim(number_format((float) $numeric, 2, ',', ''), '0'), ',') ?: '0';
+};
+$fixedMargin = (float) ($store['markup_fixed'] ?? 0);
+$markupPercent = (float) ($store['markup'] ?? 15);
+$previewPrice = static fn (float $tariff): float
+    => \Tienda\Models\Catalog::applyStoreMargin($tariff, $fixedMargin, $markupPercent);
 ?>
 <section class="two-col">
     <div class="card">
@@ -66,12 +78,21 @@ $globalFreeLabel = $globalFree !== null && (float) $globalFree > 0
             <?= Csrf::field() ?>
             <input type="hidden" name="form" value="shop">
             <p class="muted small">
-                El precio que ve el cliente es tu <strong>tarifa en el mayorista mas este beneficio</strong>,
-                con el IVA incluido. Con beneficio 0 vendes al precio de coste.
+                Tu precio de venta se calcula con <strong>dos componentes</strong>:
+                <code>(tarifa del mayorista + beneficio fijo) x (1 + beneficio porcentual / 100)</code>.
+                Despues se suma el IVA que ve el cliente. Puedes usar solo uno de los dos
+                componentes (deja el otro en 0).
             </p>
             <div class="field-grid">
-                <label>Beneficio (%)
-                    <input type="text" name="markup" value="<?= $v('markup', '15') ?>">
+                <label>Beneficio fijo (EUR)
+                    <input type="text" inputmode="decimal" name="markup_fixed"
+                           value="<?= e($marginInput($store['markup_fixed'] ?? 0)) ?>" placeholder="0,00">
+                    <small class="muted">Se suma a la tarifa antes de aplicar el porcentaje.</small>
+                </label>
+                <label>Beneficio porcentual (%)
+                    <input type="text" inputmode="decimal" name="markup"
+                           value="<?= e($marginInput($store['markup'] ?? 15)) ?>" placeholder="0,00">
+                    <small class="muted">Se aplica sobre la tarifa mas el beneficio fijo.</small>
                 </label>
                 <label>Tarifa de envio general (EUR)
                     <input type="text" name="shipping_flat" value="<?= $v('shipping_flat', '0') ?>">
@@ -81,6 +102,16 @@ $globalFreeLabel = $globalFree !== null && (float) $globalFree > 0
                     <input type="text" name="free_shipping_from" value="<?= $v('free_shipping_from') ?>" placeholder="vacio = nunca">
                     <small class="muted">Se hereda solo en las zonas sin umbral propio.</small>
                 </label>
+            </div>
+            <div class="hint-box">
+                <strong>Ejemplo con tus valores guardados</strong>
+                <p class="muted small">
+                    Antes de IVA: una tarifa de 1 EUR se vende por
+                    <strong><?= e(euros($previewPrice(1.0))) ?></strong> y una de 500 EUR por
+                    <strong><?= e(euros($previewPrice(500.0))) ?></strong>.
+                    El beneficio fijo protege los articulos baratos; el porcentual mantiene
+                    el margen en los caros.
+                </p>
             </div>
 
             <h3 class="subsection">Formas de pago que aceptas</h3>
