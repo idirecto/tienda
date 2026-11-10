@@ -30,6 +30,7 @@ use Tienda\Core\CustomerAuth;
 use Tienda\Core\Database;
 use Tienda\Core\Dns;
 use Tienda\Core\Favicon;
+use Tienda\Core\Help;
 use Tienda\Core\Idirecto\Account;
 use Tienda\Core\Idirecto\OrderGateway;
 use Tienda\Core\Idirecto\Pricing;
@@ -163,6 +164,22 @@ try {
     check($missing === [], 'tablas del proyecto creadas' . ($missing ? ' (faltan: ' . implode(', ', $missing) . ')' : ''));
 } catch (\Throwable $e) {
     check(false, 'comprobacion de tablas: ' . $e->getMessage());
+}
+
+try {
+    $storeColumns = Database::select(
+        'SELECT COLUMN_NAME FROM information_schema.COLUMNS
+          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :t',
+        ['t' => 'mt_stores']
+    );
+    $storeColumnNames = array_column($storeColumns, 'COLUMN_NAME');
+    check(
+        in_array('markup', $storeColumnNames, true)
+            && in_array('markup_fixed', $storeColumnNames, true),
+        'mt_stores guarda el beneficio porcentual y el fijo en euros (migracion 013)'
+    );
+} catch (\Throwable $e) {
+    check(false, 'columnas de beneficio en mt_stores (' . $e->getMessage() . ')');
 }
 
 echo "\n== Datos base ==\n";
@@ -759,9 +776,12 @@ check(
 check(Account::login('', '') === null && Account::login('no-existe@verificacion.test', 'x') === null, 'credenciales invalidas no dan cuenta');
 check(Registration::isOpen(), 'registro abierto (' . (Registration::isOpen() ? 'si' : 'no') . ')');
 check(Registration::defaultPlanId() !== null, 'plan por defecto del registro (' . (Registration::defaultPlanId() ?? '?') . ')');
+$slugLibre = 'tienda-libre-' . bin2hex(random_bytes(3));
+$slugOcupado = (string) (Database::scalar('SELECT slug FROM mt_stores ORDER BY id ASC LIMIT 1') ?? '');
 check(
-    Registration::uniqueSlug('Mi Tienda SL') === 'mi-tienda-sl'
-        && Registration::uniqueSlug('idirecto-demo') === 'idirecto-demo-2'
+    Registration::uniqueSlug($slugLibre) === $slugLibre
+        && $slugOcupado !== ''
+        && Registration::uniqueSlug($slugOcupado) === $slugOcupado . '-2'
         && Registration::uniqueSlug('') === 'tienda'
         && Registration::uniqueSlug('www') === 'www-tienda',
     'slug unico para la tienda nueva (evita repetidos y reservados)'
@@ -792,8 +812,9 @@ check(
     Registration::dataFromAccount($cuentaPrueba, 'otro-slug')['slug'] === 'otro-slug',
     'se respeta la direccion de tienda pedida'
 );
+$etiquetaHost = 'alta-' . bin2hex(random_bytes(3));
 check(
-    Registration::dataFromAccount($cuentaPrueba, 'prueba.ecom-era.com')['slug'] === 'prueba',
+    Registration::dataFromAccount($cuentaPrueba, $etiquetaHost . '.ecom-era.com')['slug'] === $etiquetaHost,
     'el alta acepta el subdominio escrito como host completo'
 );
 try {
@@ -848,16 +869,25 @@ check(
     'sin tarifa publicada el precio sale del coste con el beneficio de la tienda'
 );
 
-Catalog::forStore(12, 15, 21, false);
-$precioPanel = Catalog::find(254967);
 Catalog::forStore(null, 0, 21, false);
 $precioSinContexto = Catalog::find(254967);
-
-check(
-    Catalog::markupFactor() === 1.0 && $precioSinContexto['price_final'] == 311.17,
-    'sin contexto se mantiene el precio de siempre (' . $precioSinContexto['price_final'] . ')'
+$tarifaMasBarata = (float) Database::scalar(
+    'SELECT MIN(pr.precio) FROM precios pr WHERE pr.id_producto = :id AND pr.precio > 0',
+    ['id' => 254967]
 );
 
+check(
+    $tarifaMasBarata > 0
+        && Catalog::markupFactor() === 1.0
+        && Catalog::markupFixed() === 0.0
+        && abs((float) $precioSinContexto['price_final'] - round($tarifaMasBarata, 2)) < 0.02,
+    'sin contexto se mantiene la tarifa mas barata publicada (' . $precioSinContexto['price_final'] . ')'
+);
+
+// Precio historico con 15 % y sin importe fijo: (tarifa + 0) * 1,15.
+Catalog::forStore(12, 0, 21, false);
+$baseTiendaPanel = Catalog::find(254967);
+$panelEsperado = round((float) $baseTiendaPanel['price_final'] * 1.15, 2);
 Catalog::forStore(12, 15, 21, true);
 $web = Catalog::find(254967);
 Catalog::forStore(12, 15, 21, false);
@@ -866,12 +896,93 @@ $panel = Catalog::find(254967);
 check(
     $web['price_final'] > $panel['price_final']
         && abs($panel['price_final'] - round($web['price_net'], 2)) < 0.02
-        && abs($panel['price_final'] - 363.02) < 0.02,
+        && abs($panel['price_final'] - $panelEsperado) < 0.02,
     'precio de tienda: web ' . $web['price_final'] . ' con IVA / panel ' . $panel['price_final'] . ' sin IVA'
 );
 check(
-    abs($web['price_net'] - 363.02) < 0.02 && abs($web['tax_rate'] - 21.0) < 0.01,
+    abs($web['price_net'] - $panelEsperado) < 0.02 && abs($web['tax_rate'] - 21.0) < 0.01,
     'la base del pedido no lleva IVA y guarda el tipo aplicado'
+);
+
+// Beneficio combinado: primero el importe fijo y despues el porcentaje.
+check(
+    abs(Catalog::applyStoreMargin(1.0, 2.0, 20.0) - 3.60) < 0.001
+        && abs(Catalog::applyStoreMargin(500.0, 2.0, 20.0) - 602.40) < 0.001
+        && abs(Catalog::applyStoreMargin(100.0, 2.0, 0.0) - 102.0) < 0.001
+        && abs(Catalog::applyStoreMargin(100.0, 0.0, 20.0) - 120.0) < 0.001,
+    'formula combinada: (tarifa + fijo) * (1 + porcentaje / 100), y cada componente funciona solo'
+);
+
+Catalog::forStore(12, 20, 21, true, 5.0);
+check(
+    abs(Catalog::salePriceFromCost(100, 21) - 152.46) < 0.01,
+    'el IVA se aplica despues del beneficio fijo y del porcentual'
+);
+
+// Contraste contra la consulta real: fijo solo, porcentaje solo y ambos.
+Catalog::forStore(12, 0, 21, false);
+$tarifaPanel = (float) (Catalog::find(254967)['price_final'] ?? 0);
+Catalog::forStore(12, 0, 21, false, 5.0);
+$precioSoloFijo = (float) (Catalog::find(254967)['price_final'] ?? 0);
+Catalog::forStore(12, 20, 21, false);
+$precioSoloPorcentaje = (float) (Catalog::find(254967)['price_final'] ?? 0);
+Catalog::forStore(12, 20, 21, false, 5.0);
+$precioCombinado = (float) (Catalog::find(254967)['price_final'] ?? 0);
+$precioCombinadoEsperado = round(($tarifaPanel + 5.0) * 1.20, 2);
+check(
+    $tarifaPanel > 0
+        && abs($precioSoloFijo - round($tarifaPanel + 5.0, 2)) < 0.02
+        && abs($precioSoloPorcentaje - round($tarifaPanel * 1.20, 2)) < 0.02
+        && abs($precioCombinado - $precioCombinadoEsperado) < 0.02,
+    'la consulta del catalogo aplica el fijo antes del porcentaje (' . $precioCombinado . ')'
+);
+
+Catalog::forStore(12, 20, 21, true, 5.0);
+$combinadoWeb = Catalog::find(254967);
+check(
+    $combinadoWeb !== null
+        && abs($combinadoWeb['price_final'] - round($precioCombinadoEsperado * 1.21, 2)) < 0.02
+        && abs($combinadoWeb['price_net'] - $precioCombinadoEsperado) < 0.02,
+    'la web y el pedido usan el mismo precio combinado, con y sin IVA'
+);
+
+// Aislamiento: los dos beneficios se guardan por tienda, no en un ajuste global.
+$pdoBeneficios = Database::pdo();
+$pdoBeneficios->beginTransaction();
+try {
+    $slugBenA = 'verificacion-beneficio-a-' . bin2hex(random_bytes(3));
+    $slugBenB = 'verificacion-beneficio-b-' . bin2hex(random_bytes(3));
+    Database::execute('INSERT INTO mt_stores (slug, name) VALUES (:s, :n)', ['s' => $slugBenA, 'n' => 'Beneficio A']);
+    Database::execute('INSERT INTO mt_stores (slug, name) VALUES (:s, :n)', ['s' => $slugBenB, 'n' => 'Beneficio B']);
+    $idBenA = (int) Database::scalar('SELECT id FROM mt_stores WHERE slug = :s', ['s' => $slugBenA]);
+    $idBenB = (int) Database::scalar('SELECT id FROM mt_stores WHERE slug = :s', ['s' => $slugBenB]);
+
+    Store::updateById($idBenA, ['markup' => 20, 'markup_fixed' => 5]);
+    Store::updateById($idBenB, ['markup' => 10, 'markup_fixed' => 0]);
+
+    $benA = Store::findWithPlan($idBenA) ?? [];
+    $benB = Store::findWithPlan($idBenB) ?? [];
+    check(
+        abs((float) ($benA['markup'] ?? 0) - 20.0) < 0.01
+            && abs((float) ($benA['markup_fixed'] ?? 0) - 5.0) < 0.01
+            && abs((float) ($benB['markup'] ?? 0) - 10.0) < 0.01
+            && abs((float) ($benB['markup_fixed'] ?? -1) - 0.0) < 0.01,
+        'cada tienda guarda su beneficio fijo y porcentual sin tocar a las demas'
+    );
+} catch (\Throwable $e) {
+    check(false, 'aislamiento de los beneficios por tienda (' . $e->getMessage() . ')');
+} finally {
+    $pdoBeneficios->rollBack();
+}
+
+$settingsView = (string) file_get_contents(TIENDA_BASE . '/app/Views/panel/settings.php');
+$settingsController = (string) file_get_contents(TIENDA_BASE . '/app/Controllers/Admin/SettingsController.php');
+check(
+    str_contains($settingsView, 'name="markup_fixed"')
+        && str_contains($settingsView, 'Beneficio porcentual')
+        && str_contains($settingsController, "'markup_fixed'")
+        && str_contains($settingsController, 'Catalog::MAX_MARKUP_FIXED'),
+    'Ajustes permite configurar y validar el beneficio fijo y el porcentual'
 );
 
 // -----------------------------------------------------------------------------
@@ -967,9 +1078,10 @@ check(Cart::count(1) === 0, 'el carrito queda limpio tras la prueba de stock');
 // -----------------------------------------------------------------------------
 $pdoCompra = Database::pdo();
 $pdoCompra->beginTransaction();
+$compraStoreId = (int) (Database::scalar('SELECT id FROM mt_stores WHERE status = 1 ORDER BY id ASC LIMIT 1') ?? 0);
 try {
     $emailCompra = 'compra-' . bin2hex(random_bytes(4)) . '@ejemplo.test';
-    $cliente = Customer::findOrCreateGuest(1, [
+    $cliente = Customer::findOrCreateGuest($compraStoreId, [
         'email' => $emailCompra, 'name' => 'Cliente de Prueba', 'phone' => '600111222',
     ]);
     check(
@@ -977,19 +1089,19 @@ try {
         'la compra como invitado crea el cliente sin contrasena'
     );
 
-    $dirId = CustomerAddress::save((int) $cliente['id'], 1, [
+    $dirId = CustomerAddress::save((int) $cliente['id'], $compraStoreId, [
         'name' => 'Cliente de Prueba', 'address' => 'Calle de la Prueba 22', 'detail' => 'Portal 2',
         'postal_code' => '50002', 'city' => 'Zaragoza', 'province' => 'Zaragoza',
         'phone' => '600111222', 'is_default_ship' => true,
     ]);
     check(
-        CustomerAddress::countForCustomer((int) $cliente['id'], 1) === 1
-            && (int) CustomerAddress::findForCustomer($dirId, (int) $cliente['id'], 1)['is_default_ship'] === 1,
+        CustomerAddress::countForCustomer((int) $cliente['id'], $compraStoreId) === 1
+            && (int) CustomerAddress::findForCustomer($dirId, (int) $cliente['id'], $compraStoreId)['is_default_ship'] === 1,
         'la direccion se guarda en la libreta del cliente'
     );
 
     $pedido = Checkout::place(
-        ['id' => 1, 'allow_orders' => 1, 'pay_transfer' => 1, 'shipping_flat' => 4.95],
+        ['id' => $compraStoreId, 'allow_orders' => 1, 'pay_transfer' => 1, 'shipping_flat' => 4.95],
         $cliente,
         ['email' => $emailCompra, 'name' => 'Cliente de Prueba', 'address' => 'Calle de la Prueba 22',
          'detail' => 'Portal 2', 'postal_code' => '50002', 'city' => 'Zaragoza', 'province' => 'Zaragoza',
@@ -1003,7 +1115,7 @@ try {
         ['shipping' => 4.95]
     );
 
-    $row = Order::findForStore($pedido['order_id'], 1, true);
+    $row = Order::findForStore($pedido['order_id'], $compraStoreId, true);
     check(
         $row !== null && (int) $row['customer_id'] === (int) $cliente['id']
             && $row['payment_method'] === Order::PAY_TRANSFER && (int) $row['payment_status'] === 0,
@@ -1025,12 +1137,13 @@ try {
         'la linea guarda la base para el cliente y la tarifa del mayorista'
     );
     check(
-        Order::findForCode(1, $pedido['code']) !== null
-            && Order::findForCustomer(1, (int) $cliente['id'], $pedido['code']) !== null,
+        Order::findForCode($compraStoreId, $pedido['code']) !== null
+            && Order::findForCustomer($compraStoreId, (int) $cliente['id'], $pedido['code']) !== null,
         'el pedido se puede consultar por su numero'
     );
     check(
-        count(Customer::orders((int) $cliente['id'], 1)) === 1 && count(Customer::forStore(1, $emailCompra)) === 1,
+        count(Customer::orders((int) $cliente['id'], $compraStoreId)) === 1
+            && count(Customer::forStore($compraStoreId, $emailCompra)) === 1,
         'el pedido aparece en la cuenta del cliente y en el panel'
     );
 
@@ -1074,7 +1187,7 @@ try {
     $reclamado = Customer::find((int) $cliente['id']);
     check(
         (int) $reclamado['is_guest'] === 0 && password_verify('clave-de-prueba-1234', (string) $reclamado['password_hash'])
-            && count(Customer::orders((int) $reclamado['id'], 1)) === 1,
+            && count(Customer::orders((int) $reclamado['id'], $compraStoreId)) === 1,
         'el invitado que se registra conserva sus pedidos'
     );
 } catch (\Throwable $e) {
@@ -1083,7 +1196,7 @@ try {
     $pdoCompra->rollBack();
 }
 check(
-    Customer::findByEmail(1, $emailCompra ?? '') === null && Cart::count(1) <= 0,
+    Customer::findByEmail($compraStoreId, $emailCompra ?? '') === null && Cart::count(1) <= 0,
     'la prueba de compra no deja rastro (rollback)'
 );
 
@@ -1202,6 +1315,40 @@ if (OrderGateway::isAvailable()) {
         isset($cuenta['id_margen']) && (int) $cuenta['id_margen'] > 0 && array_key_exists('configurada', $cuenta),
         'cuenta del mayorista resuelta (tarifa ' . ($cuenta['id_margen'] ?? '?') . ', origen ' . ($cuenta['margen_origen'] ?? '?') . ')'
     );
+
+    // La tarifa se toma de la cuenta de idirecto, no de la copia local.
+    $filaMargen = Database::first(
+        'SELECT s.id, s.id_tienda_idirecto, t.id_margen AS margen_cuenta
+         FROM mt_stores s
+         INNER JOIN tiendas t ON t.id = s.id_tienda_idirecto
+         WHERE t.id_margen > 0
+         ORDER BY s.id ASC LIMIT 1'
+    );
+    if ($filaMargen !== null) {
+        $margenCuenta = (int) $filaMargen['margen_cuenta'];
+        $storeMargenFalso = [
+            'id' => 990000 + (int) $filaMargen['id'],
+            'id_tienda_idirecto' => (int) $filaMargen['id_tienda_idirecto'],
+            'id_margen' => $margenCuenta + 1,
+        ];
+        Account::resetCache();
+        $cuentaMargen = Account::forStore($storeMargenFalso);
+        check(
+            (int) $cuentaMargen['id_margen'] === $margenCuenta
+                && ($cuentaMargen['margen_origen'] ?? '') === 'cuenta'
+                && Account::marginForStore($storeMargenFalso) === $margenCuenta,
+            'la tarifa de la cuenta de idirecto manda sobre la copia local de mt_stores'
+        );
+        Account::resetCache();
+    } else {
+        check(false, 'hay una cuenta de idirecto con tarifa para comprobar el origen');
+    }
+    check(
+        str_contains((string) file_get_contents(TIENDA_BASE . '/app/Core/Controller.php'), 'Account::marginForStore($this->tenant->toArray())')
+            && str_contains((string) file_get_contents(TIENDA_BASE . '/app/Controllers/Admin/OrderController.php'), 'Account::marginForStore($store)'),
+        'el precio publico y el del panel se fijan con la tarifa de la cuenta de idirecto'
+    );
+    $cuenta = Account::forStore($tiendaVerificada);
 
     $margen = (int) $cuenta['id_margen'];
     $productoId = (int) Database::scalar(
@@ -1391,8 +1538,17 @@ check(is_file(TIENDA_BASE . '/app/Views/panel/_menu_tree.php'), 'vista compartid
 echo "\n== Panel del menu: editor, publicacion y aislamiento entre tiendas ==\n";
 // ---------------------------------------------------------------------------
 // Todo lo que sigue escribe en tablas PROPIAS dentro de una transaccion que se
-// deshace al final: la verificacion no deja ni un dato de prueba.
-$editorStore = (int) (Database::scalar('SELECT id FROM mt_stores ORDER BY id ASC LIMIT 1') ?? 0);
+// deshace al final: la verificacion no deja ni un dato de prueba. Se elige una
+// tienda con arbol propio y modo «completo» (las hay que ya usan «elegido»).
+$editorStore = (int) (Database::scalar(
+    "SELECT s.id FROM mt_stores s
+      WHERE s.status = 1 AND s.menu_scope = 'completo'
+        AND EXISTS (SELECT 1 FROM mt_menu_items m WHERE m.store_id = s.id)
+      ORDER BY s.id ASC LIMIT 1"
+) ?? 0);
+if ($editorStore <= 0) {
+    $editorStore = (int) (Database::scalar('SELECT id FROM mt_stores ORDER BY id ASC LIMIT 1') ?? 0);
+}
 
 if (!$editorStore) {
     check(false, 'hay una tienda para probar el editor del menu');
@@ -2127,17 +2283,17 @@ foreach (Database::select('SELECT id, id_tienda_idirecto FROM mt_stores ORDER BY
 }
 check($coherente, 'storeLevelStatus: cuando no hay nivel siempre explica el motivo');
 
-// 'sin_cuenta' dice donde se arregla (Ajustes) y lo pinta el editor.
+// 'sin_cuenta' explica el motivo y que la gestión corresponde a idirecto.
 if ($sinCuenta !== null) {
     $aviso = Menu::levelWarning($sinCuenta);
     check(
         ($sinCuenta['reason'] ?? '') === 'sin_cuenta'
-            && str_contains($aviso, 'Ajustes')
+            && str_contains($aviso, 'idirecto')
             && !str_contains($aviso, '<'),
-        'una tienda sin cuenta enlazada dice el motivo y que se arregla en Ajustes (texto plano)'
+        'una tienda sin cuenta enlazada dice el motivo y que se gestiona en idirecto (texto plano)'
     );
 } else {
-    check(true, 'una tienda sin cuenta enlazada dice el motivo y que se arregla en Ajustes (no hay tiendas sin cuenta)');
+    check(true, 'una tienda sin cuenta enlazada dice el motivo y que se gestiona en idirecto (no hay tiendas sin cuenta)');
 }
 
 // Un id de cuenta que no existe ya no se confunde con «cuenta sin categoria».
@@ -2157,8 +2313,8 @@ try {
     $stPrueba = Menu::storeLevelStatus($storePrueba);
     check(
         ($stPrueba['reason'] ?? '') === 'cuenta_inexistente'
-            && str_contains(Menu::levelWarning($stPrueba), 'Ajustes'),
-        'una cuenta que no existe en el mayorista se detecta aparte y manda a Ajustes'
+            && str_contains(Menu::levelWarning($stPrueba), 'idirecto'),
+        'una cuenta que no existe en el mayorista se detecta aparte y se deriva a idirecto'
     );
 } catch (\Throwable $e) {
     check(false, 'diagnostico de la cuenta inexistente (' . $e->getMessage() . ')');
@@ -2174,18 +2330,25 @@ check(
     'una cuenta sin categoria de cliente explica que la asigna idirecto (texto plano)'
 );
 
-// Ajustes muestra el nivel y el editor y la plataforma pintan el aviso.
+// Ajustes no debe mostrar ni guardar cuenta, tarifa, margen ni nivel.
 $settingsView = (string) file_get_contents(TIENDA_BASE . '/app/Views/panel/settings.php');
+$settingsController = (string) file_get_contents(TIENDA_BASE . '/app/Controllers/Admin/SettingsController.php');
 $menuView = (string) file_get_contents(TIENDA_BASE . '/app/Views/panel/menu.php');
 $plataformaView = (string) file_get_contents(TIENDA_BASE . '/app/Views/panel/menu_plataforma.php');
 check(
-    str_contains($settingsView, 'Nivel de cliente') && str_contains($settingsView, 'nivelAviso'),
-    'Ajustes muestra el nivel de cliente de la cuenta y el aviso cuando falta'
+    !str_contains($settingsView, 'Cuenta en idirecto')
+        && !str_contains($settingsView, 'Tarifa efectiva')
+        && !str_contains($settingsView, 'Nivel de cliente')
+        && !str_contains($settingsView, 'name="id_margen"')
+        && !str_contains($settingsView, 'name="id_tienda_idirecto"')
+        && !str_contains($settingsController, "'id_margen'")
+        && !str_contains($settingsController, "'id_tienda_idirecto'"),
+    'Ajustes no muestra ni guarda la cuenta, la tarifa, el margen ni el nivel de cliente'
 );
 check(
-    str_contains($menuView, 'nivelAviso') && str_contains($menuView, '/panel/ajustes')
+    str_contains($menuView, 'nivelAviso') && !str_contains($menuView, '/panel/ajustes')
         && str_contains($plataformaView, 'storeLevelWarning'),
-    'el editor del menu y el panel de plataforma pintan el aviso accionable'
+    'el editor del menu y el panel de plataforma explican el nivel sin enlazar a una configuracion inexistente'
 );
 
 // =============================================================================
@@ -2585,6 +2748,148 @@ check(
     str_contains((string) file_get_contents(TIENDA_BASE . '/.htaccess'), 'ExpiresByType image/x-icon')
         && str_contains((string) file_get_contents(TIENDA_BASE . '/.htaccess'), 'ExpiresByType image/svg+xml'),
     'las imagenes se sirven con cache razonable (Apache; nginx ya usa expires 30d)'
+);
+
+// --- Centro de Ayuda ---------------------------------------------------------
+echo "\n== Centro de Ayuda ==\n";
+
+$ayudaTodas = Help::categories(true);
+$ayudaNormales = Help::categories(false);
+$ayudaArticulos = [];
+$ayudaRelacionadosOk = true;
+$ayudaContenidoOk = true;
+$ayudaRutasPanelOk = true;
+foreach ($ayudaTodas as $categoriaSlug => $categoriaAyuda) {
+    if (($categoriaAyuda['type'] ?? 'articles') === 'faq') {
+        continue;
+    }
+    foreach (Help::articlesForCategory((string) $categoriaSlug, true) as $articuloAyuda) {
+        $ayudaArticulos[] = $articuloAyuda;
+        if (trim((string) $articuloAyuda['title']) === ''
+            || trim((string) $articuloAyuda['summary']) === ''
+            || trim(strip_tags((string) $articuloAyuda['body'])) === '') {
+            $ayudaContenidoOk = false;
+        }
+        $rutaPanel = (string) $articuloAyuda['panel_path'];
+        if ($rutaPanel !== '' && $rutaPanel !== 'panel' && !str_starts_with($rutaPanel, 'panel/')) {
+            $ayudaRutasPanelOk = false;
+        }
+        foreach ((array) $articuloAyuda['related'] as $relacionado) {
+            if (Help::find((string) $relacionado, true) === null) {
+                $ayudaRelacionadosOk = false;
+            }
+        }
+    }
+}
+
+check(count($ayudaTodas) === 11, 'el Centro de Ayuda tiene las 11 categorias aprobadas');
+check(count($ayudaNormales) === 10 && !isset($ayudaNormales['plataforma']), 'la tienda no ve la categoria de plataforma');
+check(count($ayudaArticulos) === 38, 'el Centro de Ayuda contiene 38 articulos normales y de plataforma');
+check(Help::faqCount() === 22, 'el Centro de Ayuda contiene 22 preguntas frecuentes');
+check($ayudaContenidoOk, 'todos los articulos tienen titulo, resumen y contenido');
+check($ayudaRelacionadosOk, 'todos los enlaces a articulos relacionados existen');
+check($ayudaRutasPanelOk, 'todas las rutas de vuelta al panel tienen un formato valido');
+
+$ayudaPrecios = Help::find('configuracion/venta-cobro-pagos', true);
+check(
+    is_array($ayudaPrecios)
+        && str_contains((string) $ayudaPrecios['body'], 'Beneficio fijo (EUR)')
+        && str_contains((string) $ayudaPrecios['body'], 'Beneficio porcentual (%)')
+        && str_contains((string) $ayudaPrecios['body'], '(tarifa + beneficio fijo)')
+        && str_contains((string) $ayudaPrecios['body'], 'Guardar venta y cobro')
+        && str_contains((string) $ayudaPrecios['body'], 'productos propios'),
+    'la ayuda explica la formula, los dos campos y como guardar la configuracion'
+);
+check(
+    Help::find('plataforma/menu-plataforma', false) === null
+        && Help::find('plataforma/menu-plataforma', true) !== null,
+    'el articulo de plataforma exige el rol platform'
+);
+
+$busquedaParcial = array_column(Help::search('ban', false, 100), 'path');
+$busquedaAcento = array_column(Help::search('PEDÍDOS', false, 100), 'path');
+$busquedaBeneficios = array_column(Help::search('beneficio fijo', false, 100), 'path');
+$busquedaVacia = Help::search('contenidoquenoexiste', false, 100);
+$busquedaPlataformaTienda = array_filter(
+    Help::search('plataforma', false, 100),
+    static fn (array $r): bool => str_starts_with((string) $r['path'], 'plataforma/')
+);
+$busquedaPlataformaAdmin = array_filter(
+    Help::search('plataforma', true, 100),
+    static fn (array $r): bool => str_starts_with((string) $r['path'], 'plataforma/')
+);
+check(in_array('diseno/banners', $busquedaParcial, true), 'el buscador resuelve coincidencias parciales');
+check(in_array('pedidos/guia-pedidos', $busquedaAcento, true), 'el buscador ignora mayusculas y acentos');
+check(
+    in_array('configuracion/venta-cobro-pagos', $busquedaBeneficios, true)
+        && in_array('preguntas-frecuentes/calculo-precio-venta', $busquedaBeneficios, true),
+    'el buscador encuentra la guia y la FAQ de beneficios fijo y porcentual'
+);
+check($busquedaVacia === [], 'el buscador devuelve un estado vacio sin resultados');
+check($busquedaPlataformaTienda === [] && $busquedaPlataformaAdmin !== [], 'el buscador oculta la ayuda de plataforma a las tiendas');
+check(Help::search('a', false, 100) === [], 'el buscador exige al menos dos caracteres');
+
+$contexto = Help::contextual('/panel/diseno', false);
+check(
+    is_array($contexto) && ($contexto['path'] ?? '') === 'diseno/identidad-visual',
+    'el enlace contextual del panel apunta al articulo correcto'
+);
+$contextoAjustes = Help::contextual('/panel/ajustes', false);
+check(
+    is_array($contextoAjustes) && ($contextoAjustes['path'] ?? '') === 'configuracion/venta-cobro-pagos',
+    'la ayuda contextual de Ajustes abre la guia de precios y cobro'
+);
+
+$indiceFuente = (string) file_get_contents(TIENDA_BASE . '/index.php');
+$layoutPanel = (string) file_get_contents(TIENDA_BASE . '/app/Views/layouts/panel.php');
+$cssPanel = (string) file_get_contents(TIENDA_BASE . '/public/assets/css/panel.css');
+check(
+    str_contains($indiceFuente, "'/panel/ayuda'")
+        && str_contains($indiceFuente, "'/panel/ayuda/categoria/{category}'")
+        && str_contains($indiceFuente, "'/panel/ayuda/{category}/{slug}'")
+        && is_file(TIENDA_BASE . '/app/Controllers/Admin/HelpController.php'),
+    'las rutas del Centro de Ayuda estan registradas en el front controller'
+);
+check(
+    str_contains($layoutPanel, 'panel/ayuda') && str_contains($layoutPanel, 'help-context-link'),
+    'el panel enlaza con la Ayuda y muestra un enlace contextual'
+);
+check(
+    str_contains($cssPanel, '.help-layout') && str_contains($cssPanel, '@media (max-width: 900px)'),
+    'el Centro de Ayuda usa estilos propios y una adaptacion responsive'
+);
+check(
+    str_contains((string) file_get_contents(TIENDA_BASE . '/app/Views/panel/help_index.php'), 'No hemos encontrado nada')
+        && str_contains((string) file_get_contents(TIENDA_BASE . '/app/Views/panel/help_faq.php'), '<details'),
+    'la ayuda tiene estado sin resultados y FAQ accesibles por teclado'
+);
+check(
+    str_contains((string) file_get_contents(TIENDA_BASE . '/app/Views/panel/help_404.php'), 'No hemos encontrado esa página de ayuda'),
+    'el Centro de Ayuda tiene una pagina 404 propia dentro del panel'
+);
+check(
+    !preg_match('/\bCoste\b|\bcost_idirecto\b|\$linea\[.coste.\]/i', (string) file_get_contents(TIENDA_BASE . '/app/Views/panel/order.php')),
+    'la ficha del pedido no muestra el coste interno del mayorista'
+);
+$orderViewFinal = (string) file_get_contents(TIENDA_BASE . '/app/Views/panel/order.php');
+check(
+    !str_contains($orderViewFinal, 'margen_origen')
+        && !str_contains($orderViewFinal, "['id_margen']")
+        && !str_contains($orderViewFinal, '· tarifa')
+        && !str_contains((string) file_get_contents(TIENDA_BASE . '/app/Views/panel/orders.php'), 'Configura la cuenta'),
+    'el panel de pedidos no muestra identificadores de tarifa o margen ni enlaces a una configuracion inexistente'
+);
+$helpSources = (string) file_get_contents(TIENDA_BASE . '/app/Help/categories.php')
+    . (string) file_get_contents(TIENDA_BASE . '/app/Help/faq.php');
+foreach (glob(TIENDA_BASE . '/app/Help/articles/*.php') ?: [] as $helpFile) {
+    $helpSources .= (string) file_get_contents($helpFile);
+}
+check(
+    !str_contains($helpSources, 'Cuenta en idirecto')
+        && !str_contains($helpSources, 'Tarifa efectiva')
+        && !str_contains($helpSources, 'Guardar cuenta')
+        && !str_contains($helpSources, 'Ajustes > Cuenta en idirecto'),
+    'la ayuda no envia a una tarjeta de cuenta o margen que ya no existe'
 );
 
 echo "\n==============================================================\n";

@@ -5,6 +5,174 @@ El detalle línea a línea está en `git log`.
 
 ---
 
+## 2026-11-09 · Ayuda actualizada: configurar beneficio fijo y porcentual
+
+**Motivo (petición por chat):** el Centro de Ayuda debe explicar la nueva tarifa
+combinada y cómo se configura, sin seguir diciendo que el precio se calcula solo
+con un porcentaje ni atribuir la tarifa base a una pantalla que ya no la edita.
+
+**Qué se hizo**
+
+- **Guía «Venta, precios, cobro y formas de pago»**: explica la fórmula
+  `(tarifa de la cuenta + beneficio fijo) × (1 + beneficio porcentual / 100)`, el
+  orden exacto (fijo, porcentaje y IVA), dos ejemplos con 1 € y 500 €, los límites
+  de cada campo (200 % y 999.999,99 €), el guardado paso a paso y que los productos
+  propios no pasan por esta fórmula.
+- **Artículos conectados**: se actualizaron «Precios, IVA, beneficios y stock»,
+  «Catálogo central», «Primeros pasos» y «Cuenta del mayorista y nivel de cliente»
+  para distinguir la tarifa de idirecto de los beneficios que sí se editan en la
+  tienda.
+- **Nueva FAQ** «¿Cómo se calcula el precio de venta del catálogo?». El Centro de
+  Ayuda mantiene **38 artículos** y pasa de **21 a 22 preguntas frecuentes**.
+- **Enlace contextual**: `/panel/ajustes` abre ahora la guía de precios y cobro,
+  que es la pantalla donde se configuran los dos beneficios.
+- **Pruebas**: `verify.php` 371 → **374** comprobaciones. Se comprueba el contenido
+  de la guía, que el buscador devuelve la guía y la FAQ al buscar «beneficio fijo»
+  y que la ayuda contextual de Ajustes apunta al artículo correcto.
+- **QA HTTP real**: con un usuario temporal (borrado) se abrieron la guía, la FAQ y
+  la búsqueda, y se comprobó que el enlace contextual de Ajustes apunta a la guía.
+  Todas las páginas respondieron 200 y mostraron la fórmula y los nombres exactos
+  de los campos.
+
+---
+
+## 2026-11-09 · Tarifa por tienda: beneficio fijo + beneficio porcentual
+
+**Motivo (petición por chat):** un único porcentaje no sirve para todo el catálogo.
+Un 12 % sobre un cable de 1 € deja 0,12 € de beneficio, mientras que subir el
+porcentaje para compensar encarece demasiado los portátiles. Cada tienda necesita
+combinar un importe fijo en euros (que protege los artículos baratos) con un
+porcentaje (que mantiene el margen en los caros).
+
+**Qué se hizo**
+
+- **Fórmula única**: `precio base = (tarifa de la tienda + markup_fixed) ×
+  (1 + markup / 100)`. Primero se suma el fijo, después se aplica el porcentaje y
+  por último el IVA cuando el precio es de la web. El pedido guarda la base sin IVA.
+- **Migración `013`**: nueva columna `mt_stores.markup_fixed decimal(12,2) NOT NULL
+  DEFAULT 0.00`. `markup` sigue siendo el porcentaje. Las tiendas existentes quedan
+  con 0,00 y conservan exactamente sus precios; la migración está probada dos veces.
+- **Cálculo en un solo sitio**: `Catalog::applyStoreMargin()` y
+  `Catalog::salePriceFromCost()` aplican la fórmula en PHP y `precioSql()` en SQL,
+  con el mismo orden y redondeo. Se usa en listados, ficha, filtros, rangos de
+  precio, carrito, checkout y el buscador de productos del panel. La clave de caché
+  incluye también el beneficio fijo.
+- **Panel > Ajustes**: dos campos independientes («Beneficio fijo (EUR)» y
+  «Beneficio porcentual (%)»), explicación de la fórmula y ejemplo con importes de
+  tarifa de 1 € y 500 €. Acepta coma decimal y valida en servidor (0–200 % y hasta
+  999.999,99 EUR) sin convertir en 0 un valor inválido. Cada guardado sigue usando
+  el `store_id` de la sesión.
+- **Configuración de respaldo**: `CATALOG_DEFAULT_MARKUP_FIXED` (0 por defecto) en
+  `config/catalog.php` y `.env.example`, junto a `CATALOG_DEFAULT_MARKUP`.
+- **Pruebas**: `verify.php` 340 → **347**: fórmula pura, IVA después del beneficio,
+  contraste de la fórmula PHP con la consulta SQL, web/pedido, persistencia y
+  aislamiento entre dos tiendas, y presencia/validación de los campos del panel.
+- **QA HTTP real**: con un usuario temporal en una tienda existente (usuario borrado
+  y valores restaurados) se comprobó el rechazo de un valor inválido, el guardado con
+  coma decimal, el cambio del precio de ficha y que otra tienda mantiene sus valores.
+
+---
+
+## 2026-11-06 · Cuenta y margen del mayorista fuera de Ajustes
+
+**Motivo (petición por chat):** la tienda no debe ver ni configurar el margen ni
+la tarifa del mayorista en `panel/ajustes`. Todo lo que aparecía bajo «Cuenta en
+idirecto (mayorista)», incluida la «Tarifa efectiva: id_margen (puesta en la
+tienda)», se gestiona en el panel de administración de idirecto.
+
+**Qué se hizo**
+
+- Se eliminó de Ajustes la tarjeta completa: id de cuenta, tarifa/margen, resumen
+  de cuenta, tarifa efectiva, NIF/dirección de facturación y nivel de cliente.
+- El formulario de datos de la tienda ya no lee ni guarda `id_tienda_idirecto` ni
+  `id_margen`. Un POST manipulado tampoco puede cambiar esos campos.
+- `Account::marginForStore()` lee siempre `tiendas.id_margen` de la cuenta
+  vinculada. `mt_stores.id_margen` queda como copia histórica sin efecto sobre
+  precios, envíos ni nivel.
+- `Controller::bootPricing()` y `OrderController::bootStorePricing()` usan esa
+  tarifa de idirecto. El envío y las comprobaciones de nivel usan la misma fuente.
+- Se retiraron los identificadores internos de margen/origen de la ficha y el
+  listado de pedidos, y los avisos que enviaban a configurar esa tarjeta en Ajustes.
+- Se actualizaron los mensajes de error, los avisos del menú y la ayuda para
+  indicar que la cuenta, la tarifa y el nivel se gestionan en idirecto.
+- README, PROJECT, STATE y CHANGELOG reflejan que Ajustes ya no administra esos
+  datos.
+
+**Pruebas**
+
+- Cuatro comprobaciones nuevas en `verify.php`: origen de la tarifa en idirecto,
+  uso en storefront y panel, Ajustes sin cuenta/margen y pedidos/ayuda sin la
+  tarjeta antigua. Total actual: **353** comprobaciones.
+- Las comprobaciones nuevas pasan; se mantienen los mismos 9 fallos antiguos de
+  fixtures de registro/precios/compra/menú.
+- QA autenticada en Chrome: Ajustes en escritorio y a 390 px sin la tarjeta, sin
+  desbordamiento y sin errores de consola. Ajustes, pedidos, menú y ayuda
+  responden 200.
+- No se ejecutaron migraciones ni se cambiaron tablas ni datos. La columna
+  histórica `mt_stores.id_margen` se conserva, pero ya no se usa en precios.
+
+---
+
+## 2026-11-06 · Centro de Ayuda integrado y coste interno fuera de la ficha de pedido
+
+**Motivo (petición por chat):** crear un Centro de Ayuda para personas sin
+conocimientos técnicos dentro del panel de cada tienda, basado en la auditoría
+real del panel, y dejar de mostrar el coste interno del mayorista en la ficha de
+pedido.
+
+**Qué se hizo**
+
+- Se auditó el panel autenticado con datos reales: Panel, Pedidos, Clientes,
+  Menu, Diseno, Banners, Avisos, Productos propios, Dominios, Ajustes, Logs y
+  Menu plataforma. La revisión visual se hizo con Chrome headless/CDP y sesiones
+  temporales de QA, sin modificar usuarios ni datos de las tiendas.
+- **Centro de Ayuda** en `/panel/ayuda`: portada con buscador, accesos rápidos,
+  categorías, artículos, FAQ y estado sin resultados. Enlace **Ayuda** en la barra
+  lateral y enlace contextual «Ayuda de esta pantalla» en las pantallas reales.
+- **38 artículos + 21 preguntas frecuentes** en 11 categorías. Incluye guías
+  completas de creación de tienda y de pedidos, enlaces de vuelta a las rutas
+  reales y artículos relacionados.
+- **Contenido en archivos**: `app/Core/Help.php` carga `app/Help/categories.php`,
+  `app/Help/faq.php` y `app/Help/articles/*.php`. No se creó ninguna tabla ni
+  migración.
+- **Buscador en servidor**: búsqueda parcial en títulos, resúmenes, palabras clave
+  y contenido, sin distinguir mayúsculas ni acentos, con orden por relevancia,
+  filtrado de palabras vacías y estado sin resultados con categorías sugeridas.
+- **Acceso**: todas las rutas exigen sesión. La categoría y el artículo de
+  plataforma solo existen para el rol `platform`; para el resto devuelven 404.
+  Se comprobó que el contenido es idéntico entre dos tiendas y no contiene datos
+  de ninguna.
+- **Respuesta accesible y responsive**: navegación por teclado, FAQ con
+  `<details>`, textos alternativos reservados para futuras capturas, foco visible,
+  enlace para saltar al contenido, navegación móvil compacta y tablas apiladas.
+- **Transparencia**: los artículos separan las funciones reales de las limitaciones
+  actuales (textos legales, facturación, emails, permisos, transporte, plan y
+  soporte). No se inventaron canales de soporte, contenidos legales ni datos
+  fiscales/comerciales.
+- **Coste interno**: se eliminó la columna «Coste» y el valor `cost_idirecto` de
+  `/panel/pedidos/{id}`. La tarifa y los importes necesarios para el flujo siguen
+  visibles; el coste de la tabla de stock no se muestra.
+- **Pruebas**: `verify.php` incorpora 20 comprobaciones del Centro de Ayuda
+  (catálogo, relaciones, búsqueda, permisos, rutas, estilos, 404 y ausencia del
+  coste en pedidos). Las 20 pasan. La suite completa queda en 349 comprobaciones;
+  se mantienen 9 fallos antiguos de pruebas de registro/precios/compra/menú que
+  dependen de fixtures concretos de la base restaurada, fuera de los archivos
+  tocados.
+
+**Limitaciones conocidas que la propia ayuda documenta**
+
+- No hay editor de páginas de contenido ni textos legales.
+- No hay facturación, pasarela de pago, emails automáticos ni seguimiento de
+  transporte.
+- La ficha de pedido no permite editar cliente, dirección o gastos de envío.
+- El formulario «Anadir lineas» de un pedido existente aparece precargado y puede
+  duplicar líneas si se guarda; se avisa en la ayuda.
+- Los roles de usuario todavía no limitan el acceso a las secciones de la tienda.
+- Persisten desbordamientos horizontales previos en la ficha de pedido y en el
+  listado de pedidos en móvil; no se tocó esa lógica en esta sesión.
+
+---
+
 ## 2026-11-04 · Sesiones antiguas compatibles y título con razón social
 
 **Motivo (petición por chat):** la portada fallaba con la sesión que ya estaba abierta

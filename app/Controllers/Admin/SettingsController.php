@@ -6,17 +6,16 @@ namespace Tienda\Controllers\Admin;
 
 use Tienda\Core\Auth;
 use Tienda\Core\Controller;
-use Tienda\Core\Idirecto\Account;
 use Tienda\Core\Session;
 use Tienda\Core\ShippingZone;
 use Tienda\Models\Catalog;
-use Tienda\Models\Menu;
 use Tienda\Models\Store;
 use Tienda\Models\StoreUser;
 
 /**
- * Ajustes de la tienda: datos fiscales/de contacto, cuenta del mayorista y
- * usuarios del panel.
+ * Ajustes de la tienda: datos fiscales/de contacto, venta y cobro, envío y
+ * usuarios del panel. La cuenta y la tarifa del mayorista se gestionan en
+ * idirecto y no se editan ni se muestran aquí.
  */
 final class SettingsController extends Controller
 {
@@ -26,10 +25,6 @@ final class SettingsController extends Controller
         $storeId = $this->storeId();
 
         $store = Store::findWithPlan($storeId) ?? [];
-
-        // Nivel de cliente del mayorista: se muestra junto a la cuenta, con el
-        // motivo cuando la cuenta no lo tiene asignado.
-        $nivel = Menu::storeLevelStatus($storeId);
 
         $shippingZones = ShippingZone::storeConfig($storeId);
         $shippingOld = Session::get('shipping_zone_old', []);
@@ -59,10 +54,6 @@ final class SettingsController extends Controller
             'pageTitle' => 'Ajustes',
             'store'     => $store,
             'users'     => StoreUser::forStore($storeId),
-            'account'   => Account::forStore($store),
-            'idirectoReady' => Account::enabled(),
-            'nivel'     => $nivel,
-            'nivelAviso' => $nivel['level'] === null ? Menu::levelWarning($nivel) : '',
             'shippingZones' => $shippingZones,
             'shippingBlockedMessage' => $shippingMessage,
         ], 'panel');
@@ -88,13 +79,8 @@ final class SettingsController extends Controller
             return $this->saveShippingZones($storeId);
         }
 
-        // Cuenta del mayorista: si se informa, tiene que existir de verdad.
-        $idTienda = (int) $this->input('id_tienda_idirecto', 0);
-        if ($idTienda > 0 && Account::findTienda($idTienda) === null) {
-            Session::flash('error', 'La cuenta #' . $idTienda . ' no existe en el mayorista.');
-            $this->redirect('panel/ajustes');
-        }
-
+        // El enlace con el mayorista y su tarifa son datos de idirecto. Este
+        // formulario no los lee ni los sobrescribe.
         Store::updateById($storeId, [
             'name'        => (string) $this->input('name', 'Mi tienda'),
             'legal_name'  => (string) $this->input('legal_name', ''),
@@ -104,8 +90,6 @@ final class SettingsController extends Controller
             'city'        => (string) $this->input('city', ''),
             'province'    => (string) $this->input('province', ''),
             'tax_rate'    => (float) str_replace(',', '.', (string) $this->input('tax_rate', '21')),
-            'id_tienda_idirecto' => $idTienda > 0 ? $idTienda : null,
-            'id_margen'   => max(0, (int) $this->input('id_margen', 0)) ?: null,
         ]);
 
         Session::flash('success', 'Datos de la tienda actualizados.');
@@ -113,20 +97,42 @@ final class SettingsController extends Controller
     }
 
     /**
-     * Guarda el beneficio, los gastos de envio y las formas de pago.
+     * Guarda el beneficio (fijo y porcentual), los gastos de envio y las formas
+     * de pago.
      *
-     * De aqui sale lo que paga el cliente en la web: precio = tarifa de la tienda
-     * + este beneficio (+ IVA), y el envio segun la tarifa y el minimo gratis.
+     * De aqui sale lo que paga el cliente en la web:
+     * `(tarifa + beneficio fijo) * (1 + porcentaje / 100)`, mas el IVA. El envio
+     * se calcula aparte segun la tarifa y el minimo gratis.
      */
     private function saveShop(int $storeId): string
     {
-        $markup = (float) str_replace(',', '.', (string) $this->input('markup', '15'));
+        $errors = [];
+        $markup = $this->marginValue(
+            $this->input('markup', '15'),
+            'Beneficio porcentual',
+            Catalog::MAX_MARKUP_PERCENT,
+            '%',
+            $errors
+        );
+        $markupFixed = $this->marginValue(
+            $this->input('markup_fixed', '0'),
+            'Beneficio fijo',
+            Catalog::MAX_MARKUP_FIXED,
+            'EUR',
+            $errors
+        );
+        if ($errors !== []) {
+            Session::flash('error', implode(' ', $errors));
+            $this->redirect('panel/ajustes');
+        }
+
         $flat = (float) str_replace(',', '.', (string) $this->input('shipping_flat', '0'));
         $freeRaw = trim((string) $this->input('free_shipping_from', ''));
         $free = $freeRaw === '' ? null : (float) str_replace(',', '.', $freeRaw);
 
         Store::updateById($storeId, [
-            'markup'             => max(0, min(200, $markup)),
+            'markup'             => $markup,
+            'markup_fixed'       => $markupFixed,
             'shipping_flat'      => max(0, $flat),
             'free_shipping_from' => $free !== null && $free > 0 ? $free : null,
             'pay_transfer'       => (string) $this->input('pay_transfer', '') === '1' ? 1 : 0,
@@ -136,11 +142,38 @@ final class SettingsController extends Controller
         ]);
 
         // Los precios del catalogo van cacheados por tienda (tarifa + beneficio):
-        // al cambiar el beneficio hay que olvidar la cache de precios.
+        // al cambiar cualquiera de los dos componentes hay que olvidar la cache.
         Catalog::forgetPriceCache();
 
         Session::flash('success', 'Ajustes de venta y cobro guardados.');
         $this->redirect('panel/ajustes');
+    }
+
+    /**
+     * Lee un beneficio no negativo con hasta dos decimales (admite coma).
+     *
+     * No se convierte en silencio un valor invalido a 0: en un dato financiero
+     * eso cambiaria todos los precios sin que el tendero se enterase. Se acumula
+     * el error y no se guarda ningun cambio.
+     */
+    private function marginValue(mixed $value, string $label, float $max, string $unit, array &$errors): float
+    {
+        $raw = trim(str_replace(',', '.', (string) $value));
+        if ($raw === '') {
+            $raw = '0';
+        }
+        if (!preg_match('/^\d+(?:\.\d{1,2})?$/', $raw)) {
+            $errors[] = $label . ': escribe un numero positivo con hasta dos decimales.';
+            return 0.0;
+        }
+
+        $number = (float) $raw;
+        if ($number > $max) {
+            $errors[] = $label . ': el maximo es ' . rtrim(rtrim(number_format($max, 2, '.', ''), '0'), '.') . ' ' . $unit . '.';
+            return 0.0;
+        }
+
+        return round($number, 2);
     }
 
     /** Configura las cuatro zonas fijas y el mensaje de rechazo. */

@@ -28,19 +28,25 @@ salvo `mt_migrations`, `mt_plans` y `mt_themes`, tienen FK a `mt_stores(id)` con
 `address`, `city`, `province`, `postal_code`, `country`, `currency`, `tax_rate`,
 `meta_title`, `meta_description`, `show_prices`, `allow_orders`,
 `own_products_quota_override`, `created_at`, `updated_at`, y la venta y el cobro:
-`markup` (beneficio sobre su tarifa), `shipping_flat`, `free_shipping_from`,
-`pay_transfer`, `pay_cod`, `pay_pickup`, `bank_details`.
+`markup` (beneficio porcentual), `markup_fixed` (beneficio fijo en EUR),
+`shipping_flat`, `free_shipping_from`, `pay_transfer`, `pay_cod`, `pay_pickup`,
+`bank_details`.
 
 - `own_products_quota_override` gana sobre la cuota del plan (`-1` = ilimitado).
 - `show_prices` / `allow_orders` permiten una tienda "escaparate" sin compra (y sin
   botones de carrito).
-- **`markup`** decide el precio de venta: `tarifa de la tienda × (1 + markup/100)`.
-  En la web se muestra **con IVA incluido** (`Catalog::forStore(..., true)`) y en el
-  pedido se guarda la base sin IVA.
+- El precio de venta se calcula con **dos componentes**:
+  `(tarifa de la cuenta en idirecto + markup_fixed) × (1 + markup/100)`. Primero se
+  suma el beneficio fijo en euros y después se aplica el porcentaje; el IVA se suma
+  al final. La tarifa base sale de `tiendas.id_margen`, no de una copia editable en
+  el panel. En la web se muestra **con IVA incluido** (`Catalog::forStore(..., true)`)
+  y en el pedido se guarda la base sin IVA. Las tiendas existentes tienen
+  `markup_fixed = 0` por defecto, así que conservan sus precios.
 - `id_tienda_idirecto` → `tiendas.id` (la cuenta con la que la tienda compra al
-  mayorista) e `id_margen` → `precios.id_margen` (su tarifa). Los edita el dueño en
-  Ajustes; la tarifa vacía cae a `tiendas.id_margen` y, si no, a
-  `IDIRECTO_DEFAULT_ID_MARGEN` (12).
+  mayorista). La tarifa efectiva se lee de `tiendas.id_margen` en idirecto; si la
+  cuenta no tiene tarifa se usa `IDIRECTO_DEFAULT_ID_MARGEN` (12). `mt_stores.id_margen`
+  se conserva como copia histórica y **no decide precios**. Ni la cuenta ni la tarifa
+  se editan en el panel de la tienda.
 - Las tiendas **nuevas se dan de alta en `/registro`** (`Core/Registration`), y
   solo con una **cuenta activa del mayorista**: el tendero entra con su email y
   contraseña de idirecto (`Account::login()`, `activo = 2` y la firma
@@ -117,9 +123,10 @@ tienda), `cost_idirecto` (coste del mayorista), `sent_at`, `idirecto_pedido_id`
   cada línea ya enviada, de modo que un pedido de 4 líneas se puede mandar en dos
   veces (2+2) sin repetir nada.
 - Los productos `own` **no** se envían al mayorista (no están en su catálogo).
-- El **precio de venta** de la web es la tarifa de la tienda + su beneficio y **con
-  IVA**; en la línea se guarda la base sin IVA y el IVA se suma en `tax_total`, así
-  el total coincide con lo que vio el cliente.
+- El **precio de venta** de la web es
+  `(tarifa de la cuenta en idirecto + markup_fixed) × (1 + markup/100)` y **con IVA**;
+  en la línea se guarda la base sin IVA y el IVA se suma en `tax_total`, así el total
+  coincide con lo que vio el cliente.
 - Al enviar a `pedidos_addr` se le pasa la **dirección del cliente** (con sus ids y
   el email en `localidad`) y su comentario en `pedidos.detalles`.
 

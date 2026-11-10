@@ -83,6 +83,8 @@ database/
   migrations/004_checkout.sql    mt_customers/mt_customer_addresses + venta y cobro
   migrations/005..009_*.sql      Menú (árbol, editor, filtros y visibilidad por tienda)
   migrations/010_favicon.sql     favicon_key + favicon_version en mt_stores
+  migrations/011..012_*.sql      Banners/avisos y zonas de venta y envío
+  migrations/013_store_markup_fixed.sql  Beneficio fijo en EUR por tienda
   seeds/001_seed.sql             Planes, temas y tienda demo
   migrate.php                    Ejecutor de migraciones + semillas
 deploy/                    Vhosts de Apache, plantilla de nginx y scripts
@@ -92,7 +94,7 @@ public/                    ÚNICO directorio servido como estático
   uploads/                 Archivos locales (si STORAGE_DRIVER=local)
 storage/                   cache/ y logs/ (escritura de la app; la caché se limpia sola)
   logs/<canal>/<día>/       Un fichero JSON-lines por día y tienda (`Logger`)
-tools/verify.php           328 comprobaciones automáticas
+tools/verify.php           374 comprobaciones automáticas
 tools/cache-clear.php      Gestiona la caché de datos (estado, vaciar, patrones, gc)
 tools/logs.php             Consulta los logs por consola (filtros, resumen, días, tiendas, gc)
 ```
@@ -122,7 +124,7 @@ tools/logs.php             Consulta los logs por consola (filtros, resumen, día
 | `Specs` | Parsea características y especificaciones; `quickHighlights()` alimenta los chips de la tarjeta |
 | `Str` | `slugify()` (mismo criterio que idirecto) y `excerpt()` |
 | `Dns` | Verificación de dominios por A/CNAME/TXT (con *lookup* inyectable) |
-| `Core/Idirecto/Account` | Cuenta del mayorista de la tienda: tarifa, sucursal, comercial, forma de pago, país/provincia |
+| `Core/Idirecto/Account` | Cuenta del mayorista de la tienda: tarifa de idirecto, sucursal, comercial, forma de pago, país/provincia |
 | `Core/Idirecto/Pricing` | Tarifa, coste, almacén, IVA, sujeto y canon de un producto del catálogo |
 | `Core/Idirecto/OrderGateway` | Vista previa y envío de líneas a `pedidos_addr`/`pedidos`/`pedidos_det` |
 | `Registration` | Alta de una tienda desde una cuenta del mayorista (alta pública `/registro`) |
@@ -208,9 +210,17 @@ Todas con `utf8mb4_unicode_ci` y FK a `mt_stores(id) ON DELETE CASCADE`.
 `custom_css`. Los colores opcionales en `NULL` significan «usa el valor del tema».
 
 `mt_stores` guarda además el **enlace con el mayorista** (migración `003`):
-`id_tienda_idirecto` (cuenta en `tiendas.id`) e `id_margen` (`precios.id_margen`).
-Se editan en Ajustes; la tarifa vacía cae a la de la cuenta y, si no hay, a
-`IDIRECTO_DEFAULT_ID_MARGEN`.
+`id_tienda_idirecto` (cuenta en `tiendas.id`). La cuenta y la tarifa se gestionan
+en idirecto: la tarifa efectiva sale siempre de `tiendas.id_margen`;
+`mt_stores.id_margen` solo se conserva como copia histórica y no decide precios.
+
+La **tarifa comercial** de cada tienda se guarda en dos columnas (migración `013`):
+`markup` es el beneficio porcentual y `markup_fixed` el beneficio fijo en euros.
+El precio base se calcula siempre en este orden:
+`(tarifa de la cuenta en idirecto + markup_fixed) × (1 + markup / 100)`; después se suma el IVA
+en la web. Las tiendas existentes nacen con `markup_fixed = 0,00`, así que conservan
+exactamente los precios que tenían. Los dos valores se editan por tienda en
+**Panel > Ajustes** y se validan en servidor (0–200 % y hasta 999.999,99 EUR).
 
 `mt_stores` guarda el **favicon propio** (migración `010`): `favicon_url` (ya venía
 del esquema `001`), `favicon_key` (clave en el almacenamiento, para comprobar que el
@@ -333,10 +343,11 @@ El comprador **no es el tendero**: tiene su propia cuenta y su propia sesión
   comprado, los precios y cantidades mostradas son ficticias». La comprobación está
   también en `Cart::add()` y `Checkout::place()`, no solo en los botones. Para abrir
   la venta real hay que poner `SHOP_TEST_MODE=false`.
-- **Precio de venta**: `tarifa de la tienda (mt_stores.id_margen) + beneficio
-  (mt_stores.markup)`, y en la web **con IVA incluido** (`Catalog::forStore()` fija
-  ese contexto en cada petición; el panel usa la base sin IVA). El pedido guarda la
-  base en `mt_order_items.price_customer` y el IVA se calcula al totalizar.
+- **Precio de venta**: `(tarifa de la cuenta en idirecto (tiendas.id_margen) +
+  mt_stores.markup_fixed) × (1 + mt_stores.markup / 100)`, y después el IVA en la web
+  (`Catalog::forStore()` fija ese contexto en cada petición; el panel usa la base sin
+  IVA). El pedido guarda la base en `mt_order_items.price_customer` y el IVA se
+  calcula al totalizar.
 - **Envío**: tarifa plana y gratis desde X € (`Shipping`, configurable en Ajustes).
 - **Cierre** (`Checkout`): dirección de envío (de la libreta o nueva), facturación
   opcional distinta, forma de pago (transferencia, contra reembolso o recogida) y
@@ -368,8 +379,8 @@ mismo criterio que el login de idirecto:
 1. `mt_stores`: slug único (el pedido o derivado del nombre), plan por defecto
    (`IDIRECTO_REGISTER_PLAN`), `status = 1`, datos fiscales/de contacto copiados de
    la cuenta (razón social, NIF, dirección, población, provincia y país resueltos
-   por id) y, sobre todo, **`id_tienda_idirecto` + `id_margen`**: la tienda nace
-   enlazada y puede enviar pedidos sin configurar nada.
+   por id) y, sobre todo, **`id_tienda_idirecto`**: la tienda nace enlazada y puede
+   enviar pedidos sin configurar nada. La tarifa se consulta en `tiendas.id_margen`.
 2. `mt_store_users`: usuario `owner` con el email de la cuenta y **contraseña
    propia** (`password_hash`). La contraseña del mayorista no se guarda.
 
@@ -543,8 +554,8 @@ ejemplo 2 de 4) y `OrderGateway::send()` escribe en el mayorista:
    `price_idirecto`, `cost_idirecto`), actualiza `mt_orders` y, si ya no queda
    ninguna línea del catálogo pendiente, pasa el pedido a **enviado**.
 
-La tarifa sale de `precios` con el `id_margen` de la tienda (respaldo:
-`tiendas.id_margen` → `IDIRECTO_DEFAULT_ID_MARGEN`) y el coste de `stock` +
+La tarifa sale de `precios` con el `id_margen` de la cuenta en idirecto
+(`tiendas.id_margen`; respaldo `IDIRECTO_DEFAULT_ID_MARGEN`) y el coste de `stock` +
 `tarifas`, con los mismos criterios que `getPrecio()`/`getCosto()` de idirecto
 (`app/Core/Idirecto/Pricing.php`). Los **productos propios** no se pueden enviar
 (no existen en el catálogo del mayorista): el panel los marca y quedan fuera.
@@ -689,7 +700,7 @@ servidores no los traen en `/etc/mime.types` y servirían la imagen sin
 
 ```bash
 sudo bash deploy/setup-local-domain.sh     # /etc/hosts + VirtualHost + permisos
-php tools/verify.php                       # 328 comprobaciones
+php tools/verify.php                       # 374 comprobaciones
 php -S 127.0.0.1:8099 index.php            # servidor embebido (alternativa)
 ```
 
@@ -725,7 +736,7 @@ certificado wildcard; el panel los comprueba en **Dominios > Comprobar que carga
 ## 10. Verificación antes de dar algo por hecho
 
 ```bash
-php tools/verify.php                 # debe decir: TODO OK (328 comprobaciones)
+php tools/verify.php                 # debe decir: TODO OK (374 comprobaciones)
 curl -s -o /dev/null -w '%{http_code}\n' http://local.tienda/
 curl -s -o /dev/null -w '%{http_code}\n' -H 'Host: idirecto-demo.local.tienda' http://127.0.0.1/
 curl -s -o /dev/null -w '%{http_code}\n' http://local.tienda/catalogo
@@ -779,7 +790,8 @@ google-chrome --headless=new --disable-gpu --no-sandbox \
 | Un cliente del mayorista no puede registrarse y su contraseña es correcta | `tiendas.activo` **no** vale `1`: idirecto marca las cuentas activas con `activo = 2` (y hay que descartar `cerrada` y `deleted`) | Mismo filtro que el login de idirecto: `activo = 2 AND COALESCE(cerrada,0)=0 AND COALESCE(deleted,0)=0` |
 | `SQLSTATE[HY093]: Invalid parameter number` al buscar clientes | En `Customer::forStore()` el mismo `:q` se usaba en tres `LIKE` de la misma consulta (prohibido con `EMULATE_PREPARES = false`) | Un parámetro por repetición: `:q1`, `:q2`, `:q3` |
 | La web muestra un precio y el pedido cobra otro | El storefront trabaja **con IVA incluido** (`Catalog::forStore(..., true)`) y el panel **sin IVA** (`false`); `price_final` es el precio de venta de cada contexto y `price_net` la base | Convertir con `Catalog::netFromSale()` / `saleFromNet()`; en el pedido se guarda **siempre** la base sin IVA |
-| Los precios del catálogo salen «demasiado baratos» (por debajo del coste) | Nadie fijó el contexto de la tienda y `precioSql()` cae en `MIN(precios.precio)` de **todas** las tarifas | Llamar a `Catalog::forStore($id_margen, $markup, $tax, $withTax)` al empezar la petición: lo hace `Controller::bootPricing()` en el storefront y `OrderController::bootStorePricing()` en el panel |
+| Los precios del catálogo salen «demasiado baratos» (por debajo del coste) | Nadie fijó el contexto de la tienda y `precioSql()` cae en `MIN(precios.precio)` de **todas** las tarifas | Llamar a `Catalog::forStore($id_margen, $markup, $tax, $withTax, $markupFixed)` al empezar la petición: lo hace `Controller::bootPricing()` en el storefront y `OrderController::bootStorePricing()` en el panel |
+| El beneficio fijo parece no aplicarse o se aplica después del porcentaje | `precioSql()` y `Catalog::applyStoreMargin()` son las dos vías de cálculo y deben conservar el orden `(tarifa + fijo) * (1 + porcentaje/100)`; el IVA va al final | Probar fijo solo, porcentaje solo y ambos; `verify.php` compara la fórmula PHP con la consulta real |
 | `Fatal error: Access level to ...::requireAuth() must be protected` | Ese método ya existe en `Core\Controller`: un controlador hijo no puede bajarlo a `private` | No redefinirlo (o hacerlo `protected`); en los `Admin/*` solo se redefine `storeId()` |
 | Una compra fallida dejaba una dirección vacía en la libreta | Se guardaba la dirección **antes** de validar el pedido | Guardarla solo cuando el pedido ya está registrado (`CheckoutController::place()`) |
 

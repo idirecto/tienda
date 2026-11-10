@@ -31,8 +31,8 @@ $enlace = static function (string $clave, string $busqueda) use ($base): string 
         </div>
     <?php elseif (empty($account['configurada'])): ?>
         <div class="alert alert-error">
-            Esta tienda no tiene cuenta en el mayorista, asi que no se pueden enviar pedidos.
-            <a href="<?= e($base) ?>/panel/ajustes">Configura la cuenta en idirecto</a>.
+            Esta tienda no tiene una cuenta del mayorista vinculada, asi que no se pueden enviar pedidos.
+            La vinculacion se gestiona en idirecto.
         </div>
     <?php endif; ?>
 

@@ -21,6 +21,32 @@ _(vacío — sin petición pendiente)_
 
 Cada petición terminada se anota aquí con la fecha, qué se pidió y qué se hizo.
 
+### 2026-11-09 · Ayuda del beneficio fijo + porcentual (petición por chat)
+
+**Pedido:** actualizar la ayuda para incluir la nueva tarifa combinada y explicar
+cómo se configura.
+
+**Hecho:** la guía de **Ajustes > Venta y cobro** explica la fórmula, el orden, dos
+ejemplos, los límites y los pasos de guardado; se actualizaron Precios/IVA, Catálogo
+central, Primeros pasos y Cuenta del mayorista; se añadió la FAQ
+«¿Cómo se calcula el precio de venta del catálogo?» (22 FAQ) y el enlace contextual
+de Ajustes abre esa guía. `verify.php` 371 → **374** (TODO OK) y QA HTTP real con
+usuario temporal (borrado). Detalle en `CHANGELOG.md` y `STATE.md`.
+
+### 2026-11-09 · Tarifa por tienda: beneficio fijo + porcentual (petición por chat)
+
+**Pedido:** sustituir el margen único de cada tienda por dos componentes combinados:
+un beneficio fijo en euros que se suma al coste y un porcentaje que se aplica sobre
+el resultado, para que los artículos baratos dejen margen sin encarecer los caros.
+Debe aplicarse a todas las tiendas, cada una con su configuración independiente.
+
+**Hecho:** migración `013` (`mt_stores.markup_fixed`, por defecto 0,00);
+fórmula única `(tarifa + fijo) × (1 + porcentaje / 100)` en PHP y SQL, con el IVA
+después y sin cachear precios; dos campos validados en **Panel > Ajustes** con
+ejemplo; aislamiento por `store_id`; `verify.php` 340 → **347** (TODO OK) y QA HTTP
+real con usuario temporal y valores de tienda restaurados. Detalle en
+`CHANGELOG.md` y `STATE.md`.
+
 ### 2026-11-04 · Sesiones antiguas y título con razón social (petición por chat)
 
 **Pedido:** que la web funcione también con la sesión anterior del navegador y que la
