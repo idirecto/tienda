@@ -53,7 +53,6 @@ final class MenuController extends Controller
             'banners'     => MenuAdmin::bannerOptions($storeId),
             'niveles'     => Menu::customerLevels(),
             'nivelTienda' => $nivel['level'],
-            'nivelEstado' => $nivel,
             'nivelAviso'  => $nivel['level'] === null ? Menu::levelWarning($nivel) : '',
             'scope'       => 'store',
             'actionBase'  => $this->url('panel/menu'),

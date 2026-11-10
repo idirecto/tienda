@@ -13,7 +13,6 @@
  * @var string|null $publishedAt
  * @var array $destinos @var array $icons @var array $badges @var array $banners @var array $niveles
  * @var array|null $nivelTienda
- * @var array $nivelEstado estado del nivel (motivo cuando no se resuelve)
  * @var string $nivelAviso frase accionable cuando no hay nivel
  * @var string $scope @var string $actionBase
  * @var string $base
@@ -113,14 +112,8 @@ use Tienda\Core\Csrf;
                 <?= e((string) $nivelAviso) ?>
             <?php endif; ?>
         </p>
-        <?php /* El nivel se arregla desde aqui solo si falta la cuenta (o su id no
-                 existe); la categoria de cliente la asigna idirecto en su ficha. */ ?>
-        <?php if ($nivelTienda === null
-                  && in_array($nivelEstado['reason'] ?? null, ['sin_cuenta', 'cuenta_inexistente'], true)): ?>
-            <div class="actions">
-                <a class="btn btn-ghost btn-sm" href="<?= e($base) ?>/panel/ajustes">Ir a Ajustes</a>
-            </div>
-        <?php endif; ?>
+        <?php /* El nivel y la vinculación con la cuenta se gestionan en idirecto:
+                 este panel solo explica el motivo cuando no se pueden resolver. */ ?>
     </div>
 </section>
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tienda\Core;
 
+use Tienda\Core\Idirecto\Account;
 use Tienda\Models\Catalog;
 
 /**
@@ -32,7 +33,7 @@ abstract class Controller
     protected function bootPricing(bool $withTax = true): void
     {
         Catalog::forStore(
-            (int) $this->tenant->get('id_margen', 0) ?: null,
+            Account::marginForStore($this->tenant->toArray()),
             $this->tenant->get('markup', Config::get('catalog.default_markup', 15)),
             (float) ($this->tenant->get('tax_rate') ?: 21),
             $withTax,

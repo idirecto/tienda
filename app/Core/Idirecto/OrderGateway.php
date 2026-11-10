@@ -22,7 +22,7 @@ use Tienda\Models\OrderItem;
  *   - direccion de facturacion = datos de la tienda (los de esta web)
  *   - direccion de envio = la del pedido si la tiene; si no, la de la tienda
  *   - lineas con `costo`, `ganancia`, `impuestos`, `sujeto`, `canon` e `id_almacen`
- *   - elige la tarifa con `precios.id_margen` de la tienda
+ *   - elige la tarifa con `precios.id_margen` de la cuenta en idirecto
  *
  * Se envia por LINEA: cada linea que va al mayorista queda marcada en
  * `mt_order_items` (`sent_at` + `idirecto_pedido_id`), asi que un pedido de 4
@@ -62,7 +62,7 @@ final class OrderGateway
         $cuenta = Account::forStore($store);
         if (!$cuenta['configurada']) {
             throw new ValidationException(
-                'Esta tienda no tiene cuenta del mayorista. Configura "Cuenta en idirecto" en Ajustes antes de enviar pedidos.'
+                'Esta tienda no tiene una cuenta del mayorista vinculada. La cuenta se gestiona en idirecto; revisa la vinculación antes de enviar pedidos.'
             );
         }
 
@@ -228,7 +228,7 @@ final class OrderGateway
                 continue;
             }
             if (!$tarifa['tarifa_conocida']) {
-                $warnings[] = '"' . $nombre . '" no tiene precio publicado para la tarifa ' . $cuenta['id_margen'] . ': se usa su coste.';
+                $warnings[] = '"' . $nombre . '" no tiene precio publicado en la tarifa de la cuenta; se usa su precio de compra.';
             }
 
             $qty = max(1, (int) $item['qty']);

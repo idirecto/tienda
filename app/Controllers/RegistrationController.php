@@ -126,7 +126,7 @@ final class RegistrationController extends Controller
         $publicUrl = $this->publicUrl($result['slug']);
         Session::flash(
             'success',
-            'Tu tienda ya esta activa en ' . $publicUrl . '. Revisa Diseno y Ajustes: los datos vienen de tu cuenta de idirecto.'
+            'Tu tienda ya esta activa en ' . $publicUrl . '. Revisa Diseno y Ajustes para completar los datos de venta y presentacion.'
         );
         $this->redirect('panel');
     }

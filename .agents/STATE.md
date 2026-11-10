@@ -14,6 +14,19 @@ implementado, pero la web está en **modo de pruebas comercial** por defecto:
 el carrito y los pedidos se rechazan con un aviso hasta poner
 `SHOP_TEST_MODE=false`.
 
+> 🆕 **Centro de Ayuda (2026-11-06, actualizado 2026-11-09).** Integrado en
+> `/panel/ayuda`: 38 artículos, 22 preguntas frecuentes, 11 categorías (la de
+> plataforma solo para rol `platform`), buscador en servidor sin
+> acentos/mayúsculas, enlaces contextuales
+> desde las pantallas reales y diseño responsive/accesible. El contenido vive en
+> `app/Help` y no usa ninguna tabla ni migración. La ficha de pedido ya no muestra
+> el coste interno del mayorista.
+>
+> 🔒 **Cuenta y tarifa (2026-11-06).** Ajustes ya no muestra ni guarda la cuenta
+> del mayorista, la tarifa, el margen ni el nivel de cliente. Se gestionan en
+> idirecto y los precios usan siempre `tiendas.id_margen`; la copia local
+> `mt_stores.id_margen` queda como dato histórico sin efecto.
+
 > ✅ **Entorno (2026-10-03).** `idirecto_db` está **completa** (239 tablas:
 > catálogo con 41.289 productos con stock, 33 categorías con stock, y las `mt_`),
 > la web responde 200 y `php tools/verify.php` da **TODO OK (232)**. El menú se
@@ -59,6 +72,9 @@ el carrito y los pedidos se rechazan con un aviso hasta poner
 | **Filtros avanzados (socket, gráfica, memoria, formato, almacenamiento, marca, precio)** | ✅ Completo (**ahora sí filtran**; el WHERE los ignoraba) |
 | **Buscador del catálogo (en vivo, estilo PuntoByZE)** | ✅ Completo (solo el catálogo visible en el menú de la tienda + sus productos propios; `/buscar/live`; **rejilla adaptativa: 1 tarjeta por línea en el móvil y 5-7 en un monitor grande**) |
 | Panel de la tienda (diseño, banners, avisos, productos, dominios, ajustes) | ✅ Completo (sin usuario demo: se crea en `/registro`) |
+| **Centro de Ayuda del panel (`/panel/ayuda`)** | ✅ Completo: 38 artículos + 22 FAQ, buscador en servidor, enlaces contextuales y ayuda de plataforma restringida por rol |
+| **Cuenta y tarifa del mayorista** | ✅ Solo lectura desde idirecto: Ajustes no muestra ni guarda cuenta, tarifa, margen ni nivel |
+| **Coste interno en pedidos** | ✅ Oculto de `/panel/pedidos/{id}`; el identificador de margen tampoco se muestra y la columna de precio de tarifa sigue visible |
 | **Pedidos: listado por estados, ficha y envío por líneas a idirecto** | ✅ Completo |
 | Dominios propios + verificación DNS | ✅ Completo |
 | Almacenamiento (local / S3) | ✅ Completo (S3 sin probar contra bucket real) |
@@ -67,7 +83,7 @@ el carrito y los pedidos se rechazan con un aviso hasta poner
 | Entorno local (`http://local.tienda`) | ✅ Completo |
 | **Despliegue Apache y nginx** | ✅ Completo (nginx verificado con binario real) |
 | **Checkout: carrito, pago y envío** | ✅ Completo (cobro **sin pasarela**: transferencia, contra reembolso y recogida) |
-| **Precio de venta de la tienda** | ✅ Completo: `(tarifa + markup_fixed) × (1 + markup / 100)`, con IVA incluido en la web y base sin IVA en el pedido; cada tienda configura sus dos componentes |
+| **Precio de venta de la tienda** | ✅ Completo: `(tarifa de la cuenta en idirecto + markup_fixed) × (1 + markup / 100)`, con IVA incluido en la web y base sin IVA en el pedido; los dos beneficios se configuran por tienda |
 | **Gastos de envío** | ⚠️ Tarifa plana + gratis desde X €; falta el cálculo por **peso y provincia** de puntobyze |
 | **Emails al cliente y a la tienda** | ❌ No existe (no hay envío de correo: ni confirmación ni recuperar contraseña) |
 | **Logs por día y por tienda (compras, accesos y errores)** | ✅ Completo (ficheros en `storage/logs/<canal>/<día>/<tienda>.log` + visor `/panel/logs` + `tools/logs.php`; retención 30 días) |
@@ -79,24 +95,20 @@ el carrito y los pedidos se rechazan con un aviso hasta poner
 
 ## Hecho
 
-### Tarifa combinada por tienda: beneficio fijo + porcentual (2026-11-09)
-- **Cada tienda configura dos componentes independientes** en Ajustes:
-  `markup_fixed` (EUR, se suma a la tarifa) y `markup` (porcentaje que se aplica
-  después). La fórmula es `(tarifa + fijo) × (1 + porcentaje / 100)` y el IVA se
-  suma al final en la web.
-- **Migración `013`**: `mt_stores.markup_fixed decimal(12,2) DEFAULT 0,00`. Las
-  tiendas existentes conservan sus precios porque el valor de partida es 0.
-- **Precio en un solo sitio**: `Catalog::applyStoreMargin()` / `salePriceFromCost()`
-  y `precioSql()` aplican el mismo orden (fijo, porcentaje, IVA), así que listados,
-  ficha, filtros, carrito, pedidos y buscador del panel dan el mismo importe.
-- **Validación real**: el panel rechaza importes inválidos, negativos o fuera de
-  rango (0–200 % y hasta 999.999,99 EUR) antes de guardar; no convierte en 0 un
-  error de tecleo. El guardado sigue limitado al `store_id` de la sesión.
-- **QA**: `verify.php` 340 → **347** comprobaciones (fórmula pura, IVA después,
-  contraste contra SQL, aislamiento entre dos tiendas y Ajustes). Prueba HTTP real
-  con un usuario temporal en una tienda existente (usuario borrado y valores
-  restaurados): guardado con coma decimal, rechazo de valor inválido, precio de
-  ficha recalculado y otra tienda intacta.
+### Ayuda actualizada con la tarifa fija + porcentual (2026-11-09)
+- La guía **Ajustes > Venta y cobro** explica la fórmula
+  `(tarifa de la cuenta + beneficio fijo) × (1 + beneficio porcentual / 100)`, el
+  orden del cálculo, el IVA final, dos ejemplos (1 € y 500 €), los límites de cada
+  campo y el hecho de que los productos propios no usan esta fórmula.
+- Se actualizaron también **Precios, IVA, beneficios y stock**, **Catálogo central**,
+  **Primeros pasos** y **Cuenta del mayorista** para no atribuir la tarifa a Ajustes.
+- Nueva FAQ **«¿Cómo se calcula el precio de venta del catálogo?»**: el Centro de
+  Ayuda pasa a **22 preguntas frecuentes**. El buscador encuentra tanto la guía como
+  la FAQ con «beneficio fijo».
+- El enlace contextual de `/panel/ajustes` abre ahora la guía de precios y cobro.
+- **Pruebas**: `verify.php` 371 → **374** (contenido de la guía, búsqueda y enlace
+  contextual). QA HTTP real con usuario temporal (borrado): guía, FAQ y búsqueda
+  responden 200 y muestran la fórmula y los campos de configuración.
 
 ### Sesiones antiguas compatibles y título de pestaña (2026-11-04)
 - `Cart` sanea la estructura de `cart`; `CustomerAuth` y `Auth` validan sus sesiones;
@@ -253,10 +265,11 @@ el carrito y los pedidos se rechazan con un aviso hasta poner
   reembolso o recogida) y **comentario**. Crea `mt_orders` + `mt_order_items` con
   los importes recalculados en el servidor; el pedido nace **pendiente de pago** y
   el tendero lo confirma en el panel («marcar como pagado»).
-- **Precio de venta**: `(tarifa de la tienda (mt_stores.id_margen) + markup_fixed)
-  × (1 + markup / 100)`, con el **IVA incluido** en la web y la **base sin IVA** en
-  el pedido (que es lo que se manda al mayorista). Los gastos de envío son tarifa
-  plana + gratis desde X € (en Ajustes). Todo se ve en el carrito antes de pagar.
+- **Precio de venta**: `(tarifa de la cuenta en idirecto (tiendas.id_margen) +
+  markup_fixed) × (1 + markup / 100)`, con el **IVA incluido** en la web y la
+  **base sin IVA** en el pedido (que es lo que se manda al mayorista). Los gastos
+  de envío son tarifa plana + gratis desde X € (en Ajustes). Todo se ve en el
+  carrito antes de pagar.
 - **Al mayorista le llega la dirección del cliente** (no la de la tienda), con sus
   ids de país/provincia/población, celular, el email en `localidad` y su comentario
   en `pedidos.detalles`, igual que hace puntobyze.
@@ -612,7 +625,7 @@ el carrito y los pedidos se rechazan con un aviso hasta poner
   en **nginx + PHP-FPM** (`sudo bash deploy/setup-nginx-domain.sh ecom-era.com`).
 - La app detecta el servidor (`app/Core/Server.php`): ruta pública de `/public`,
   esquema real (incluido proxy) y host de las URLs canónicas.
-- `tools/verify.php`: 347 comprobaciones automáticas (diseño, facetas, filtros
+- `tools/verify.php`: 374 comprobaciones automáticas (diseño, facetas, filtros
   estructurados del mayorista, catálogo, paginación y enlaces de las tarjetas, caché y
   precios en vivo, carrito y mini-carrito, **modo de pruebas comercial**, **nombre de
   marca con razón social**, **sesiones antiguas y títulos públicos**, favicon de la
@@ -708,9 +721,9 @@ No hay ninguno. Prioridad: `Specs` (parseo de especificaciones),
   a esa cuenta y con su tarifa. Se entra al panel con un **usuario propio** (no
   con las credenciales del mayorista, que no se guardan).
 - **La tienda vende con tarifa + beneficio fijo + porcentaje, con IVA incluido**:
-  el precio de la web es `(tarifa de la tienda (id_margen) + markup_fixed) ×
-  (1 + markup / 100)`, **con el IVA incluido** (es lo que paga el cliente). El
-  pedido guarda la **base sin IVA** en
+  el precio de la web es `(tarifa de la cuenta en idirecto (tiendas.id_margen) +
+  markup_fixed) × (1 + markup / 100)`, **con el IVA incluido** (es lo que paga el
+  cliente). El pedido guarda la **base sin IVA** en
   `mt_order_items.price_customer` y el IVA se suma en los totales, de modo que la
   cuenta cuadra con el precio que vio el cliente y con lo que factura el mayorista.
   Decisión del dueño: nada de mostrar el precio más barato publicado, que en muchos

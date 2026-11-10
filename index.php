@@ -36,6 +36,7 @@ use Tienda\Controllers\Admin\CustomerController as CustomerAdminController;
 use Tienda\Controllers\Admin\DashboardController;
 use Tienda\Controllers\Admin\DesignController;
 use Tienda\Controllers\Admin\DomainController;
+use Tienda\Controllers\Admin\HelpController;
 use Tienda\Controllers\Admin\LogController;
 use Tienda\Controllers\Admin\MediaController;
 use Tienda\Controllers\Admin\MenuController;
@@ -143,6 +144,12 @@ $router->post('/panel/login',          [AuthController::class, 'login']);
 $router->get('/panel/logout',          [AuthController::class, 'logout']);
 
 $router->get('/panel',                 [DashboardController::class, 'index']);
+
+// Centro de Ayuda: contenido estatico comun a todas las tiendas. Las rutas
+// van antes de la ruta con parametros de articulo y del catch-all SEO.
+$router->get('/panel/ayuda',                    [HelpController::class, 'index']);
+$router->get('/panel/ayuda/categoria/{category}', [HelpController::class, 'category']);
+$router->get('/panel/ayuda/{category}/{slug}',  [HelpController::class, 'article']);
 
 // Menu de navegacion: estilo (Compacto/Catalogo) y arbol de la tienda.
 // Ojo con el orden: 'regenerar' es una ruta fija.

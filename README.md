@@ -601,7 +601,7 @@ tienda/
 │   │                        011..012 banners/zonas · 013_store_markup_fixed.sql (mt_)
 │   ├── seeds/               001_seed.sql (planes, temas, tienda demo)
 │   └── migrate.php          Ejecutor de migraciones y semillas
-├── tools/verify.php         Comprobacion automatica (347)
+├── tools/verify.php         Comprobacion automatica (374)
 ├── tools/cache-clear.php    Gestion de la cache de datos (estado, vaciar, patrones, gc)
 ├── tools/logs.php           Consulta los logs por consola (filtros, resumen, dias, gc)
 └── deploy/                  Vhosts/plantillas de Apache y nginx + scripts
@@ -726,16 +726,19 @@ Cada línea enviada queda marcada (`sent_at` + `idirecto_pedido_id`), así que s
 puede enviar el resto más tarde **sin repetir nada**. Los productos propios no se
 pueden enviar (no existen en el catálogo del mayorista).
 
-Para poder enviar, cada tienda indica en **Ajustes** su cuenta del mayorista:
+Para poder enviar, la tienda debe estar vinculada con su cuenta del mayorista. La
+cuenta y la tarifa se gestionan en **idirecto**; el panel de la tienda no las
+edita ni las muestra:
 
 ```bash
 IDIRECTO_ENABLED=true              # interruptor general del puente
-IDIRECTO_DEFAULT_ID_MARGEN=12      # tarifa usada si la tienda no tiene una
+IDIRECTO_DEFAULT_ID_MARGEN=12      # tarifa usada si la cuenta no tiene una
 IDIRECTO_RESERVE_STOCK=true        # descontar stock/reserva al enviar (false = solo crear el pedido)
 ```
 
-Y en la tienda (`mt_stores`, editable en el panel): `id_tienda_idirecto`
-(`tiendas.id`) e `id_margen` (`precios.id_margen`). Antes de confirmar, la ficha
+El enlace se guarda en `mt_stores.id_tienda_idirecto` (`tiendas.id`). La tarifa
+efectiva se lee siempre de `tiendas.id_margen`; `mt_stores.id_margen` solo se
+conserva como copia histórica y no decide precios. Antes de confirmar, la ficha
 muestra la **vista previa** con la base, el IVA y el total que tendrá el pedido en
 el mayorista.
 
@@ -760,7 +763,7 @@ Qué se crea:
 - `mt_stores`: activa, con **slug único** (el que pida el tendero o uno derivado
   del nombre), plan por defecto, datos fiscales y de contacto copiados de la
   cuenta (razón social, NIF, dirección, población, provincia y país) y el enlace
-  `id_tienda_idirecto` + `id_margen`.
+  `id_tienda_idirecto`. La tarifa se consulta siempre en la ficha de idirecto.
 - `mt_store_users`: usuario `owner` con el email de la cuenta y una **contraseña
   propia** para este panel (`password_hash`). La contraseña del mayorista **no se
   guarda**: solo se comprueba.
@@ -789,9 +792,9 @@ pay_transfer / pay_cod / pay_pickup   # formas de pago que acepta
 bank_details         # datos que ve el cliente al pagar por transferencia
 ```
 
-- **Precio de venta**: primero se suma el beneficio fijo a la tarifa y después se
-  aplica el porcentaje:
-  `(tarifa de la tienda + markup_fixed) × (1 + markup / 100)`. En la web se muestra
+- **Precio de venta**: primero se suma el beneficio fijo a la tarifa que idirecto
+  aplica a la cuenta y después se aplica el porcentaje:
+  `(tarifa de la cuenta + markup_fixed) × (1 + markup / 100)`. En la web se muestra
   **con el IVA incluido** (`Catalog::forStore()`). El pedido guarda la **base sin IVA**
   en `mt_order_items.price_customer` y el IVA se suma al totalizar, así que el total
   coincide con lo que vio el cliente. Sin tarifa asignada se usa la más barata

@@ -13,8 +13,9 @@ use Tienda\Models\Store;
  * Regla de negocio: **en esta web solo puede tener tienda quien ya es cliente
  * del mayorista**. El tendero entra con su email y su contrasena de idirecto
  * (`Account::login()`), y aqui se crea su tienda (`mt_stores`) ya enlazada con
- * esa cuenta (`id_tienda_idirecto` + `id_margen`) y su usuario de panel
- * (`mt_store_users`, con contrasena propia).
+ * esa cuenta (`id_tienda_idirecto`) y su usuario de panel (`mt_store_users`, con
+ * contrasena propia). La tarifa se consulta siempre en la ficha de idirecto; el
+ * `id_margen` local solo se conserva como copia historica y no decide precios.
  *
  * La tienda nace activa y con los datos fiscales/de contacto de la cuenta, de
  * modo que pueda vender y enviar pedidos sin configurar nada; luego se edita
@@ -98,6 +99,7 @@ final class Registration
             'meta_title'  => mb_substr($comercial !== '' ? $comercial : 'Mi tienda', 0, 200),
             // Enlace con la cuenta del mayorista: lo que permite enviar pedidos.
             'id_tienda_idirecto' => $idTienda > 0 ? $idTienda : null,
+            // Copia historica; la tarifa efectiva se lee de `tiendas.id_margen`.
             'id_margen'   => $idMargen > 0 ? $idMargen : null,
         ];
     }

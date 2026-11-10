@@ -10,10 +10,11 @@ use Tienda\Core\Database;
 /**
  * Cuenta con la que una tienda compra al mayorista.
  *
- * El enlace vive en `mt_stores` (`id_tienda_idirecto` -> `tiendas.id` y
- * `id_margen` -> `precios.id_margen`) y se edita en el panel > Ajustes. A partir
- * de ahi se resuelve todo lo que necesita el pedido del mayorista: tarifa,
- * sucursal, comercial, forma de pago y la direccion de facturacion.
+ * El enlace con la cuenta vive en `mt_stores.id_tienda_idirecto` -> `tiendas.id`.
+ * La tarifa (`id_margen`) es SIEMPRE la de la cuenta en idirecto
+ * (`tiendas.id_margen`); no se toma de `mt_stores` ni se edita en este panel.
+ * A partir de ahi se resuelve todo lo que necesita el pedido del mayorista:
+ * tarifa, sucursal, comercial, forma de pago y la direccion de facturacion.
  *
  * Los datos de la TIENDA (los que maneja esta web) ganan sobre los de la cuenta
  * del mayorista; los de la cuenta se usan como respaldo (NIF, provincia...).
@@ -21,6 +22,9 @@ use Tienda\Core\Database;
 final class Account
 {
     private static ?array $cache = null;
+
+    /** @var array<int,int|null> */
+    private static array $marginCache = [];
 
     /** Configuracion activa y tablas del mayorista disponibles. */
     public static function enabled(): bool
@@ -34,6 +38,42 @@ final class Account
             }
         }
         return true;
+    }
+
+    /**
+     * Tarifa de idirecto de la cuenta vinculada a la tienda.
+     *
+     * Es la única fuente de verdad para los precios y para el envío. Se ignora
+     * deliberadamente `mt_stores.id_margen`: ese dato ya no se edita en el panel
+     * y no debe pisar la tarifa que el mayorista asigna a la cuenta.
+     *
+     * @param array $store Fila de `mt_stores`
+     * @return int|null `null` si la tienda no tiene cuenta o la cuenta no trae tarifa
+     */
+    public static function marginForStore(array $store): ?int
+    {
+        $storeId = (int) ($store['id'] ?? 0);
+        if ($storeId > 0 && array_key_exists($storeId, self::$marginCache)) {
+            return self::$marginCache[$storeId];
+        }
+
+        $idTienda = (int) ($store['id_tienda_idirecto'] ?? 0);
+        $tienda = $idTienda > 0 ? self::findTienda($idTienda) : null;
+        $idMargen = (int) ($tienda['id_margen'] ?? 0);
+        $margen = $idMargen > 0 ? $idMargen : null;
+
+        if ($storeId > 0) {
+            self::$marginCache[$storeId] = $margen;
+        }
+
+        return $margen;
+    }
+
+    /** Limpia las resoluciones cacheadas de la cuenta y su tarifa. */
+    public static function resetCache(): void
+    {
+        self::$cache = null;
+        self::$marginCache = [];
     }
 
     /**
@@ -52,11 +92,11 @@ final class Account
         $idTienda = (int) ($store['id_tienda_idirecto'] ?? 0);
         $tienda = $idTienda > 0 ? self::findTienda($idTienda) : null;
 
-        $idMargen = (int) ($store['id_margen'] ?? 0);
-        $origenMargen = 'tienda';
-        if ($idMargen <= 0) {
-            $idMargen = (int) ($tienda['id_margen'] ?? 0);
-            $origenMargen = 'cuenta';
+        $idMargen = (int) ($tienda['id_margen'] ?? 0);
+        $origenMargen = 'cuenta';
+        $storeId = (int) ($store['id'] ?? 0);
+        if ($storeId > 0) {
+            self::$marginCache[$storeId] = $idMargen > 0 ? $idMargen : null;
         }
         if ($idMargen <= 0) {
             $idMargen = (int) Config::get('idirecto.default_id_margen', 12);

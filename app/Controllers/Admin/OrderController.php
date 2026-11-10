@@ -441,7 +441,7 @@ final class OrderController extends Controller
         $store = $this->storeRow($storeId);
 
         Catalog::forStore(
-            (int) ($store['id_margen'] ?? 0) ?: null,
+            Account::marginForStore($store),
             $store['markup'] ?? 0,
             (float) ($store['tax_rate'] ?? 21),
             false,

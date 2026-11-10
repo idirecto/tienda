@@ -174,16 +174,12 @@ $sendFormId = 'send-order-' . (int) $order['id'];
                 <p>
                     Cuenta <?= (int) $account['id_tienda'] ?>
                     (<?= e($account['razon_social'] ?: $account['nombre']) ?>)
-                    · tarifa <?= (int) $account['id_margen'] ?>
-                    <?php if (($account['margen_origen'] ?? '') !== 'tienda'): ?>
-                        <span class="muted small">(<?= e($account['margen_origen'] === 'cuenta' ? 'de la cuenta' : 'por defecto') ?>)</span>
-                    <?php endif; ?>
                 </p>
                 <?php if (!empty($account['nif'])): ?>
                     <p class="muted small">NIF/CIF de la cuenta: <?= e($account['nif']) ?></p>
                 <?php endif; ?>
             <?php else: ?>
-                <p class="muted">Sin cuenta en idirecto. <a href="<?= e($base) ?>/panel/ajustes">Configurar en Ajustes</a>.</p>
+                <p class="muted">Sin cuenta de idirecto vinculada. La cuenta se gestiona en idirecto.</p>
             <?php endif; ?>
         </div>
     </div>
@@ -228,7 +224,6 @@ $sendFormId = 'send-order-' . (int) $order['id'];
                     <th class="ta-r">Uds.</th>
                     <th class="ta-r">Precio cliente</th>
                     <th class="ta-r">Tarifa idirecto</th>
-                    <th class="ta-r">Coste</th>
                     <th class="ta-r">Importe</th>
                     <th>Envio</th>
                     <th></th>
@@ -270,9 +265,6 @@ $sendFormId = 'send-order-' . (int) $order['id'];
                         <?php else: ?>
                             <span class="muted">&mdash;</span>
                         <?php endif; ?>
-                    </td>
-                    <td class="ta-r muted">
-                        <?= $linea !== null ? e(euros($linea['coste'])) : '&mdash;' ?>
                     </td>
                     <td class="ta-r"><strong><?= e(euros($importe)) ?></strong></td>
                     <td>
@@ -322,7 +314,7 @@ $sendFormId = 'send-order-' . (int) $order['id'];
                     </form>
                     <p class="muted small">
                         Se crea un pedido en el mayorista (tablas pedidos y pedidos_det) con los datos de
-                        tu tienda y la tarifa <?= (int) $account['id_margen'] ?>.
+                        tu tienda y la tarifa que idirecto tiene asignada a tu cuenta.
                         <?php if (!empty($account['cuenta']['nombre_sociedad'])): ?>
                             Facturado a <?= e($account['cuenta']['nombre_sociedad']) ?>.
                         <?php endif; ?>
@@ -333,7 +325,7 @@ $sendFormId = 'send-order-' . (int) $order['id'];
                         <?php if (!$idirectoReady): ?>
                             El puente con el mayorista no esta disponible.
                         <?php elseif (empty($account['configurada'])): ?>
-                            Configura la cuenta en idirecto en <a href="<?= e($base) ?>/panel/ajustes">Ajustes</a> para poder enviar.
+                            La tienda no tiene una cuenta del mayorista vinculada. La vinculación se gestiona en idirecto.
                         <?php elseif ($summary['lines_pending'] === 0): ?>
                             No quedan lineas pendientes de enviar.
                         <?php else: ?>

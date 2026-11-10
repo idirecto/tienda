@@ -30,6 +30,7 @@ use Tienda\Core\CustomerAuth;
 use Tienda\Core\Database;
 use Tienda\Core\Dns;
 use Tienda\Core\Favicon;
+use Tienda\Core\Help;
 use Tienda\Core\Idirecto\Account;
 use Tienda\Core\Idirecto\OrderGateway;
 use Tienda\Core\Idirecto\Pricing;
@@ -1315,6 +1316,40 @@ if (OrderGateway::isAvailable()) {
         'cuenta del mayorista resuelta (tarifa ' . ($cuenta['id_margen'] ?? '?') . ', origen ' . ($cuenta['margen_origen'] ?? '?') . ')'
     );
 
+    // La tarifa se toma de la cuenta de idirecto, no de la copia local.
+    $filaMargen = Database::first(
+        'SELECT s.id, s.id_tienda_idirecto, t.id_margen AS margen_cuenta
+         FROM mt_stores s
+         INNER JOIN tiendas t ON t.id = s.id_tienda_idirecto
+         WHERE t.id_margen > 0
+         ORDER BY s.id ASC LIMIT 1'
+    );
+    if ($filaMargen !== null) {
+        $margenCuenta = (int) $filaMargen['margen_cuenta'];
+        $storeMargenFalso = [
+            'id' => 990000 + (int) $filaMargen['id'],
+            'id_tienda_idirecto' => (int) $filaMargen['id_tienda_idirecto'],
+            'id_margen' => $margenCuenta + 1,
+        ];
+        Account::resetCache();
+        $cuentaMargen = Account::forStore($storeMargenFalso);
+        check(
+            (int) $cuentaMargen['id_margen'] === $margenCuenta
+                && ($cuentaMargen['margen_origen'] ?? '') === 'cuenta'
+                && Account::marginForStore($storeMargenFalso) === $margenCuenta,
+            'la tarifa de la cuenta de idirecto manda sobre la copia local de mt_stores'
+        );
+        Account::resetCache();
+    } else {
+        check(false, 'hay una cuenta de idirecto con tarifa para comprobar el origen');
+    }
+    check(
+        str_contains((string) file_get_contents(TIENDA_BASE . '/app/Core/Controller.php'), 'Account::marginForStore($this->tenant->toArray())')
+            && str_contains((string) file_get_contents(TIENDA_BASE . '/app/Controllers/Admin/OrderController.php'), 'Account::marginForStore($store)'),
+        'el precio publico y el del panel se fijan con la tarifa de la cuenta de idirecto'
+    );
+    $cuenta = Account::forStore($tiendaVerificada);
+
     $margen = (int) $cuenta['id_margen'];
     $productoId = (int) Database::scalar(
         'SELECT pr.id_producto
@@ -2248,17 +2283,17 @@ foreach (Database::select('SELECT id, id_tienda_idirecto FROM mt_stores ORDER BY
 }
 check($coherente, 'storeLevelStatus: cuando no hay nivel siempre explica el motivo');
 
-// 'sin_cuenta' dice donde se arregla (Ajustes) y lo pinta el editor.
+// 'sin_cuenta' explica el motivo y que la gestión corresponde a idirecto.
 if ($sinCuenta !== null) {
     $aviso = Menu::levelWarning($sinCuenta);
     check(
         ($sinCuenta['reason'] ?? '') === 'sin_cuenta'
-            && str_contains($aviso, 'Ajustes')
+            && str_contains($aviso, 'idirecto')
             && !str_contains($aviso, '<'),
-        'una tienda sin cuenta enlazada dice el motivo y que se arregla en Ajustes (texto plano)'
+        'una tienda sin cuenta enlazada dice el motivo y que se gestiona en idirecto (texto plano)'
     );
 } else {
-    check(true, 'una tienda sin cuenta enlazada dice el motivo y que se arregla en Ajustes (no hay tiendas sin cuenta)');
+    check(true, 'una tienda sin cuenta enlazada dice el motivo y que se gestiona en idirecto (no hay tiendas sin cuenta)');
 }
 
 // Un id de cuenta que no existe ya no se confunde con «cuenta sin categoria».
@@ -2278,8 +2313,8 @@ try {
     $stPrueba = Menu::storeLevelStatus($storePrueba);
     check(
         ($stPrueba['reason'] ?? '') === 'cuenta_inexistente'
-            && str_contains(Menu::levelWarning($stPrueba), 'Ajustes'),
-        'una cuenta que no existe en el mayorista se detecta aparte y manda a Ajustes'
+            && str_contains(Menu::levelWarning($stPrueba), 'idirecto'),
+        'una cuenta que no existe en el mayorista se detecta aparte y se deriva a idirecto'
     );
 } catch (\Throwable $e) {
     check(false, 'diagnostico de la cuenta inexistente (' . $e->getMessage() . ')');
@@ -2295,18 +2330,25 @@ check(
     'una cuenta sin categoria de cliente explica que la asigna idirecto (texto plano)'
 );
 
-// Ajustes muestra el nivel y el editor y la plataforma pintan el aviso.
+// Ajustes no debe mostrar ni guardar cuenta, tarifa, margen ni nivel.
 $settingsView = (string) file_get_contents(TIENDA_BASE . '/app/Views/panel/settings.php');
+$settingsController = (string) file_get_contents(TIENDA_BASE . '/app/Controllers/Admin/SettingsController.php');
 $menuView = (string) file_get_contents(TIENDA_BASE . '/app/Views/panel/menu.php');
 $plataformaView = (string) file_get_contents(TIENDA_BASE . '/app/Views/panel/menu_plataforma.php');
 check(
-    str_contains($settingsView, 'Nivel de cliente') && str_contains($settingsView, 'nivelAviso'),
-    'Ajustes muestra el nivel de cliente de la cuenta y el aviso cuando falta'
+    !str_contains($settingsView, 'Cuenta en idirecto')
+        && !str_contains($settingsView, 'Tarifa efectiva')
+        && !str_contains($settingsView, 'Nivel de cliente')
+        && !str_contains($settingsView, 'name="id_margen"')
+        && !str_contains($settingsView, 'name="id_tienda_idirecto"')
+        && !str_contains($settingsController, "'id_margen'")
+        && !str_contains($settingsController, "'id_tienda_idirecto'"),
+    'Ajustes no muestra ni guarda la cuenta, la tarifa, el margen ni el nivel de cliente'
 );
 check(
-    str_contains($menuView, 'nivelAviso') && str_contains($menuView, '/panel/ajustes')
+    str_contains($menuView, 'nivelAviso') && !str_contains($menuView, '/panel/ajustes')
         && str_contains($plataformaView, 'storeLevelWarning'),
-    'el editor del menu y el panel de plataforma pintan el aviso accionable'
+    'el editor del menu y el panel de plataforma explican el nivel sin enlazar a una configuracion inexistente'
 );
 
 // =============================================================================
@@ -2706,6 +2748,148 @@ check(
     str_contains((string) file_get_contents(TIENDA_BASE . '/.htaccess'), 'ExpiresByType image/x-icon')
         && str_contains((string) file_get_contents(TIENDA_BASE . '/.htaccess'), 'ExpiresByType image/svg+xml'),
     'las imagenes se sirven con cache razonable (Apache; nginx ya usa expires 30d)'
+);
+
+// --- Centro de Ayuda ---------------------------------------------------------
+echo "\n== Centro de Ayuda ==\n";
+
+$ayudaTodas = Help::categories(true);
+$ayudaNormales = Help::categories(false);
+$ayudaArticulos = [];
+$ayudaRelacionadosOk = true;
+$ayudaContenidoOk = true;
+$ayudaRutasPanelOk = true;
+foreach ($ayudaTodas as $categoriaSlug => $categoriaAyuda) {
+    if (($categoriaAyuda['type'] ?? 'articles') === 'faq') {
+        continue;
+    }
+    foreach (Help::articlesForCategory((string) $categoriaSlug, true) as $articuloAyuda) {
+        $ayudaArticulos[] = $articuloAyuda;
+        if (trim((string) $articuloAyuda['title']) === ''
+            || trim((string) $articuloAyuda['summary']) === ''
+            || trim(strip_tags((string) $articuloAyuda['body'])) === '') {
+            $ayudaContenidoOk = false;
+        }
+        $rutaPanel = (string) $articuloAyuda['panel_path'];
+        if ($rutaPanel !== '' && $rutaPanel !== 'panel' && !str_starts_with($rutaPanel, 'panel/')) {
+            $ayudaRutasPanelOk = false;
+        }
+        foreach ((array) $articuloAyuda['related'] as $relacionado) {
+            if (Help::find((string) $relacionado, true) === null) {
+                $ayudaRelacionadosOk = false;
+            }
+        }
+    }
+}
+
+check(count($ayudaTodas) === 11, 'el Centro de Ayuda tiene las 11 categorias aprobadas');
+check(count($ayudaNormales) === 10 && !isset($ayudaNormales['plataforma']), 'la tienda no ve la categoria de plataforma');
+check(count($ayudaArticulos) === 38, 'el Centro de Ayuda contiene 38 articulos normales y de plataforma');
+check(Help::faqCount() === 22, 'el Centro de Ayuda contiene 22 preguntas frecuentes');
+check($ayudaContenidoOk, 'todos los articulos tienen titulo, resumen y contenido');
+check($ayudaRelacionadosOk, 'todos los enlaces a articulos relacionados existen');
+check($ayudaRutasPanelOk, 'todas las rutas de vuelta al panel tienen un formato valido');
+
+$ayudaPrecios = Help::find('configuracion/venta-cobro-pagos', true);
+check(
+    is_array($ayudaPrecios)
+        && str_contains((string) $ayudaPrecios['body'], 'Beneficio fijo (EUR)')
+        && str_contains((string) $ayudaPrecios['body'], 'Beneficio porcentual (%)')
+        && str_contains((string) $ayudaPrecios['body'], '(tarifa + beneficio fijo)')
+        && str_contains((string) $ayudaPrecios['body'], 'Guardar venta y cobro')
+        && str_contains((string) $ayudaPrecios['body'], 'productos propios'),
+    'la ayuda explica la formula, los dos campos y como guardar la configuracion'
+);
+check(
+    Help::find('plataforma/menu-plataforma', false) === null
+        && Help::find('plataforma/menu-plataforma', true) !== null,
+    'el articulo de plataforma exige el rol platform'
+);
+
+$busquedaParcial = array_column(Help::search('ban', false, 100), 'path');
+$busquedaAcento = array_column(Help::search('PEDÍDOS', false, 100), 'path');
+$busquedaBeneficios = array_column(Help::search('beneficio fijo', false, 100), 'path');
+$busquedaVacia = Help::search('contenidoquenoexiste', false, 100);
+$busquedaPlataformaTienda = array_filter(
+    Help::search('plataforma', false, 100),
+    static fn (array $r): bool => str_starts_with((string) $r['path'], 'plataforma/')
+);
+$busquedaPlataformaAdmin = array_filter(
+    Help::search('plataforma', true, 100),
+    static fn (array $r): bool => str_starts_with((string) $r['path'], 'plataforma/')
+);
+check(in_array('diseno/banners', $busquedaParcial, true), 'el buscador resuelve coincidencias parciales');
+check(in_array('pedidos/guia-pedidos', $busquedaAcento, true), 'el buscador ignora mayusculas y acentos');
+check(
+    in_array('configuracion/venta-cobro-pagos', $busquedaBeneficios, true)
+        && in_array('preguntas-frecuentes/calculo-precio-venta', $busquedaBeneficios, true),
+    'el buscador encuentra la guia y la FAQ de beneficios fijo y porcentual'
+);
+check($busquedaVacia === [], 'el buscador devuelve un estado vacio sin resultados');
+check($busquedaPlataformaTienda === [] && $busquedaPlataformaAdmin !== [], 'el buscador oculta la ayuda de plataforma a las tiendas');
+check(Help::search('a', false, 100) === [], 'el buscador exige al menos dos caracteres');
+
+$contexto = Help::contextual('/panel/diseno', false);
+check(
+    is_array($contexto) && ($contexto['path'] ?? '') === 'diseno/identidad-visual',
+    'el enlace contextual del panel apunta al articulo correcto'
+);
+$contextoAjustes = Help::contextual('/panel/ajustes', false);
+check(
+    is_array($contextoAjustes) && ($contextoAjustes['path'] ?? '') === 'configuracion/venta-cobro-pagos',
+    'la ayuda contextual de Ajustes abre la guia de precios y cobro'
+);
+
+$indiceFuente = (string) file_get_contents(TIENDA_BASE . '/index.php');
+$layoutPanel = (string) file_get_contents(TIENDA_BASE . '/app/Views/layouts/panel.php');
+$cssPanel = (string) file_get_contents(TIENDA_BASE . '/public/assets/css/panel.css');
+check(
+    str_contains($indiceFuente, "'/panel/ayuda'")
+        && str_contains($indiceFuente, "'/panel/ayuda/categoria/{category}'")
+        && str_contains($indiceFuente, "'/panel/ayuda/{category}/{slug}'")
+        && is_file(TIENDA_BASE . '/app/Controllers/Admin/HelpController.php'),
+    'las rutas del Centro de Ayuda estan registradas en el front controller'
+);
+check(
+    str_contains($layoutPanel, 'panel/ayuda') && str_contains($layoutPanel, 'help-context-link'),
+    'el panel enlaza con la Ayuda y muestra un enlace contextual'
+);
+check(
+    str_contains($cssPanel, '.help-layout') && str_contains($cssPanel, '@media (max-width: 900px)'),
+    'el Centro de Ayuda usa estilos propios y una adaptacion responsive'
+);
+check(
+    str_contains((string) file_get_contents(TIENDA_BASE . '/app/Views/panel/help_index.php'), 'No hemos encontrado nada')
+        && str_contains((string) file_get_contents(TIENDA_BASE . '/app/Views/panel/help_faq.php'), '<details'),
+    'la ayuda tiene estado sin resultados y FAQ accesibles por teclado'
+);
+check(
+    str_contains((string) file_get_contents(TIENDA_BASE . '/app/Views/panel/help_404.php'), 'No hemos encontrado esa página de ayuda'),
+    'el Centro de Ayuda tiene una pagina 404 propia dentro del panel'
+);
+check(
+    !preg_match('/\bCoste\b|\bcost_idirecto\b|\$linea\[.coste.\]/i', (string) file_get_contents(TIENDA_BASE . '/app/Views/panel/order.php')),
+    'la ficha del pedido no muestra el coste interno del mayorista'
+);
+$orderViewFinal = (string) file_get_contents(TIENDA_BASE . '/app/Views/panel/order.php');
+check(
+    !str_contains($orderViewFinal, 'margen_origen')
+        && !str_contains($orderViewFinal, "['id_margen']")
+        && !str_contains($orderViewFinal, '· tarifa')
+        && !str_contains((string) file_get_contents(TIENDA_BASE . '/app/Views/panel/orders.php'), 'Configura la cuenta'),
+    'el panel de pedidos no muestra identificadores de tarifa o margen ni enlaces a una configuracion inexistente'
+);
+$helpSources = (string) file_get_contents(TIENDA_BASE . '/app/Help/categories.php')
+    . (string) file_get_contents(TIENDA_BASE . '/app/Help/faq.php');
+foreach (glob(TIENDA_BASE . '/app/Help/articles/*.php') ?: [] as $helpFile) {
+    $helpSources .= (string) file_get_contents($helpFile);
+}
+check(
+    !str_contains($helpSources, 'Cuenta en idirecto')
+        && !str_contains($helpSources, 'Tarifa efectiva')
+        && !str_contains($helpSources, 'Guardar cuenta')
+        && !str_contains($helpSources, 'Ajustes > Cuenta en idirecto'),
+    'la ayuda no envia a una tarjeta de cuenta o margen que ya no existe'
 );
 
 echo "\n==============================================================\n";

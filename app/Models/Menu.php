@@ -608,7 +608,7 @@ final class Menu
      * `reason` vale:
      *   - null                 -> hay nivel resuelto
      *   - 'sin_cuenta'         -> la tienda no esta enlazada con su cuenta del mayorista
-     *   - 'cuenta_inexistente' -> el id guardado en Ajustes no existe en el mayorista
+     *   - 'cuenta_inexistente' -> la cuenta vinculada no existe en el mayorista
      *   - 'sin_categoria'      -> la cuenta existe pero no tiene `id_categ_cliente`
      *   - 'categoria_invalida' -> la categoria asignada ya no existe o esta borrada
      *
@@ -704,11 +704,12 @@ final class Menu
         return match ($status['reason'] ?? null) {
             'sin_cuenta' => 'Esta tienda no esta enlazada con su cuenta del mayorista, asi que '
                 . 'no se puede saber su nivel de cliente y los nodos con nivel minimo no se le '
-                . 'muestran. Pon el id de tu cuenta en Ajustes > Cuenta en idirecto.',
-            'cuenta_inexistente' => 'La cuenta #' . $cuenta . ' guardada en Ajustes no existe en '
+                . 'muestran. La vinculacion se gestiona en idirecto: solicita alli que revisen '
+                . 'la cuenta de la tienda.',
+            'cuenta_inexistente' => 'La cuenta #' . $cuenta . ' vinculada ya no existe en '
                 . 'el mayorista, asi que no se puede saber el nivel de cliente de la tienda y los '
-                . 'nodos con nivel minimo no se le muestran. Revisa el id de la cuenta en '
-                . 'Ajustes > Cuenta en idirecto.',
+                . 'nodos con nivel minimo no se le muestran. La vinculacion se gestiona en '
+                . 'idirecto: revisa la cuenta de la tienda en el mayorista.',
             'categoria_invalida' => 'La categoria de cliente de la cuenta #' . $cuenta . ' ya no '
                 . 'existe en el mayorista: los nodos con nivel minimo no se le muestran. Idirecto '
                 . 'tiene que asignarle una categoria valida en la ficha del cliente.',
