@@ -12,13 +12,22 @@
 
 # Cache y logs
 /storage/*
+/storage/logs/*
 !/storage/cache/.gitkeep
 !/storage/logs/.gitkeep
 
 # Contratos privados: las plantillas aprobadas si se versionan; los PDF
-# individuales generados nunca entran en git.
+# individuales generados y el buzon falso nunca entran en git.
+!/storage/contracts/
+!/storage/contracts/.htaccess
+!/storage/contracts/templates/
+!/storage/contracts/templates/Contrato_web_clientes_v1.pdf
+!/storage/contracts/templates/Contrato_web_clientes_v1.html
 /storage/contracts/generated/*
 !/storage/contracts/generated/.gitkeep
+!/storage/contracts/generated/.htaccess
+/storage/contracts/outbox/*
+!/storage/contracts/outbox/.htaccess
 
 # Sistema
 .DS_Store
@@ -29,4 +38,8 @@ Thumbs.db
 nbproject/
 *.swp
 
-tests/
+# Pruebas locales: solo se versionan las del flujo de alta y su doble de correo.
+/tests/*
+!/tests/registration_flow.php
+!/tests/Support/
+!/tests/Support/FakeEmailApiClient.php

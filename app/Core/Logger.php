@@ -511,15 +511,8 @@ final class Logger
 
     private static function clientIp(): string
     {
-        $forwarded = (string) ($_SERVER['HTTP_X_FORWARDED_FOR'] ?? '');
-        if ($forwarded !== '') {
-            $first = trim(explode(',', $forwarded)[0]);
-            if ($first !== '') {
-                return mb_substr($first, 0, 45);
-            }
-        }
-
-        return mb_substr((string) ($_SERVER['REMOTE_ADDR'] ?? ''), 0, 45);
+        // Solo se acepta X-Forwarded-For si REMOTE_ADDR es un proxy declarado.
+        return mb_substr(ClientIp::fromGlobals(), 0, 45);
     }
 
     /** Quien hace la peticion: `panel:<id>` o null (cliente final/anónimo). */

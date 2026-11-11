@@ -1,7 +1,7 @@
 # STATE — Estado del proyecto
 
 > **El agente actualiza este fichero al terminar cada sesión.**
-> Última actualización: **2026-11-09**
+> Última actualización: **2026-11-11**
 
 ---
 
@@ -13,6 +13,26 @@ al mayorista**. El ciclo de compra (carrito, cuenta, direcciones y checkout) est
 implementado, pero la web está en **modo de pruebas comercial** por defecto:
 el carrito y los pedidos se rechazan con un aviso hasta poner
 `SHOP_TEST_MODE=false`.
+
+> 🧾 **Alta con contrato individualizado y verificación por correo (2026-11-11).**
+> Implementado el flujo completo en `/registro`: genera un PDF desde el HTML
+> privado derivado del contrato v1.0, sustituye marcadores con datos escapados,
+> aborta ante marcadores o configuración incompleta y guarda el PDF en
+> `storage/contracts/generated` (sin URL pública). El alta crea tienda pendiente,
+> usuario inactivo, evidencia de aceptación (versión, fecha UTC, IP, user-agent,
+> hashes de plantilla aprobada, HTML fuente y PDF) y código de verificación
+> (solo hash, caducidad, intentos y reenvíos) dentro de una transacción. El
+> correo se envía con la interfaz existente y un transporte de fichero para
+> pruebas; la pantalla `/registro/verificar/{uuid}` activa tienda y usuario de
+> forma idempotente. **La guarda antigua sigue activa por defecto**
+> (`REGISTRATION_LEGACY_GUARD_ENABLED=true`). Los valores legales y el remitente
+> ya están definidos en el `.env` local, pero el alta real sigue bloqueada y no
+> se ha activado. Pruebas: **87 OK** del flujo (BD temporal, cliente falso, PDF,
+> URL privada e IP tras proxy), 28 de onboarding, 20 de vista, 13 de acceso y
+> `verify.php` **TODO OK (374)**. Preparación de despliegue:
+> `tools/registration-preflight.php` (**0 fallos** en local), `Core/ClientIp` y
+> `deploy/registro-controlado.md` (checklist, prueba real con rollback,
+> retención de PDFs y propuesta de outbox). Detalle en `CHANGELOG.md`.
 
 > 🆕 **Centro de Ayuda (2026-11-06, actualizado 2026-11-09).** Integrado en
 > `/panel/ayuda`: 38 artículos, 22 preguntas frecuentes, 11 categorías (la de

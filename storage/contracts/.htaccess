@@ -1,0 +1,13 @@
+# Contratos privados: nunca se sirven por web.
+# La regla principal esta en el .htaccess raiz y en el server block de nginx;
+# esta es una segunda barrera por si cambia el DocumentRoot.
+
+<IfModule mod_authz_core.c>
+    Require all denied
+</IfModule>
+<IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+</IfModule>
+
+Options -Indexes

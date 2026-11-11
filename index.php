@@ -137,6 +137,11 @@ $router->get('/registro',              [RegistrationController::class, 'show']);
 // La descarga se sirve desde el controlador: nunca se expone la ruta del PDF.
 $router->get('/registro/contrato',     [RegistrationController::class, 'contract']);
 $router->post('/registro',             [RegistrationController::class, 'store']);
+// Verificacion del correo: pantalla, comprobacion, reenvio y confirmacion.
+$router->get('/registro/verificar/{uuid}',  [RegistrationController::class, 'verification']);
+$router->post('/registro/verificar/{uuid}', [RegistrationController::class, 'verify']);
+$router->post('/registro/reenviar/{uuid}',  [RegistrationController::class, 'resend']);
+$router->get('/registro/verificado/{uuid}', [RegistrationController::class, 'verified']);
 
 // -----------------------------------------------------------------------------
 // PANEL DE LA TIENDA

@@ -23,4 +23,10 @@ return [
         'timeout'          => max(2, Env::int('EMAIL_API_TIMEOUT', 20)),
         'max_attachment_bytes' => 10 * 1024 * 1024,
     ],
+
+    // Remitente de los correos transaccionales. Si falta, el alta se bloquea:
+    // no se inventa una direccion ni se usa la del cliente.
+    'from'      => (string) Env::get('EMAIL_FROM', ''),
+    'from_name' => (string) Env::get('EMAIL_FROM_NAME', Env::get('APP_NAME', 'Tienda')),
+    'reply_to'  => (string) Env::get('EMAIL_REPLY_TO', ''),
 ];

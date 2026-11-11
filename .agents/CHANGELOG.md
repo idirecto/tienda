@@ -5,6 +5,105 @@ El detalle línea a línea está en `git log`.
 
 ---
 
+## 2026-11-11 · Teléfono del registro con el mismo estilo que el resto
+
+**Motivo (petición por chat):** el campo `Teléfono` del alta se veía distinto a
+`Nombre`, `Apellidos` y `Cargo en la empresa`.
+
+**Causa:** el selector global de `panel.css` estilizaba `input[type=text]`,
+`email`, `password`, `number`, etc., pero no `input[type=tel]`. El teléfono solo
+recibía el ancho de `.auth-form input`, sin borde, padding, radio ni tipografía.
+
+**Hecho:** se añadió `input[type=tel]` al selector común. Ahora comparte borde,
+fondo, altura, padding, radio y tipografía con el resto. Comprobado con captura
+de escritorio y móvil; `tests/registration_view.php` pasa a **20 OK** y
+`verify.php` sigue **TODO OK (374)**.
+
+---
+
+## 2026-11-11 · Preparación del despliegue controlado (sin activar)
+
+**Motivo (petición por chat):** preparar el despliegue del alta con valores
+legales ya definidos, checklist, preflight de solo lectura, prueba real con
+rollback y propuesta de retención/outbox, sin activar el registro.
+
+**Qué se hizo**
+
+- **Preflight**: `tools/registration-preflight.php`, solo lectura y sin correo.
+  Comprueba `.env`, valores legales, contrato/PDF, php-tcpdf, migración `015`,
+  permisos de `storage/contracts`, bloqueo web Apache/nginx, proxies de
+  confianza, configuración de correo y estado de la guarda. En `predeploy`
+  exige la guarda cerrada; en `go-live` exige `--allow-open-guard` y la guarda
+  abierta. Genera un PDF temporal mínimo y lo borra.
+- **IP tras proxy**: `Core/ClientIp` acepta `X-Forwarded-For`/`X-Real-IP` solo
+  si `REMOTE_ADDR` pertenece a `TRUSTED_PROXIES` (IP o CIDR). El alta y el log
+  usan el mismo resolvedor; se elimina la confianza ciega en la cabecera.
+- **Documentación**: `deploy/registro-controlado.md` con variables de `.env`,
+  checklist de migración/permisos/nginx/Apache/proxy, procedimiento de prueba
+  real con rollback, retención de PDFs y propuesta de outbox transaccional.
+- **Pruebas**: el flujo de alta sube a **87 OK** (9 comprobaciones nuevas de
+  IP/proxy); preflight local **0 fallos** (7 avisos); `verify.php` sigue
+  **TODO OK (374)**. No se modificó el `.env` ni se abrió la guarda.
+
+**Estado:** preparado para revisión. La activación sigue pendiente de
+confirmación explícita.
+
+---
+
+## 2026-11-11 · Alta con contrato individualizado, verificación y activación
+
+**Motivo (petición por chat):** completar el alta de `/registro` sustituyendo la
+guarda provisional por un flujo real: PDF por cliente, aceptación auditada,
+confirmación por correo y activación idempotente, con pruebas y sin enviar
+correos ni crear tiendas reales.
+
+**Qué se hizo**
+
+- **Plantilla contractual privada**: `Contrato_web_clientes_v1.html` derivado del
+  texto del PDF aprobado. `ContractTemplate` valida los valores legales
+  obligatorios (soporte, contacto, plazos y límite de responsabilidad), sustituye
+  los `{{...}}`, escapa HTML/llaves/corchetes del cliente y aborta si queda
+  cualquier marcador `{{...}}` o `[...]`.
+- **PDF privado**: `ContractPdfGenerator` usa TCPDF del sistema (sin añadir
+  dependencias), genera un PDF A4 con paginación propia y metadatos, y lo guarda
+  en `storage/contracts/generated/`. El SHA-256 del PDF se calcula y se audita.
+- **Migración `015`** (aditiva e idempotente): añade
+  `source_template_sha256`, `ip_address` y `user_agent` a
+  `mt_contract_acceptances`; el modelo exige IP válida y guarda el hash del HTML
+  fuente además del hash de la plantilla aprobada y del PDF.
+- **Servicio transaccional** `RegistrationFlow`: crea tienda pendiente, usuario
+  inactivo, alta, aceptación y código en una transacción (con savepoints si ya
+  hay una abierta). Si falla el correo o cualquier paso, revierte y borra el PDF
+  huérfano. El envío se hace dentro de la transacción, con el mismo PDF.
+- **Verificación**: código numérico con `random_int`, solo hash en BD, caducidad,
+  límite de intentos y de reenvíos con espera entre envíos. La verificación
+  bloquea la fila (`FOR UPDATE`) y activa tienda/usuario en una transacción; una
+  segunda llamada devuelve `already_verified` sin duplicar aceptación ni código.
+- **Controlador y pantallas**: rutas `GET/POST /registro/verificar/{uuid}`,
+  `POST /registro/reenviar/{uuid}` y `GET /registro/verificado/{uuid}`, con CSRF
+  en todos los POST. La guarda antigua queda detrás de
+  `REGISTRATION_LEGACY_GUARD_ENABLED` (true por defecto). Transporte de correo
+  `REGISTRATION_MAIL_TRANSPORT=api|file`; el modo `file` solo funciona fuera de
+  producción y deposita el mensaje y el PDF en `storage/contracts/outbox`.
+- **Protección de ficheros**: reglas `.htaccess` adicionales en
+  `storage/contracts`, `generated` y `outbox`; el PDF y la plantilla responden
+  403/404 por URL.
+- **Pruebas**: nueva batería `tests/registration_flow.php` con BD temporal,
+  cliente falso y transacciones revertidas: marcador sin resolver, configuración
+  incompleta, rollback por correo, código incorrecto/bloqueado/caducado,
+  reenvío/cooldown/límite, doble activación, hashes, escape, logs sin PII y PDF
+  no accesible por URL (**78 OK**). También se probó el flujo HTTP completo
+  (formulario → correo en buzón falso → verificación → activación) en una BD de
+  pruebas. `verify.php` sigue **TODO OK (374)**; los tests existentes pasan
+  (28 + 16 + 13).
+
+**Estado:** implementación y pruebas completas. La guarda antigua sigue activa y
+el `.env` actual no tiene valores legales ni remitente, así que el alta real
+permanece bloqueada. No se envió ningún correo real ni se creó ninguna tienda
+real.
+
+---
+
 ## 2026-11-09 · Ayuda actualizada: configurar beneficio fijo y porcentual
 
 **Motivo (petición por chat):** el Centro de Ayuda debe explicar la nueva tarifa

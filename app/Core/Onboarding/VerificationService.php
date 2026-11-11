@@ -98,7 +98,8 @@ final class VerificationService
         ?string $consumedAt,
         ?string $supersededAt,
         \DateTimeImmutable $expiresAt,
-        \DateTimeImmutable $now
+        \DateTimeImmutable $now,
+        ?int $maxAttempts = null
     ): string {
         if (($consumedAt ?? '') !== '') {
             return self::USED;
@@ -109,7 +110,8 @@ final class VerificationService
         if ($now >= $expiresAt) {
             return self::EXPIRED;
         }
-        if ($attempts >= $this->maxAttempts) {
+        $limit = $maxAttempts !== null && $maxAttempts > 0 ? $maxAttempts : $this->maxAttempts;
+        if ($attempts >= $limit) {
             return self::LOCKED;
         }
 

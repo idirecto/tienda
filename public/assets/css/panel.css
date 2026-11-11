@@ -103,7 +103,7 @@ h3 { font-size: .95rem; }
 .stack { display: flex; flex-direction: column; gap: 1.25rem; }
 label { display: flex; flex-direction: column; gap: .3rem; font-size: .85rem; font-weight: 600; color: #374151; }
 input[type=text], input[type=email], input[type=password], input[type=number],
-input[type=url], input[type=search], select, textarea {
+input[type=tel], input[type=url], input[type=search], select, textarea {
     border: 1px solid var(--line); border-radius: 9px; padding: .6rem .7rem;
     font-size: .92rem; font-family: inherit; font-weight: 400; background: #fff; color: var(--text);
 }

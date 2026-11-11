@@ -12,4 +12,9 @@ return [
     'timezone' => Env::get('APP_TIMEZONE', 'Europe/Madrid'),
     'locale'   => Env::get('APP_LOCALE', 'es'),
     'key'      => Env::get('APP_KEY', ''),
+    // IPs/CIDR de reverse proxies/CDN cuyo X-Forwarded-For es fiable.
+    'trusted_proxies' => array_values(array_filter(
+        array_map('trim', explode(',', (string) Env::get('TRUSTED_PROXIES', ''))),
+        static fn (string $value): bool => $value !== ''
+    )),
 ];

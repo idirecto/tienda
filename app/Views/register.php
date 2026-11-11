@@ -33,8 +33,13 @@ $effectiveLabel = $effectiveDate !== false ? date('d/m/Y', $effectiveDate) : '';
 <?php else: ?>
     <?php if (!$ready): ?>
         <div class="alert alert-warning">
-            El alta todavía no está habilitada. Falta publicar una versión contractual vigente
-            autorizada o completar la verificación por correo. No se creará ninguna cuenta.
+            <?php if (!empty($guard_closed)): ?>
+                El alta está preparada, pero permanece cerrada temporalmente hasta la confirmación
+                del responsable. No se creará ninguna cuenta.
+            <?php else: ?>
+                El alta todavía no está habilitada. Falta publicar una versión contractual vigente
+                autorizada o completar la verificación por correo. No se creará ninguna cuenta.
+            <?php endif; ?>
         </div>
     <?php endif; ?>
 

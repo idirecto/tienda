@@ -69,18 +69,20 @@ final class ContractAcceptance extends Model
     {
         $required = [
             'event_uuid', 'registration_id', 'store_id', 'client_account_id',
-            'contract_version_id', 'template_sha256', 'pdf_path', 'pdf_sha256',
+            'contract_version_id', 'template_sha256', 'source_template_sha256',
+            'pdf_path', 'pdf_sha256',
             'representative_first_name', 'representative_last_name',
             'representative_role', 'representative_email',
             'company_legal_name', 'company_tax_id', 'company_address',
             'acceptance_text_sha256', 'accepted_at_utc', 'timezone',
+            'ip_address', 'user_agent',
         ];
         foreach ($required as $field) {
             if (!array_key_exists($field, $data) || trim((string) $data[$field]) === '') {
                 throw new \InvalidArgumentException('Falta un dato obligatorio de la aceptación.');
             }
         }
-        foreach (['template_sha256', 'pdf_sha256', 'acceptance_text_sha256'] as $hashField) {
+        foreach (['template_sha256', 'source_template_sha256', 'pdf_sha256', 'acceptance_text_sha256'] as $hashField) {
             if (!preg_match('/^[a-f0-9]{64}$/i', (string) $data[$hashField])) {
                 throw new \InvalidArgumentException('Hash no valido en la aceptación.');
             }
@@ -93,6 +95,12 @@ final class ContractAcceptance extends Model
         if (!in_array((string) $data['timezone'], timezone_identifiers_list(), true)) {
             throw new \InvalidArgumentException('Zona horaria no valida.');
         }
+        if (filter_var((string) $data['ip_address'], FILTER_VALIDATE_IP) === false) {
+            throw new \InvalidArgumentException('IP no valida en la aceptación.');
+        }
+        if (mb_strlen((string) $data['user_agent']) > 512) {
+            throw new \InvalidArgumentException('User-agent demasiado largo en la aceptación.');
+        }
 
         $record = [
             'event_uuid'              => (string) $data['event_uuid'],
@@ -101,6 +109,7 @@ final class ContractAcceptance extends Model
             'client_account_id'       => (int) $data['client_account_id'],
             'contract_version_id'     => (int) $data['contract_version_id'],
             'template_sha256'         => strtolower((string) $data['template_sha256']),
+            'source_template_sha256'  => strtolower((string) $data['source_template_sha256']),
             'pdf_path'                => (string) $data['pdf_path'],
             'pdf_sha256'              => strtolower((string) $data['pdf_sha256']),
             'representative_first_name' => (string) $data['representative_first_name'],
@@ -113,6 +122,8 @@ final class ContractAcceptance extends Model
             'acceptance_text_sha256'    => strtolower((string) $data['acceptance_text_sha256']),
             'accepted_at_utc'           => (string) $data['accepted_at_utc'],
             'timezone'                  => (string) $data['timezone'],
+            'ip_address'                => (string) $data['ip_address'],
+            'user_agent'                => mb_substr((string) $data['user_agent'], 0, 512),
         ];
 
         return Database::insert(self::$table, $record);
