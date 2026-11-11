@@ -43,6 +43,15 @@ final class FaviconController extends Controller
      */
     private function redirectToFavicon(string $preferido = ''): string
     {
+        // El dominio principal es la portada de IDIRECTO: no usa el favicon de
+        // ninguna tienda ni el predeterminado de Valduran.
+        if ($this->tenant->isPlatform()) {
+            header('Cache-Control: public, max-age=300');
+            header('Location: ' . asset('assets/img/idirecto-favicon.ico'), true, 302);
+
+            return '';
+        }
+
         $favicon = Favicon::resolve($this->tenant);
         $href = (string) $favicon['href'];
 

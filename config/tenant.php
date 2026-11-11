@@ -49,7 +49,8 @@ return [
     // TENANT_PUBLIC_DOMAIN=ecom-era.com. Vacio = se deduce de la peticion.
     'public_domain' => $publicDomain,
 
-    // Tienda mostrada cuando no se puede resolver por hostname (demo/pruebas).
+    // Legado: ya no se usa como fallback del dominio principal. Para ver una
+    // tienda demo/pruebas, entrar por su subdominio o por ?tienda=slug en local.
     'demo_store' => Env::get('DEMO_STORE', ''),
 
     // Permite forzar tienda por query string (?tienda=slug). Solo fuera de produccion.

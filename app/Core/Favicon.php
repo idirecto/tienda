@@ -133,6 +133,16 @@ final class Favicon
      */
     public static function linkTags(?Tenant $tenant): string
     {
+        // La plataforma usa su propio favicon, no el de una tienda ni Valduran.
+        if ($tenant instanceof Tenant && $tenant->isPlatform()) {
+            return self::linkTag(
+                asset('assets/img/idirecto-favicon.ico'),
+                'image/x-icon',
+                'any',
+                'icon'
+            );
+        }
+
         $favicon = self::resolve($tenant);
 
         if (!$favicon['custom']) {

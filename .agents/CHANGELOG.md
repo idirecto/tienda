@@ -5,6 +5,43 @@ El detalle línea a línea está en `git log`.
 
 ---
 
+## 2026-11-11 · Portada de plataforma IDIRECTO en el dominio principal
+
+**Motivo (petición por chat):** al entrar sin cookies ni sesión, el dominio
+principal no debe mostrar el nombre, logo, menú ni catálogo de ninguna tienda.
+Debe verse una web completa a nombre de IDIRECTO, aclarando que es el servicio
+para sus tiendas.
+
+**Qué se hizo**
+
+- **`TenantResolver`**: el apex y `www` ya no caen a `DEMO_STORE` ni a la primera
+  tienda activa. Se sirve una portada de plataforma sin consultar tiendas. Las
+  rutas `/registro`, `/panel/login`, `/panel/logout` y los favicons funcionan con
+  un `Tenant::platform()` sintético (id 0); el resto de rutas del apex responde
+  404.
+- **`PlatformLanding`**: portada estática con contenido y assets de IDIRECTO
+  (logo, favicon, colores, contacto tomados de `/var/www/html/idirecto`), menú
+  responsive, hero, ventajas, pasos, CTA, contacto y footer. No consulta la base
+  de datos ni crea cookie de sesión en `/`.
+- **Vista y estilos**: `app/Views/layouts/platform.php`,
+  `app/Views/platform/home.php`, `public/assets/css/platform.css`,
+  `public/assets/img/idirecto-logo-head.png` y `idirecto-favicon.ico`.
+- **Acceso**: si alguien entra al panel desde el dominio principal, tras el login
+  se le redirige al subdominio de su tienda (`PanelUrl`), para que el panel use
+  el tenant correcto.
+- **Favicon**: el dominio principal y las pantallas de plataforma usan el
+  favicon de IDIRECTO, no el de Valduran ni el de una tienda.
+- **Docs**: README y PROJECT actualizados con el nuevo orden de resolución.
+
+**Pruebas:** `tests/platform_landing.php` **21 OK**; el resto de baterías siguen
+pasando; `verify.php` **TODO OK (374)**. Comprobado en HTTP real:
+`local.tienda` y `www.local.tienda` muestran la portada sin nombres de tiendas ni
+`Set-Cookie`; `xgrabu.local.tienda` sigue mostrando su tienda; `/catalogo` en el
+apex responde 404; el favicon del apex redirige al de IDIRECTO. Capturas de
+escritorio y móvil revisadas.
+
+---
+
 ## 2026-11-11 · Teléfono del registro con el mismo estilo que el resto
 
 **Motivo (petición por chat):** el campo `Teléfono` del alta se veía distinto a

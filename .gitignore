@@ -38,8 +38,9 @@ Thumbs.db
 nbproject/
 *.swp
 
-# Pruebas locales: solo se versionan las del flujo de alta y su doble de correo.
+# Pruebas locales: se versionan las del alta, la portada y su doble de correo.
 /tests/*
 !/tests/registration_flow.php
+!/tests/platform_landing.php
 !/tests/Support/
 !/tests/Support/FakeEmailApiClient.php

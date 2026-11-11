@@ -64,9 +64,10 @@ if (is_dir($logDir) && (is_writable($logFile) || is_writable($logDir))) {
 }
 
 // -----------------------------------------------------------------------------
-// Sesion (cookies endurecidas). No se inicia en CLI (migraciones, scripts).
+// Sesion (cookies endurecidas). No se inicia en CLI (migraciones, scripts) ni
+// en la portada estatica de IDIRECTO, que no necesita cookies.
 // -----------------------------------------------------------------------------
-if (PHP_SAPI !== 'cli') {
+if (PHP_SAPI !== 'cli' && !\Tienda\Core\PlatformLanding::isLandingRequest()) {
     \Tienda\Core\Session::start();
 }
 

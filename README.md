@@ -79,10 +79,10 @@ URLs resultantes:
 
 | URL | Contenido |
 |---|---|
-| http://local.tienda/ | Tienda demo (portada) |
+| http://local.tienda/ | Portada de plataforma IDIRECTO (sin datos de tiendas) |
 | http://local.tienda/panel | Panel (entra con el usuario que creaste en `/registro`) |
-| http://local.tienda/catalogo | Catálogo central |
-| http://idirecto-demo.local.tienda/ | Acceso por subdominio |
+| http://local.tienda/catalogo | 404 en el dominio principal; el catálogo se ve en cada tienda |
+| http://<slug>.local.tienda/ | Storefront de la tienda |
 
 > **PHP 8.4 + mod_php (importante):** añade `;HttpOnly;Secure;SameSite=None` a las
 > cookies. En HTTP el navegador descarta una cookie `Secure` y **la sesión del panel
@@ -292,7 +292,7 @@ STORAGE_MAX_BYTES_BANNERS=8388608    # banners: 8 MB
 ```ini
 BASE_DOMAINS=ecom-era.com
 TENANT_PUBLIC_DOMAIN=ecom-era.com # dominio que muestra el panel (vacio = el del Host)
-DEMO_STORE=idirecto-demo          # tienda mostrada si el host no resuelve
+DEMO_STORE=idirecto-demo          # legado; ya no se usa como fallback del apex
 PLATFORM_IP=203.0.113.10          # IP para las instrucciones del registro A
 PLATFORM_CNAME=ecom-era.com       # destino del CNAME de dominios propios
 ```
@@ -664,10 +664,14 @@ tienda/
 El storefront se decide **por el hostname** (nunca por cookies):
 
 1. `?tienda=slug` — solo fuera de producción (desarrollo).
-2. `<slug>.<dominio_base>` → `mt_stores.slug`.
-3. Dominio propio **verificado** (`mt_domains.status = 1`).
-4. `DEMO_STORE` del `.env`.
-5. Primera tienda activa.
+2. Dominio principal/apex o `www`: **portada estática de IDIRECTO**, sin
+   consultar ninguna tienda.
+3. `<slug>.<dominio_base>` → `mt_stores.slug`.
+4. Dominio propio **verificado** (`mt_domains.status = 1`).
+5. Host sin tienda: portada de plataforma; el resto de rutas, 404.
+
+No se cae a `DEMO_STORE` ni a la primera tienda activa. Para ver una tienda de
+pruebas, entrar por su subdominio o usar `?tienda=slug` en desarrollo.
 
 ---
 

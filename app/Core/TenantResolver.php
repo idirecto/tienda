@@ -12,20 +12,25 @@ use Tienda\Models\Store;
  *
  * Orden:
  *   1. Override por query string (?tienda=slug) solo fuera de produccion.
- *   2. Subdominio de un dominio base: <slug>.<base_domain>
- *   3. Dominio propio verificado (mt_domains.status = 1)
- *   4. Tienda demo configurada (DEMO_STORE)
- *   5. Primera tienda activa (para no dejar la web sin contenido)
+ *   2. Dominio principal/apex o www: portada estatica de IDIRECTO, sin tienda.
+ *   3. Subdominio de un dominio base: <slug>.<base_domain>.
+ *   4. Dominio propio verificado (mt_domains.status = 1).
+ *   5. Host sin tienda: portada de plataforma (o 404 si la ruta no es publica).
+ *
+ * Ya no se cae a la tienda demo ni a la primera tienda activa: entrar por el
+ * dominio principal nunca debe mostrar el nombre, logo o catalogo de una tienda.
  */
 final class TenantResolver
 {
     private static ?Tenant $cache = null;
 
-    public static function resolve(): Tenant
+    public static function resolve(?string $path = null): Tenant
     {
         if (self::$cache instanceof Tenant) {
             return self::$cache;
         }
+
+        $path ??= self::requestPath();
 
         // 1. Override para desarrollo
         if (Config::get('tenant.allow_query_override', false)) {
@@ -40,16 +45,24 @@ final class TenantResolver
 
         $host = self::normalizeHost($_SERVER['HTTP_HOST'] ?? '');
 
-        // 2. Subdominio
+        // 2. Dominio principal o www: nunca se resuelve una tienda.
+        if ($host === '' || PlatformLanding::isApexHost($host)) {
+            return self::$cache = self::platformContext($path);
+        }
+
+        // 3. Subdominio de tienda
         $sub = self::extractSubdomain($host, (array) Config::get('tenant.base_domains', []));
         if ($sub !== null) {
             $store = self::storeForSlug($sub);
             if ($store) {
                 return self::$cache = new Tenant($store);
             }
+
+            // Subdominio inexistente: portada de plataforma, sin datos de tienda.
+            return self::$cache = self::platformContext($path);
         }
 
-        // 3. Dominio propio verificado
+        // 4. Dominio propio verificado
         if ($host !== '') {
             $domain = Domain::findVerified($host);
             if ($domain) {
@@ -62,25 +75,36 @@ final class TenantResolver
             }
         }
 
-        // 4. Demo
-        $demo = (string) Config::get('tenant.demo_store', '');
-        if ($demo !== '') {
-            $store = self::storeForSlug($demo);
-            if ($store) {
-                return self::$cache = new Tenant($store);
-            }
+        // 5. Host desconocido: solo las rutas de plataforma; el resto, 404.
+        return self::$cache = self::platformContext($path);
+    }
+
+    /**
+     * Contexto para el dominio principal o un host sin tienda.
+     *
+     * La portada se sirve mediante PlatformLandingException para que el front
+     * controller la pinte sin pasar por ningun controlador de tienda.
+     */
+    private static function platformContext(string $path): Tenant
+    {
+        if (PlatformLanding::isLandingPath($path)) {
+            throw new PlatformLandingException('Portada de plataforma.');
+        }
+        if (PlatformLanding::isPlatformRoute($path)) {
+            return Tenant::platform();
         }
 
-        // 5. Primera tienda activa
-        $store = Store::firstActiveWithPlan();
-        if ($store) {
-            return self::$cache = new Tenant($store);
+        throw new TenantUnavailableException('No hay una tienda en este dominio.');
+    }
+
+    private static function requestPath(): string
+    {
+        $path = parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH);
+        if (!is_string($path) || $path === '') {
+            return '/';
         }
 
-        throw new \RuntimeException(
-            'No hay ninguna tienda disponible. Ejecuta las migraciones y las semillas '
-            . '(php database/migrate.php) o define DEMO_STORE en .env.'
-        );
+        return '/' . trim($path, '/');
     }
 
     /**

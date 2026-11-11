@@ -17,6 +17,7 @@ use Tienda\Core\Logger;
 use Tienda\Core\Mail\RegistrationMailer;
 use Tienda\Core\Onboarding\RegistrationException;
 use Tienda\Core\Onboarding\RegistrationFlow;
+use Tienda\Core\PanelUrl;
 use Tienda\Core\Registration;
 use Tienda\Core\Session;
 use Tienda\Core\Subdomain;
@@ -38,7 +39,8 @@ final class RegistrationController extends Controller
     public function show(array $params = []): string
     {
         if (Auth::check()) {
-            $this->redirect('panel');
+            header('Location: ' . PanelUrl::forUser());
+            exit;
         }
 
         $contract = ContractVersion::current(

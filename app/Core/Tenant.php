@@ -328,6 +328,40 @@ final class Tenant
 
     // ----- Utilidades ---------------------------------------------------
 
+    /**
+     * Contexto sin tienda para las rutas de plataforma (registro, login).
+     *
+     * No representa una fila de `mt_stores`: id 0, sin datos de ninguna tienda.
+     */
+    public static function platform(): self
+    {
+        return new self([
+            'id'             => 0,
+            'slug'           => '_platform',
+            'name'           => 'IDIRECTO',
+            'legal_name'     => 'IDIRECTO MAYORISTA S.L.',
+            'email'          => '',
+            'phone'          => '',
+            'status'         => 1,
+            'theme'          => 'idirecto',
+            'menu_style'     => 'catalogo',
+            'color_primary'  => '#234b61',
+            'color_secondary'=> '#00aff0',
+            'header_style'   => 'classic',
+            'currency'       => 'EUR',
+            'country'        => 'Espana',
+            'tax_rate'       => 21.00,
+            'show_prices'    => 1,
+            'allow_orders'   => 1,
+            'meta_description' => 'Plataforma web para las tiendas de IDIRECTO.',
+        ]);
+    }
+
+    public function isPlatform(): bool
+    {
+        return $this->id() === 0 && $this->slug() === '_platform';
+    }
+
     /** URL publica de la tienda (dominio propio verificado o subdominio). */
     public function publicUrl(): string
     {

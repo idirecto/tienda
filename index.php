@@ -278,11 +278,15 @@ $router->get('/{ruta...}',             [StorefrontController::class, 'seoListado
 // -----------------------------------------------------------------------------
 try {
     \Tienda\Core\View::setBasePath($router->basePath());
-    $tenant = TenantResolver::resolve();
+    $tenant = TenantResolver::resolve($router->currentPath());
     // Contexto del log: a partir de aqui, todo lo que se registre sabe de que
     // tienda es (el panel puede afinarlo con la tienda del usuario).
     Logger::setStore($tenant->id(), $tenant->slug());
     $router->dispatch($tenant);
+} catch (\Tienda\Core\PlatformLandingException $e) {
+    // Dominio principal (o host sin tienda): portada estatica de IDIRECTO.
+    // No se consulta ninguna tienda ni se pinta su identidad.
+    echo \Tienda\Core\PlatformLanding::render();
 } catch (\Tienda\Core\TenantUnavailableException $e) {
     // Una tienda pendiente o suspendida no atiende el storefront. Se responde
     // 404 de forma uniforme para no revelar su estado ni sus datos.

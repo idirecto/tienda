@@ -7,6 +7,7 @@ namespace Tienda\Controllers\Admin;
 use Tienda\Core\Auth;
 use Tienda\Core\Controller;
 use Tienda\Core\Logger;
+use Tienda\Core\PanelUrl;
 use Tienda\Core\Session;
 
 /**
@@ -19,7 +20,7 @@ final class AuthController extends Controller
         // No basta con que exista la cookie: si la tienda fue suspendida, la
         // sesion se invalida aqui antes de mostrar el formulario.
         if (Auth::validateSession()) {
-            $this->redirect('panel');
+            $this->redirectToPanel();
         }
         return $this->view('panel/login', [
             'pageTitle' => 'Acceso al panel',
@@ -54,7 +55,7 @@ final class AuthController extends Controller
             'rol'     => Auth::role(),
         ]);
         Session::flash('success', 'Bienvenido de nuevo.');
-        $this->redirect('panel');
+        $this->redirectToPanel();
     }
 
     public function logout(array $params = []): string
@@ -62,5 +63,18 @@ final class AuthController extends Controller
         Auth::logout();
         Session::flash('success', 'Sesion cerrada.');
         $this->redirect('panel/login');
+    }
+
+    /**
+     * Lleva al panel en el host de la tienda del usuario.
+     *
+     * Si el login se ha hecho en el dominio principal (portada de plataforma),
+     * el panel debe abrirse en el subdominio de su tienda para que el tenant sea
+     * el correcto.
+     */
+    private function redirectToPanel(): never
+    {
+        header('Location: ' . PanelUrl::forUser());
+        exit;
     }
 }

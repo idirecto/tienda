@@ -171,11 +171,16 @@ las rutas internas los pone el servidor: `.htaccess` en Apache y
 
 **Orden de resolución de tienda** (`TenantResolver`), por hostname, nunca cookies:
 
-1. `?__store=<slug>` — solo en desarrollo, para probar sin DNS.
-2. Subdominio: `<slug>.` + alguno de `BASE_DOMAINS`.
-3. Dominio propio **verificado** en `mt_domains`.
-4. `DEMO_STORE` del `.env`.
-5. Primera tienda activa.
+1. `?tienda=<slug>` — solo en desarrollo, para probar sin DNS.
+2. Dominio principal/apex (`ecom-era.com`, `www.ecom-era.com`): **portada
+   estática de IDIRECTO**, sin consultar ninguna tienda.
+3. Subdominio: `<slug>.` + alguno de `BASE_DOMAINS`.
+4. Dominio propio **verificado** en `mt_domains`.
+5. Host sin tienda: portada de plataforma; las rutas que no son de plataforma
+   responden 404.
+
+No se cae a `DEMO_STORE` ni a la primera tienda activa: entrar por el dominio
+principal nunca puede mostrar el nombre, logo o catálogo de una tienda.
 
 ---
 

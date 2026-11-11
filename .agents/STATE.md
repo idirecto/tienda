@@ -14,6 +14,16 @@ implementado, pero la web está en **modo de pruebas comercial** por defecto:
 el carrito y los pedidos se rechazan con un aviso hasta poner
 `SHOP_TEST_MODE=false`.
 
+> 🏠 **Portada de plataforma IDIRECTO (2026-11-11).** El dominio principal
+> (`ecom-era.com`, `local.tienda`, `www`) y cualquier host sin tienda muestran
+> una portada estática a nombre de IDIRECTO, con logo, menú responsive, hero,
+> ventajas, pasos, contacto y footer. No consulta tiendas, banners, productos ni
+> menús de la base de datos y no inicia sesión/cookie en `/`; aclara que es el
+> servicio para las tiendas de IDIRECTO. Los subdominios de tienda y los dominios
+> propios verificados siguen mostrando su storefront. Rutas de plataforma como
+> `/registro` y `/panel/login` funcionan con un tenant sintético id 0; el resto
+> de rutas del apex responde 404. Pruebas: `tests/platform_landing.php` **21 OK**.
+>
 > 🧾 **Alta con contrato individualizado y verificación por correo (2026-11-11).**
 > Implementado el flujo completo en `/registro`: genera un PDF desde el HTML
 > privado derivado del contrato v1.0, sustituye marcadores con datos escapados,
@@ -24,12 +34,12 @@ el carrito y los pedidos se rechazan con un aviso hasta poner
 > (solo hash, caducidad, intentos y reenvíos) dentro de una transacción. El
 > correo se envía con la interfaz existente y un transporte de fichero para
 > pruebas; la pantalla `/registro/verificar/{uuid}` activa tienda y usuario de
-> forma idempotente. **La guarda antigua sigue activa por defecto**
-> (`REGISTRATION_LEGACY_GUARD_ENABLED=true`). Los valores legales y el remitente
-> ya están definidos en el `.env` local, pero el alta real sigue bloqueada y no
-> se ha activado. Pruebas: **87 OK** del flujo (BD temporal, cliente falso, PDF,
-> URL privada e IP tras proxy), 28 de onboarding, 20 de vista, 13 de acceso y
-> `verify.php` **TODO OK (374)**. Preparación de despliegue:
+> forma idempotente. **La guarda está desactivada en el `.env` actual**
+> (`REGISTRATION_LEGACY_GUARD_ENABLED=false`), con los valores legales y el
+> remitente definidos, por lo que el alta real está operativa. Pruebas:
+> **87 OK** del flujo (BD temporal, cliente falso, PDF, URL privada e IP tras
+> proxy), 28 de onboarding, 20 de vista, 13 de acceso y `verify.php`
+> **TODO OK (374)**. Preparación de despliegue:
 > `tools/registration-preflight.php` (**0 fallos** en local), `Core/ClientIp` y
 > `deploy/registro-controlado.md` (checklist, prueba real con rollback,
 > retención de PDFs y propuesta de outbox). Detalle en `CHANGELOG.md`.
