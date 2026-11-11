@@ -16,7 +16,9 @@ final class AuthController extends Controller
 {
     public function showLogin(array $params = []): string
     {
-        if (Auth::check()) {
+        // No basta con que exista la cookie: si la tienda fue suspendida, la
+        // sesion se invalida aqui antes de mostrar el formulario.
+        if (Auth::validateSession()) {
             $this->redirect('panel');
         }
         return $this->view('panel/login', [

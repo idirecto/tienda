@@ -16,6 +16,11 @@
 !/storage/cache/.gitkeep
 !/storage/logs/.gitkeep
 
+# Contratos privados: las plantillas aprobadas si se versionan; los PDF
+# individuales generados nunca entran en git.
+/storage/contracts/generated/*
+!/storage/contracts/generated/.gitkeep
+
 # Sistema
 .DS_Store
 Thumbs.db

@@ -13,6 +13,10 @@ final class Store extends Model
 {
     protected static string $table = 'mt_stores';
 
+    public const STATUS_PENDING = 0;
+    public const STATUS_ACTIVE = 1;
+    public const STATUS_SUSPENDED = 2;
+
     /** SELECT base con los datos del plan incorporados. */
     private static function baseSelect(): string
     {
@@ -41,6 +45,30 @@ final class Store extends Model
             self::baseSelect() . ' WHERE s.id = :id LIMIT 1',
             ['id' => $id]
         );
+    }
+
+    /** Tienda activa por slug. No devuelve pendientes ni suspendidas. */
+    public static function findActiveBySlugWithPlan(string $slug): ?array
+    {
+        return \Tienda\Core\Database::first(
+            self::baseSelect() . ' WHERE s.slug = :slug AND s.status = :status LIMIT 1',
+            ['slug' => strtolower(trim($slug)), 'status' => self::STATUS_ACTIVE]
+        );
+    }
+
+    /** Tienda activa por id. No devuelve pendientes ni suspendidas. */
+    public static function findActiveWithPlan(int $id): ?array
+    {
+        return \Tienda\Core\Database::first(
+            self::baseSelect() . ' WHERE s.id = :id AND s.status = :status LIMIT 1',
+            ['id' => $id, 'status' => self::STATUS_ACTIVE]
+        );
+    }
+
+    /** Un estado solo es de acceso publico cuando es el estado activo. */
+    public static function statusAllowsPublicAccess(mixed $status): bool
+    {
+        return is_numeric($status) && (int) $status === self::STATUS_ACTIVE;
     }
 
     public static function firstActiveWithPlan(): ?array

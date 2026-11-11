@@ -27,7 +27,37 @@ final class Registration
     private const REQUIRED_TABLES = ['mt_stores', 'mt_store_users', 'mt_plans'];
 
     /** Estados de una tienda (columna `mt_stores.status`). */
+    public const STORE_PENDING = 0;
     public const STORE_ACTIVE = 1;
+
+    /**
+     * Interruptor de la activacion completa.
+     *
+     * Se mantiene cerrado hasta que existan contrato autorizado, PDF privado,
+     * verificacion y correo aprobados. Un false aqui impide crear tiendas
+     * aunque el resto de piezas ya esten desplegadas.
+     */
+    public static function completionEnabled(): bool
+    {
+        return (bool) Config::get('registration.completion_enabled', false);
+    }
+
+    /** Tablas nuevas necesarias para el alta con evidencia y verificacion. */
+    public static function onboardingSchemaReady(): bool
+    {
+        foreach ([
+            'mt_contract_versions',
+            'mt_store_registrations',
+            'mt_contract_acceptances',
+            'mt_registration_verifications',
+        ] as $table) {
+            if (!Database::tableExists($table)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
 
     /** Se puede registrar: puente activo, registro abierto y tablas presentes. */
     public static function isOpen(): bool

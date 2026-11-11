@@ -12,16 +12,16 @@ use Tienda\Core\Logger;
 use Tienda\Core\Registration;
 use Tienda\Core\Session;
 use Tienda\Core\Subdomain;
-use Tienda\Core\ValidationException;
+use Tienda\Models\ContractVersion;
 
 /**
  * Registro publico de una tienda nueva.
  *
- * Regla: **solo quien ya es cliente del mayorista puede tener tienda aqui**. El
- * tendero entra con el email y la contrasena de su cuenta de idirecto; se
- * comprueban contra `tiendas` (`activo = 2`) y se crea su tienda + su usuario de
- * panel. Su contrasena del mayorista no se guarda: solo se usa para comprobar
- * que la cuenta es suya.
+ * Mientras no exista una version contractual aprobada, el formulario no puede
+ * enviarse. El interruptor REGISTRATION_COMPLETION_ENABLED permanece cerrado
+ * hasta completar la generacion y envio del PDF y la verificacion por correo.
+ *
+ * Esta fase no crea tiendas, usuarios ni aceptaciones.
  */
 final class RegistrationController extends Controller
 {
@@ -31,11 +31,67 @@ final class RegistrationController extends Controller
             $this->redirect('panel');
         }
 
+        $contract = ContractVersion::current(
+            (string) Config::get('registration.contract.document_key', 'access_web')
+        );
+
+        if ($contract !== null) {
+            Session::set('register_contract_id', (int) $contract['id']);
+            Session::set('register_contract_seen_at', time());
+        } else {
+            Session::forget('register_contract_id');
+            Session::forget('register_contract_seen_at');
+        }
+
+        $open = Registration::isOpen();
+        $ready = $open
+            && $contract !== null
+            && Registration::completionEnabled()
+            && Registration::onboardingSchemaReady();
+
         return $this->view('register', [
             'pageTitle' => 'Registra tu tienda',
-            'open'      => Registration::isOpen(),
+            'open'      => $open,
+            'ready'     => $ready,
+            'contract'  => $contract,
             'slug'      => (string) $this->input('slug', ''),
         ], 'panel_blank');
+    }
+
+    /**
+     * Entrega el PDF contractual vigente únicamente a la sesión que ha abierto
+     * el formulario de alta. No es una URL pública del fichero.
+     */
+    public function contract(array $params = []): never
+    {
+        $contract = ContractVersion::current(
+            (string) Config::get('registration.contract.document_key', 'access_web')
+        );
+        $seenAt = (int) Session::get('register_contract_seen_at', 0);
+        $sessionVersion = (int) Session::get('register_contract_id', 0);
+        $window = max(60, (int) Config::get('registration.contract.download_session_seconds', 3600));
+
+        if ($contract === null
+            || $sessionVersion !== (int) $contract['id']
+            || $seenAt <= 0
+            || (time() - $seenAt) > $window) {
+            $this->notFound();
+        }
+
+        $path = ContractVersion::templateAbsolutePath($contract);
+        if ($path === null) {
+            $this->notFound();
+        }
+
+        session_write_close();
+        header('Content-Type: application/pdf');
+        header('Content-Disposition: inline; filename="contrato-acceso.pdf"');
+        header('Content-Length: ' . (string) filesize($path));
+        header('Cache-Control: private, no-store, max-age=0');
+        header('Pragma: no-cache');
+        header('X-Content-Type-Options: nosniff');
+        readfile($path);
+        exit;
     }
 
     public function store(array $params = []): string
@@ -43,13 +99,20 @@ final class RegistrationController extends Controller
         $this->requireCsrf('registro');
 
         if (!Registration::isOpen()) {
-            Session::flash('error', 'El registro de tiendas esta cerrado en este momento.');
-            $this->redirect('registro');
+            $this->fail('El registro de tiendas esta cerrado en este momento.');
         }
 
         if ($this->blocked()) {
-            Session::flash('error', 'Demasiados intentos fallidos. Espera unos minutos y vuelve a probar.');
-            $this->redirect('registro');
+            $this->fail('Demasiados intentos fallidos. Espera unos minutos y vuelve a probar.');
+        }
+
+        $contract = ContractVersion::current(
+            (string) Config::get('registration.contract.document_key', 'access_web')
+        );
+        if ($contract === null
+            || !Registration::completionEnabled()
+            || !Registration::onboardingSchemaReady()) {
+            $this->fail('El alta todavia no esta disponible: falta habilitar el contrato y la verificacion por correo.');
         }
 
         $email = mb_strtolower(trim((string) $this->input('email', '')));
@@ -58,87 +121,108 @@ final class RegistrationController extends Controller
         $repeat = (string) $this->input('password_confirm', '');
         $slug = trim((string) $this->input('slug', ''));
 
-        if (!filter_var($email, FILTER_VALIDATE_EMAIL) || $accountPassword === '') {
-            Session::flash('error', 'Escribe el email y la contrasena de tu cuenta en idirecto.');
-            $this->redirect('registro');
+        if (!mb_check_encoding($email, 'UTF-8')
+            || mb_strlen($email) > 60
+            || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $this->fail('El correo corporativo no es valido.');
+        }
+        if ($accountPassword === '') {
+            $this->fail('Escribe la contrasena de tu cuenta en idirecto.');
         }
         if (strlen($panelPassword) < 8) {
-            Session::flash('error', 'La contrasena de este panel debe tener al menos 8 caracteres.');
-            $this->redirect('registro');
+            $this->fail('La contrasena de este panel debe tener al menos 8 caracteres.');
         }
         if ($panelPassword !== $repeat) {
-            Session::flash('error', 'Las dos contrasenas del panel no coinciden.');
-            $this->redirect('registro');
+            $this->fail('Las dos contrasenas del panel no coinciden.');
+        }
+
+        $firstName = $this->representativeText('representative_first_name', 80, 'el nombre');
+        $lastName = $this->representativeText('representative_last_name', 120, 'los apellidos');
+        $role = $this->representativeText('representative_role', 120, 'el cargo');
+        $phone = $this->representativeText('representative_phone', 40, 'el telefono');
+
+        if (preg_match('/^[0-9+().\-\s]{6,40}$/', $phone) !== 1) {
+            $this->fail('El telefono no tiene un formato valido.');
+        }
+
+        if ((string) $this->input('contract_accepted', '') !== '1') {
+            $this->fail('Debes marcar la aceptacion expresa del contrato.');
+        }
+        if ((int) $this->input('contract_version_id', 0) !== (int) $contract['id']) {
+            $this->fail('La version del contrato ha cambiado. Recarga la pagina antes de continuar.');
+        }
+
+        if ($slug !== '') {
+            $normalized = Subdomain::normalize($slug);
+            $slugError = Subdomain::formatError($normalized);
+            if ($slugError !== null) {
+                $this->fail('Direccion de tienda no valida: ' . $slugError);
+            }
         }
 
         // La cuenta tiene que existir y estar activa en el mayorista.
         $cuenta = Account::login($email, $accountPassword);
         if ($cuenta === null) {
             $this->noteAttempt();
-            Logger::warning('acceso', 'Registro de tienda rechazado: cuenta no valida', [
-                'email' => mb_substr($email, 0, 180),
-                'ip'    => $this->clientIp(),
-            ]);
-            Session::flash('error', 'No encontramos ninguna cuenta activa en idirecto con esas credenciales.');
-            $this->redirect('registro');
+            Logger::warning('acceso', 'Registro de tienda rechazado: credenciales no validas');
+            $this->fail('No encontramos ninguna cuenta activa en idirecto con esas credenciales.');
         }
 
-        // Una cuenta solo puede tener una tienda en esta web.
+        $accountEmail = mb_strtolower(trim((string) ($cuenta['email'] ?? '')));
+        if ($accountEmail === '' || !hash_equals($accountEmail, $email)) {
+            $this->noteAttempt();
+            Logger::warning('acceso', 'Registro de tienda rechazado: el correo no coincide con la cuenta');
+            $this->fail('El correo corporativo debe coincidir con el de la cuenta de idirecto.');
+        }
+
         $existente = Registration::existingStoreFor((int) $cuenta['id']);
         if ($existente !== null) {
             $this->clearAttempts();
-            Session::flash('error', 'Esa cuenta de idirecto ya tiene tienda (' . $existente['name'] . '). Entra con tu usuario del panel.');
-            $this->redirect('panel/login');
+            $this->fail('Esa cuenta de idirecto ya tiene una tienda o un alta pendiente. Revisa el acceso que te enviamos.');
         }
 
-        try {
-            $result = Registration::register($cuenta, $email, $panelPassword, $slug !== '' ? $slug : null);
-        } catch (ValidationException $e) {
-            $this->noteAttempt();
-            Session::flash('error', $e->getMessage());
-            $this->redirect('registro');
-        } catch (\Throwable $e) {
-            Logger::error('acceso', 'Fallo al registrar la tienda: ' . $e->getMessage(), [
-                'email'     => mb_substr($email, 0, 180),
-                'exception' => get_class($e),
-                'file'      => $e->getFile() . ':' . $e->getLine(),
-            ]);
-            Session::flash('error', 'No se ha podido crear la tienda. Intentalo de nuevo en unos minutos.');
-            $this->redirect('registro');
-        }
-
-        $this->clearAttempts();
-
-        // Sesion de panel con el usuario recien creado.
-        if (!Auth::attempt($email, $panelPassword)) {
-            Session::flash('success', 'Tu tienda esta creada. Entra con tu email y contrasena.');
-            $this->redirect('panel/login');
-        }
-
-        // Ya con sesion: el log queda en el fichero de la tienda recien creada.
-        Logger::info('acceso', 'Tienda registrada', [
-            'store_id' => (int) ($result['store_id'] ?? 0),
-            'slug'     => (string) ($result['slug'] ?? ''),
-            'email'    => mb_substr($email, 0, 180),
-            'cuenta'   => (int) $cuenta['id'],
-        ]);
-
-        $publicUrl = $this->publicUrl($result['slug']);
-        Session::flash(
-            'success',
-            'Tu tienda ya esta activa en ' . $publicUrl . '. Revisa Diseno y Ajustes para completar los datos de venta y presentacion.'
+        // Guarda de fase: aunque se active el interruptor por error, esta
+        // version del codigo no puede crear la tienda ni la aceptacion hasta
+        // que exista el flujo transaccional de PDF, correo y verificacion.
+        $this->fail(
+            'Datos validados. La generacion del contrato y la confirmacion por correo todavia no estan habilitadas; no se ha creado ninguna cuenta.'
         );
-        $this->redirect('panel');
     }
 
     // =====================================================================
     // INTERNOS
     // =====================================================================
 
-    /** URL publica que tendra la tienda (subdominio o dominio propio). */
-    private function publicUrl(string $slug): string
+    private function representativeText(string $field, int $maxLength, string $label): string
     {
-        return Subdomain::url($slug);
+        $value = trim((string) $this->input($field, ''));
+        if (!mb_check_encoding($value, 'UTF-8')) {
+            $this->fail('Revisa ' . $label . ': el texto no tiene una codificacion valida.');
+        }
+        $length = mb_strlen($value);
+        if ($value === '' || $length > $maxLength || preg_match('/[\x00-\x1F\x7F]/u', $value) === 1) {
+            $this->fail('Revisa ' . $label . ': es obligatorio y debe tener como maximo ' . $maxLength . ' caracteres.');
+        }
+
+        return $value;
+    }
+
+    private function fail(string $message): never
+    {
+        Session::flash('error', $message);
+        $this->redirect('registro');
+    }
+
+    private function notFound(): never
+    {
+        http_response_code(404);
+        header('Content-Type: text/html; charset=utf-8');
+        header('Cache-Control: no-store');
+        echo '<!doctype html><html lang="es"><head><meta charset="utf-8">'
+            . '<meta name="viewport" content="width=device-width, initial-scale=1">'
+            . '<title>404</title></head><body style="font-family:system-ui,sans-serif;padding:2rem">'
+            . '<h1>404</h1><p>Contrato no disponible.</p></body></html>';
+        exit;
     }
 
     /**
@@ -146,8 +230,7 @@ final class RegistrationController extends Controller
      *
      * El formulario comprueba credenciales contra la base de datos del
      * mayorista, asi que sin limite serviria para probar contrasenas a la
-     * fuerza. Es un limite por sesion (no por IP): suficiente para el uso
-     * normal y no necesita almacenamiento compartido.
+     * fuerza. Es un limite por sesion (no por IP).
      */
     private function blocked(): bool
     {
@@ -180,10 +263,5 @@ final class RegistrationController extends Controller
     private function window(): int
     {
         return max(60, (int) Config::get('idirecto.register_window', 900));
-    }
-
-    private function clientIp(): string
-    {
-        return (string) ($_SERVER['REMOTE_ADDR'] ?? '-');
     }
 }

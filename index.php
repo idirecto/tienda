@@ -134,6 +134,8 @@ $router->post('/cuenta/perfil',         [CustomerController::class, 'profileSave
 // comprueban sus credenciales de idirecto contra la tabla `tiendas`.
 // -----------------------------------------------------------------------------
 $router->get('/registro',              [RegistrationController::class, 'show']);
+// La descarga se sirve desde el controlador: nunca se expone la ruta del PDF.
+$router->get('/registro/contrato',     [RegistrationController::class, 'contract']);
 $router->post('/registro',             [RegistrationController::class, 'store']);
 
 // -----------------------------------------------------------------------------
@@ -276,6 +278,16 @@ try {
     // tienda es (el panel puede afinarlo con la tienda del usuario).
     Logger::setStore($tenant->id(), $tenant->slug());
     $router->dispatch($tenant);
+} catch (\Tienda\Core\TenantUnavailableException $e) {
+    // Una tienda pendiente o suspendida no atiende el storefront. Se responde
+    // 404 de forma uniforme para no revelar su estado ni sus datos.
+    http_response_code(404);
+    header('Content-Type: text/html; charset=utf-8');
+    header('Cache-Control: no-store');
+    echo '<!doctype html><html lang="es"><head><meta charset="utf-8">'
+        . '<meta name="viewport" content="width=device-width, initial-scale=1">'
+        . '<title>404</title></head><body style="font-family:system-ui,sans-serif;padding:2rem">'
+        . '<h1>404</h1><p>La pagina que buscas no existe o no esta disponible.</p></body></html>';
 } catch (\Throwable $e) {
     http_response_code(500);
 

@@ -25,5 +25,6 @@ $error = Session::pullFlash('error');
         <?php if ($error): ?><div class="alert alert-error"><?= e($error) ?></div><?php endif; ?>
         <?= $content ?>
     </main>
+    <script src="<?= e(asset('assets/js/register.js')) ?>" defer></script>
 </body>
 </html>

@@ -107,10 +107,15 @@ abstract class Controller
         exit;
     }
 
-    /** Exige usuario de panel autenticado. */
+    /**
+     * Exige usuario de panel autenticado y tienda activa.
+     *
+     * La sesión se revalida contra la base de datos en cada petición: si la
+     * tienda pasa a pendiente o suspendida, el acceso se cierra de inmediato.
+     */
     protected function requireAuth(): void
     {
-        if (!Auth::check()) {
+        if (!Auth::validateSession()) {
             Session::flash('error', 'Inicia sesion para continuar.');
             $this->redirect('panel/login');
         }

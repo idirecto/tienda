@@ -31,7 +31,7 @@ final class TenantResolver
         if (Config::get('tenant.allow_query_override', false)) {
             $slug = isset($_GET['tienda']) ? strtolower(trim((string) $_GET['tienda'])) : '';
             if ($slug !== '') {
-                $store = Store::findBySlugWithPlan($slug);
+                $store = self::storeForSlug($slug);
                 if ($store) {
                     return self::$cache = new Tenant($store);
                 }
@@ -43,7 +43,7 @@ final class TenantResolver
         // 2. Subdominio
         $sub = self::extractSubdomain($host, (array) Config::get('tenant.base_domains', []));
         if ($sub !== null) {
-            $store = Store::findBySlugWithPlan($sub);
+            $store = self::storeForSlug($sub);
             if ($store) {
                 return self::$cache = new Tenant($store);
             }
@@ -54,7 +54,8 @@ final class TenantResolver
             $domain = Domain::findVerified($host);
             if ($domain) {
                 $store = Store::findWithPlan((int) $domain['store_id']);
-                if ($store) {
+                if ($store !== null) {
+                    self::assertPubliclyActive($store);
                     $store['primary_domain'] = $domain['domain'];
                     return self::$cache = new Tenant($store);
                 }
@@ -64,7 +65,7 @@ final class TenantResolver
         // 4. Demo
         $demo = (string) Config::get('tenant.demo_store', '');
         if ($demo !== '') {
-            $store = Store::findBySlugWithPlan($demo);
+            $store = self::storeForSlug($demo);
             if ($store) {
                 return self::$cache = new Tenant($store);
             }
@@ -80,6 +81,39 @@ final class TenantResolver
             'No hay ninguna tienda disponible. Ejecuta las migraciones y las semillas '
             . '(php database/migrate.php) o define DEMO_STORE en .env.'
         );
+    }
+
+    /**
+     * Tienda de un slug solo si puede atender trafico publico.
+     *
+     * Si el slug existe pero esta pendiente o suspendido, se corta con una
+     * excepcion propia para que index.php responda 404. No se cae a la tienda
+     * demo porque eso mezclaria el host inactivo con otra tienda.
+     */
+    private static function storeForSlug(string $slug): ?array
+    {
+        $store = Store::findBySlugWithPlan($slug);
+        if ($store === null) {
+            return null;
+        }
+
+        self::assertPubliclyActive($store);
+
+        return $store;
+    }
+
+    /** @param array<string,mixed> $store */
+    private static function assertPubliclyActive(array $store): void
+    {
+        if (!Store::statusAllowsPublicAccess($store['status'] ?? null)) {
+            throw new TenantUnavailableException('La tienda no esta disponible.');
+        }
+    }
+
+    /** Solo para pruebas: permite resolver otro host en la misma ejecucion. */
+    public static function resetCache(): void
+    {
+        self::$cache = null;
     }
 
     public static function normalizeHost(?string $host): string
