@@ -8,6 +8,7 @@ use Tienda\Core\Favicon;
 use Tienda\Core\Session;
 $success = Session::pullFlash('success');
 $error = Session::pullFlash('error');
+$authCardClass = trim((string) ($auth_card_class ?? ''));
 ?>
 <!doctype html>
 <html lang="es">
@@ -20,7 +21,7 @@ $error = Session::pullFlash('error');
     <link rel="stylesheet" href="<?= e(asset('assets/css/panel.css')) ?>">
 </head>
 <body class="panel panel-auth">
-    <main class="auth-card">
+    <main class="auth-card<?= $authCardClass !== '' ? ' ' . e($authCardClass) : '' ?>">
         <?php if ($success): ?><div class="alert alert-success"><?= e($success) ?></div><?php endif; ?>
         <?php if ($error): ?><div class="alert alert-error"><?= e($error) ?></div><?php endif; ?>
         <?= $content ?>

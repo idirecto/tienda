@@ -50,11 +50,12 @@ final class RegistrationController extends Controller
             && Registration::onboardingSchemaReady();
 
         return $this->view('register', [
-            'pageTitle' => 'Registra tu tienda',
-            'open'      => $open,
-            'ready'     => $ready,
-            'contract'  => $contract,
-            'slug'      => (string) $this->input('slug', ''),
+            'pageTitle'       => 'Registra tu tienda',
+            'open'            => $open,
+            'ready'           => $ready,
+            'contract'        => $contract,
+            'slug'            => (string) $this->input('slug', ''),
+            'auth_card_class' => 'auth-card--register',
         ], 'panel_blank');
     }
 
