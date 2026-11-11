@@ -160,7 +160,10 @@ final class Cache
             @mkdir($dir, 0775, true);
         }
 
-        $fp = @fopen($dir . '/.lock_' . substr(sha1($key), 0, 24), 'c');
+        // Un fichero por clave, y el driver APCu no los borra: asi se agotaron
+        // los inodos. El bloqueo se reparte en 64 ficheros fijos.
+        $slot = hexdec(substr(sha1($key), 0, 2)) % 64;
+        $fp = @fopen($dir . '/.lock_slot_' . $slot, 'c');
         if ($fp === false) {
             return self::storeAndReturn($key, $ttl, $compute);
         }
