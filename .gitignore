@@ -11,8 +11,7 @@
 !/public/uploads/.gitkeep
 
 # Cache y logs
-/storage/cache/*
-/storage/logs/*
+/storage/*
 !/storage/cache/.gitkeep
 !/storage/logs/.gitkeep
 
