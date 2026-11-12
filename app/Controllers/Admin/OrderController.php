@@ -439,13 +439,15 @@ final class OrderController extends Controller
     private function bootStorePricing(int $storeId): void
     {
         $store = $this->storeRow($storeId);
+        $cuenta = Account::pricingForStore($store);
 
         Catalog::forStore(
-            Account::marginForStore($store),
+            (int) $cuenta['id_margen'],
             $store['markup'] ?? 0,
             (float) ($store['tax_rate'] ?? 21),
             false,
-            $store['markup_fixed'] ?? 0
+            $store['markup_fixed'] ?? 0,
+            (int) $cuenta['sucursal_id']
         );
     }
 

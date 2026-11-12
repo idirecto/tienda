@@ -228,7 +228,7 @@ final class OrderGateway
                 continue;
             }
             if (!$tarifa['tarifa_conocida']) {
-                $warnings[] = '"' . $nombre . '" no tiene precio publicado en la tarifa de la cuenta; se usa su precio de compra.';
+                $warnings[] = '"' . $nombre . '" no tiene una tarifa valida con stock; se usa su coste de compra.';
             }
 
             $qty = max(1, (int) $item['qty']);

@@ -7,6 +7,7 @@ namespace Tienda\Models;
 use Tienda\Core\Cache;
 use Tienda\Core\Config;
 use Tienda\Core\Database;
+use Tienda\Core\Idirecto\PriceResolver;
 use Tienda\Core\Specs;
 use Tienda\Core\Str;
 
@@ -114,6 +115,7 @@ final class Catalog
     // -------------------------------------------------------------------------
 
     private static ?int $pricingMargin = null;
+    private static int $pricingSucursal = 1;
     private static float $pricingMarkup = 0.0;
     private static float $pricingMarkupFixed = 0.0;
     private static float $pricingTax = 21.0;
@@ -123,25 +125,39 @@ final class Catalog
     /**
      * Fija el precio de venta de la tienda para esta peticion.
      *
+     * La tarifa base no se elige aqui: la resuelve `PriceResolver` con las
+     * mismas reglas que idirecto (stock, tipo de almacen, tarifa, sucursal y
+     * prioridad). Este contexto solo aplica despues el beneficio de la tienda
+     * y el IVA, que es el calculo propio de esta plataforma.
+     *
      * @param int|null $idMargen     Tarifa de la tienda en el mayorista (precios.id_margen)
      * @param mixed    $markup       Beneficio porcentual (columna mt_stores.markup)
      * @param float    $tax          IVA por defecto (%) para productos sin tipo propio
      * @param bool     $withTax      true = los precios llevan el IVA incluido
      * @param mixed    $markupFixed  Beneficio fijo en EUR (columna mt_stores.markup_fixed)
+     * @param int|null $sucursalId   Sucursal de la cuenta en idirecto
      */
     public static function forStore(
         ?int $idMargen,
         mixed $markup = 0,
         float $tax = 21.0,
         bool $withTax = false,
-        mixed $markupFixed = 0
+        mixed $markupFixed = 0,
+        ?int $sucursalId = null
     ): void {
-        self::$pricingMargin = $idMargen !== null && $idMargen > 0 ? $idMargen : null;
+        $margen = $idMargen !== null && $idMargen > 0
+            ? $idMargen
+            : (int) Config::get('idirecto.default_id_margen', 12);
+        self::$pricingMargin = $margen > 0 ? $margen : null;
+        self::$pricingSucursal = $sucursalId !== null && $sucursalId > 0
+            ? $sucursalId
+            : (int) Config::get('idirecto.sucursal_id', 1);
         self::$pricingMarkup = self::normalizeMarkupPercent($markup);
         self::$pricingMarkupFixed = self::normalizeMarkupFixed($markupFixed);
         self::$pricingTax = $tax > 0 ? $tax : 21.0;
         self::$pricingWithTax = $withTax;
         self::$pricingSet = true;
+        PriceResolver::resetCache();
     }
 
     /** Hay contexto de tienda fijado en esta peticion. */
@@ -206,10 +222,40 @@ final class Catalog
         return 1 + $rate / 100;
     }
 
-    /** Tarifa de la tienda con la que se esta calculando (null = la mas barata). */
+    /** Tarifa de la tienda con la que se esta calculando. */
     public static function pricingMargin(): ?int
     {
         return self::$pricingMargin;
+    }
+
+    /** Sucursal de la cuenta de idirecto con la que se resuelve el precio. */
+    public static function pricingSucursal(): int
+    {
+        return self::$pricingSucursal;
+    }
+
+    /**
+     * Tarifa efectiva para resolver precios.
+     *
+     * Sin contexto de tienda (herramientas, consola, comprobaciones) se usa la
+     * misma tarifa por defecto que idirecto (12), no el minimo de todas las
+     * tarifas publicadas.
+     */
+    private static function effectiveMargin(): int
+    {
+        if (self::$pricingMargin !== null && self::$pricingMargin > 0) {
+            return self::$pricingMargin;
+        }
+
+        return max(1, (int) Config::get('idirecto.default_id_margen', 12));
+    }
+
+    /** Sucursal efectiva para resolver precios. */
+    private static function effectiveSucursal(): int
+    {
+        return self::$pricingSucursal > 0
+            ? self::$pricingSucursal
+            : max(1, (int) Config::get('idirecto.sucursal_id', 1));
     }
 
     /**
@@ -263,7 +309,8 @@ final class Catalog
     /** Clave corta del contexto de precios, para las caches. */
     private static function pricingKey(): string
     {
-        return 'p' . (self::$pricingMargin ?? 0)
+        return 'p' . self::effectiveMargin()
+            . 's' . self::effectiveSucursal()
             . 'm' . number_format(self::$pricingMarkup, 2, '', '')
             . 'f' . number_format(self::$pricingMarkupFixed, 2, '', '')
             . (self::$pricingWithTax ? 't' . number_format(self::$pricingTax, 2, '', '') : 'n');
@@ -328,59 +375,19 @@ final class Catalog
                 )';
     }
 
-    /** Coste minimo entre los almacenes con stock valido. */
-    private static function costoSql(): string
-    {
-        return '(SELECT MIN(s.costo) FROM stock s
-                  INNER JOIN almacenes a ON a.id = s.id_almacen
-                  WHERE s.part_number = p.part_number
-                    AND s.stock > 0 AND s.activo = 1 AND s.costo > 0
-                    AND a.tipo <> 2)';
-    }
-
     /**
-     * Precio de VENTA del producto (el que ve el cliente de la tienda).
+     * Columnas comunes de listado (sin JOIN: la marca se resuelve por lote).
      *
-     * Parte de la tarifa de la tienda (`precios.id_margen`); si la tienda no
-     * tiene tarifa asignada se usa la mas barata publicada (como antes). Sobre
-     * esa base se suma el beneficio fijo y despues se aplica el porcentual; por
-     * ultimo, cuando el contexto es de tienda publica, el IVA del producto.
-     *
-     * El orden SQL es el mismo que `Catalog::applyStoreMargin()`:
-     * `ROUND((tarifa + fijo) * (1 + porcentaje / 100), 2)`, y luego el IVA. La
-     * tarifa se incrusta como numero (es un entero de configuracion) porque con
-     * `EMULATE_PREPARES = false` un parametro nombrado no puede repetirse.
+     * El precio NO se calcula en SQL. `hydrate()` llama a `PriceResolver`, que
+     * replica la eleccion de almacen de idirecto; despues `decorate()` aplica
+     * el beneficio de la tienda y el IVA. Asi el precio base y el almacen que
+     * lo sirve salen siempre de la misma fila de `stock`.
      */
-    private static function precioSql(): string
-    {
-        $margen = self::$pricingMargin;
-        $sql = '(SELECT MIN(pr.precio) FROM precios pr
-                  WHERE pr.id_producto = p.id AND pr.precio > 0'
-            . ($margen !== null ? ' AND pr.id_margen = ' . (int) $margen : '')
-            . ')';
-
-        $factor = self::markupFactor();
-        $fixed = self::$pricingMarkupFixed;
-        if ($fixed > 0.0 || $factor !== 1.0) {
-            $sql = 'ROUND((' . $sql . ' + ' . number_format($fixed, 2, '.', '') . ') * '
-                . number_format($factor, 4, '.', '') . ', 2)';
-        }
-        if (self::$pricingWithTax) {
-            $sql = 'ROUND((' . $sql . ') * (1 + COALESCE(NULLIF(p.impuestos, 0), '
-                . number_format(self::$pricingTax, 2, '.', '') . ') / 100), 2)';
-        }
-
-        return $sql;
-    }
-
-    /** Columnas comunes de listado (sin JOIN: la marca se resuelve por lote). */
     private static function selectColumns(): string
     {
         return 'p.id, p.nombre, p.part_number, p.img_name, p.id_categoria,
                 p.id_subcategoria, p.id_marca, p.impuestos, p.fecha_alta,
                 p.marca AS marca_col,
-                ' . self::precioSql() . ' AS precio,
-                ' . self::costoSql() . ' AS costo,
                 ' . self::stockExistsSql() . ' AS in_stock';
     }
 
@@ -411,7 +418,18 @@ final class Catalog
             return ['items' => [], 'total' => 0, 'page' => $page, 'per_page' => $perPage, 'pages' => 0];
         }
 
-        [$whereSql, $params] = self::buildFilters($q, $categoryId, $subcategoryId, $facetSelection, $priceMin, $priceMax, $tag, $scope);
+        // El rango y el orden por precio necesitan el precio ya resuelto. Se
+        // hace en PHP para que el filtro use exactamente el mismo precio que
+        // la tarjeta (no un `MIN(precios.precio)` distinto).
+        $filtraPrecio = ($priceMin !== null && $priceMin > 0) || ($priceMax !== null && $priceMax > 0);
+        if ($filtraPrecio || str_starts_with($sort, 'precio')) {
+            return self::paginateByPrice(
+                $page, $perPage, $q, $categoryId, $subcategoryId, $facetSelection,
+                $priceMin, $priceMax, $sort, $tag, $scope
+            );
+        }
+
+        [$whereSql, $params] = self::buildFilters($q, $categoryId, $subcategoryId, $facetSelection, null, null, $tag, $scope);
         $orderSql = self::orderSql($sort);
 
         $total = self::cachedCount(
@@ -442,6 +460,124 @@ final class Catalog
     }
 
     /**
+     * Listado cuando hay rango de precio o se ordena por precio.
+     *
+     * Se resuelven las tarifas con `PriceResolver` para todos los productos que
+     * pasan los filtros no economicos, se aplica el beneficio/IVA de la tienda
+     * y solo despues se filtra, ordena y pagina. Asi el filtro y la tarjeta
+     * ensenan el mismo importe.
+     */
+    private static function paginateByPrice(
+        int $page,
+        int $perPage,
+        ?string $q,
+        ?int $categoryId,
+        ?int $subcategoryId,
+        array $facetSelection,
+        ?float $priceMin,
+        ?float $priceMax,
+        string $sort,
+        string $tag,
+        array $scope
+    ): array {
+        $margen = self::effectiveMargin();
+        $sucursal = self::effectiveSucursal();
+
+        [$whereSql, $params] = self::buildFilters($q, $categoryId, $subcategoryId, $facetSelection, null, null, $tag, $scope);
+        $rows = Database::select(
+            "SELECT p.id, p.nombre, p.impuestos FROM productos p $whereSql",
+            $params
+        );
+        if ($rows === []) {
+            return ['items' => [], 'total' => 0, 'page' => $page, 'per_page' => $perPage, 'pages' => 0];
+        }
+
+        $ids = array_map(static fn (array $row): int => (int) $row['id'], $rows);
+        $resueltos = PriceResolver::resolveMany($ids, $margen, $sucursal);
+
+        $candidatos = [];
+        foreach ($rows as $row) {
+            $id = (int) $row['id'];
+            $fila = $resueltos[$id] ?? null;
+            if ($fila === null) {
+                continue;
+            }
+
+            $iva = (float) ($row['impuestos'] ?? 0);
+            if ($iva <= 0) {
+                $iva = self::$pricingTax;
+            }
+            $neto = self::salePriceFromTariff((float) $fila['precio']);
+            $final = self::$pricingWithTax ? round($neto * self::taxFactor($iva), 2) : $neto;
+
+            if ($priceMin !== null && $priceMin > 0 && $final < $priceMin) {
+                continue;
+            }
+            if ($priceMax !== null && $priceMax > 0 && $final > $priceMax) {
+                continue;
+            }
+
+            $candidatos[] = [
+                'id'     => $id,
+                'nombre' => (string) $row['nombre'],
+                'precio' => $final,
+            ];
+        }
+
+        usort($candidatos, static function (array $a, array $b) use ($sort): int {
+            return match ($sort) {
+                'precio-asc'  => ($a['precio'] <=> $b['precio']) ?: ($b['id'] <=> $a['id']),
+                'precio-desc' => ($b['precio'] <=> $a['precio']) ?: ($b['id'] <=> $a['id']),
+                'nombre-asc'  => strnatcasecmp($a['nombre'], $b['nombre']) ?: ($b['id'] <=> $a['id']),
+                'nombre-desc' => strnatcasecmp($b['nombre'], $a['nombre']) ?: ($b['id'] <=> $a['id']),
+                default       => $b['id'] <=> $a['id'],
+            };
+        });
+
+        $total = count($candidatos);
+        $offset = ($page - 1) * $perPage;
+        $pagina = array_slice($candidatos, $offset, $perPage);
+        if ($pagina === []) {
+            return ['items' => [], 'total' => $total, 'page' => $page, 'per_page' => $perPage, 'pages' => (int) ceil($total / max(1, $perPage))];
+        }
+
+        $idsPagina = array_map(static fn (array $row): int => (int) $row['id'], $pagina);
+        $ph = [];
+        $paramsPagina = [];
+        foreach ($idsPagina as $i => $id) {
+            $clave = 'i' . $i;
+            $ph[] = ':' . $clave;
+            $paramsPagina[$clave] = $id;
+        }
+        $items = Database::select(
+            'SELECT ' . self::selectColumns() . '
+             FROM productos p
+             WHERE p.id IN (' . implode(',', $ph) . ')',
+            $paramsPagina
+        );
+        self::hydrate($items);
+
+        $porId = [];
+        foreach ($items as $item) {
+            $porId[(int) $item['id']] = $item;
+        }
+        $ordenados = [];
+        foreach ($idsPagina as $id) {
+            if (isset($porId[$id])) {
+                $ordenados[] = $porId[$id];
+            }
+        }
+
+        return [
+            'items'    => $ordenados,
+            'total'    => $total,
+            'page'     => $page,
+            'per_page' => $perPage,
+            'pages'    => (int) ceil($total / max(1, $perPage)),
+        ];
+    }
+
+    /**
      * Productos destacados (portada). Solo con stock.
      *
      * Se cachea **solo la seleccion** (la lista de ids, 10 minutos): elegir los
@@ -462,7 +598,7 @@ final class Catalog
         $categoryId = $categoryId !== null && $categoryId > 0 ? $categoryId : null;
 
         $ids = self::cached(
-            'featured_ids_' . ($categoryId ?? 0) . '_' . $limit,
+            'featured_ids_v2_' . ($categoryId ?? 0) . '_' . $limit,
             600,
             static function () use ($limit, $categoryId): array {
                 $where = self::baseConditions();
@@ -472,12 +608,15 @@ final class Catalog
                     $params['cat'] = $categoryId;
                 }
 
+                // Se piden algunos ids de mas: si un producto no tiene una
+                // tarifa valida con stock, `featured()` lo descarta y aun asi
+                // quedan suficientes tarjetas para la portada.
                 $rows = Database::select(
                     "SELECT p.id
                      FROM productos p
                      WHERE $where
                      ORDER BY p.id DESC
-                     LIMIT " . $limit,
+                     LIMIT " . ($limit * 3),
                     $params
                 );
 
@@ -485,7 +624,13 @@ final class Catalog
             }
         );
 
-        return self::findMany((array) $ids);
+        $items = self::findMany((array) $ids);
+        $items = array_values(array_filter(
+            $items,
+            static fn (array $item): bool => ($item['price_final'] ?? null) !== null
+        ));
+
+        return array_slice($items, 0, $limit);
     }
 
     /**
@@ -553,16 +698,21 @@ final class Catalog
 
         $row = Database::first(
             'SELECT p.*, p.marca AS marca_col,
-                    ' . self::precioSql() . ' AS precio,
-                    ' . self::costoSql() . ' AS costo,
                     ' . self::stockExistsSql() . ' AS in_stock
              FROM productos p
              WHERE p.id = :id AND p.estado <> 4
              LIMIT 1',
             ['id' => $id]
         );
+        if ($row === null) {
+            return null;
+        }
 
-        return $row === null ? null : self::decorate($row);
+        $filas = [$row];
+        self::resolvePrices($filas);
+        self::attachStock($filas);
+
+        return self::decorate($filas[0]);
     }
 
     /**
@@ -582,8 +732,7 @@ final class Catalog
 
         $like = '%' . self::escapeLike($q) . '%';
         $rows = Database::select(
-            'SELECT p.id, p.nombre, p.part_number AS sku, p.marca AS marca, p.impuestos,
-                    ' . self::precioSql() . ' AS precio
+            'SELECT p.id, p.nombre, p.part_number AS sku, p.marca AS marca, p.impuestos
              FROM productos p
              WHERE ' . self::baseConditions() . '
                AND (p.nombre LIKE :q1 OR p.part_number LIKE :q2 OR p.marca LIKE :q3
@@ -593,19 +742,84 @@ final class Catalog
             ['q1' => $like, 'q2' => $like, 'q3' => $like, 'q4' => $like]
         );
 
-        return array_map(static fn (array $row): array => [
-            'id'        => (int) $row['id'],
-            'nombre'    => (string) $row['nombre'],
-            'sku'       => (string) ($row['sku'] ?? ''),
-            'marca'     => (string) ($row['marca'] ?? ''),
-            'precio'    => $row['precio'] === null ? null : round((float) $row['precio'], 2),
-            'impuestos' => (float) ($row['impuestos'] ?? 0),
-        ], $rows);
+        self::resolvePrices($rows);
+
+        $out = [];
+        foreach ($rows as $row) {
+            $row = self::decorate($row);
+            if (($row['price_final'] ?? null) === null) {
+                continue;
+            }
+            $out[] = [
+                'id'        => (int) $row['id'],
+                'nombre'    => (string) $row['nombre'],
+                'sku'       => (string) ($row['sku'] ?? ''),
+                'marca'     => (string) ($row['marca'] ?? ''),
+                'precio'    => round((float) $row['price_final'], 2),
+                'impuestos' => (float) ($row['impuestos'] ?? 0),
+            ];
+        }
+
+        return $out;
     }
 
     // =====================================================================
     // HIDRATACION (consultas por lote)
     // =====================================================================
+
+    /**
+     * Resuelve la tarifa y el almacen que corresponde a cada producto.
+     *
+     * `PriceResolver` replica la eleccion de idirecto y devuelve, ademas del
+     * precio, el `id_almacen` y el `id_stock` que lo sirven. Eso permite que
+     * el precio, la etiqueta de stock y el carrito hablen del mismo almacen.
+     *
+     * @param array<int, array> $items
+     */
+    private static function resolvePrices(array &$items): void
+    {
+        if ($items === []) {
+            return;
+        }
+
+        $ids = [];
+        foreach ($items as $item) {
+            $id = (int) ($item['id'] ?? 0);
+            if ($id > 0) {
+                $ids[] = $id;
+            }
+        }
+        if ($ids === []) {
+            return;
+        }
+
+        $resueltos = PriceResolver::resolveMany($ids, self::effectiveMargin(), self::effectiveSucursal());
+
+        foreach ($items as &$item) {
+            $id = (int) ($item['id'] ?? 0);
+            $fila = $resueltos[$id] ?? null;
+
+            if ($fila === null) {
+                $item['tarifa'] = null;
+                $item['precio'] = null;
+                $item['costo'] = null;
+                $item['id_almacen'] = null;
+                $item['id_stock'] = null;
+                $item['tipo_almacen'] = null;
+                $item['stock_almacen'] = null;
+                continue;
+            }
+
+            $item['tarifa'] = (float) $fila['precio'];
+            $item['precio'] = null;
+            $item['costo'] = (float) $fila['coste'];
+            $item['id_almacen'] = (int) $fila['id_almacen'];
+            $item['id_stock'] = (int) $fila['id_stock'];
+            $item['tipo_almacen'] = (int) $fila['tipo_almacen'];
+            $item['stock_almacen'] = (int) $fila['stock_almacen'];
+        }
+        unset($item);
+    }
 
     /**
      * Completa un listado con lo que la tarjeta necesita, en 3 consultas fijas
@@ -624,15 +838,16 @@ final class Catalog
         }
 
         self::attachBrands($items);
+        self::resolvePrices($items);
+
+        if ($withStock) {
+            self::attachStock($items);
+        }
 
         foreach ($items as &$item) {
             $item = self::decorate($item);
         }
         unset($item);
-
-        if ($withStock) {
-            self::attachStock($items);
-        }
 
         self::attachOffers($items);
     }
@@ -736,70 +951,76 @@ final class Catalog
     }
 
     /**
-     * Stock total real de cada producto del listado (una sola consulta).
+     * Stock del almacen que sirve el precio mostrado.
      *
-     * Se usa para la etiqueta dinamica de la tarjeta (en stock, ultimas
-     * unidades, sin stock). Si la consulta falla, la tarjeta se queda con el
-     * booleano `in_stock`: nunca se rompe el listado por esto.
+     * `PriceResolver` ya devuelve `stock_almacen`; se usa ese valor para que la
+     * etiqueta y el carrito no sumen existencias de otros almacenes con otro
+     * precio. Solo se consulta la suma global como respaldo para filas que no
+     * hayan pasado por el resolvedor.
      *
      * @param array<int, array> $items
      */
     private static function attachStock(array &$items): void
     {
-        $parts = [];
+        $pendientes = [];
         foreach ($items as $item) {
+            if (array_key_exists('stock_almacen', $item) && $item['stock_almacen'] !== null) {
+                continue;
+            }
             $pn = (string) ($item['part_number'] ?? '');
             if ($pn !== '') {
-                $parts[$pn] = true;
+                $pendientes[$pn] = true;
             }
         }
-        if ($parts === []) {
-            return;
-        }
 
-        $placeholders = [];
-        $params = [];
-        $n = 0;
-        foreach (array_keys($parts) as $pn) {
-            $ph = 'pn' . $n++;
-            $placeholders[] = ':' . $ph;
-            $params[$ph] = $pn;
-        }
+        $totales = [];
+        if ($pendientes !== []) {
+            $placeholders = [];
+            $params = [];
+            $n = 0;
+            foreach (array_keys($pendientes) as $pn) {
+                $ph = 'pn' . $n++;
+                $placeholders[] = ':' . $ph;
+                $params[$ph] = $pn;
+            }
 
-        try {
-            $rows = Database::select(
-                'SELECT s.part_number, SUM(s.stock) AS total
-                 FROM stock s
-                 INNER JOIN almacenes a ON a.id = s.id_almacen
-                 WHERE s.part_number IN (' . implode(',', $placeholders) . ')
-                   AND s.stock > 0 AND s.activo = 1 AND s.costo > 0 AND a.tipo <> 2
-                 GROUP BY s.part_number',
-                $params
-            );
-        } catch (\Throwable) {
-            return;
-        }
+            try {
+                $rows = Database::select(
+                    'SELECT s.part_number, SUM(s.stock) AS total
+                     FROM stock s
+                     INNER JOIN almacenes a ON a.id = s.id_almacen
+                     WHERE s.part_number IN (' . implode(',', $placeholders) . ')
+                       AND s.stock > 0 AND s.activo = 1 AND s.costo > 0 AND a.tipo <> 2
+                     GROUP BY s.part_number',
+                    $params
+                );
+            } catch (\Throwable) {
+                $rows = [];
+            }
 
-        $totals = [];
-        foreach ($rows as $row) {
-            $totals[(string) $row['part_number']] = (int) $row['total'];
+            foreach ($rows as $row) {
+                $totales[(string) $row['part_number']] = (int) $row['total'];
+            }
         }
 
         foreach ($items as &$item) {
+            if (array_key_exists('stock_almacen', $item) && $item['stock_almacen'] !== null) {
+                $item['stock_total'] = max(0, (int) $item['stock_almacen']);
+                continue;
+            }
             $pn = (string) ($item['part_number'] ?? '');
-            $item['stock_total'] = $totals[$pn] ?? 0;
+            $item['stock_total'] = $totales[$pn] ?? 0;
         }
         unset($item);
     }
 
     /**
-     * Unidades realmente disponibles de un producto del catalogo.
+     * Unidades disponibles en el almacen que sirve el precio mostrado.
      *
-     * Suma las filas de `stock` con stock valido (la misma regla que usa el
-     * listado para decidir si un producto esta a la venta), asi que el carrito
-     * puede impedir pedir mas unidades de las que hay. Devuelve `null` si el
-     * producto no existe o si la consulta falla: en ese caso el carrito se
-     * comporta como antes (solo el tope global) en vez de romper la compra.
+     * No se suma el stock de otros almacenes: si el precio sale de un almacen
+     * con 2 unidades, el carrito no puede vender 100 unidades de otro almacen
+     * a ese mismo precio. Devuelve `null` solo si el producto no existe o si
+     * falla la consulta; si no hay precio/almacen valido devuelve 0.
      */
     public static function stockTotal(int $id): ?int
     {
@@ -808,20 +1029,12 @@ final class Catalog
         }
 
         try {
-            $total = Database::scalar(
-                'SELECT SUM(s.stock)
-                 FROM productos p
-                 INNER JOIN stock s ON s.part_number = p.part_number
-                 INNER JOIN almacenes a ON a.id = s.id_almacen
-                 WHERE p.id = :id
-                   AND s.stock > 0 AND s.activo = 1 AND s.costo > 0 AND a.tipo <> 2',
-                ['id' => $id]
-            );
+            $fila = PriceResolver::resolve($id, self::effectiveMargin(), self::effectiveSucursal());
         } catch (\Throwable) {
             return null;
         }
 
-        return $total === null ? null : max(0, (int) $total);
+        return $fila === null ? 0 : max(0, (int) $fila['stock_almacen']);
     }
 
     /**
@@ -1818,13 +2031,34 @@ final class Catalog
         }
 
         $ttl = max(1800, (int) Config::get('catalog.facets_ttl', 900) * 2);
+        $margen = self::effectiveMargin();
+        $sucursal = self::effectiveSucursal();
 
-        return (array) self::cached('price_bounds_' . self::pricingKey(), $ttl, static function (): array {
-            $precio = self::precioSql();
+        return (array) self::cached('price_bounds_' . self::pricingKey(), $ttl, static function () use ($margen, $sucursal): array {
+            $umv = Database::tableExists('productos_logistica')
+                ? 'COALESCE((SELECT MAX(pl.umv) FROM productos_logistica pl WHERE pl.id_producto = pr.id_producto), 1)'
+                : '1';
+
+            // Limites del deslizador: se calculan sobre las tarifas candidatas
+            // (con stock, tarifa, tipo y sucursal validos). El precio exacto de
+            // cada producto lo resuelve PriceResolver al pintar la tarjeta.
             $row = Database::first(
-                "SELECT MIN($precio) AS mn, MAX($precio) AS mx
-                 FROM productos p
-                 WHERE " . self::baseConditions()
+                'SELECT MIN(pr.precio) AS mn, MAX(pr.precio) AS mx
+                 FROM precios pr
+                 INNER JOIN productos p ON p.id = pr.id_producto
+                 INNER JOIN stock s ON s.id = pr.id_stock
+                 INNER JOIN almacenes a ON a.id = s.id_almacen
+                 INNER JOIN tarifas t ON (t.id_almacen = a.id AND t.id_margen = ' . $margen . ')
+                 WHERE p.estado <> 4
+                   AND p.id_subcategoria <> ' . self::SUBCATEGORIA_EXCLUIDA . '
+                   AND pr.id_margen = ' . $margen . '
+                   AND pr.sucursal_id = ' . $sucursal . '
+                   AND pr.precio > 0
+                   AND pr.id_almacen = a.id
+                   AND s.stock > 0
+                   AND s.stock >= ' . $umv . '
+                   AND s.activo = 1
+                   AND a.tipo IN (0, 1, 3, 4, 5)'
             );
 
             $min = (float) ($row['mn'] ?? 0);
@@ -1832,6 +2066,14 @@ final class Catalog
             if ($max <= 0) {
                 return ['min' => 0.0, 'max' => 0.0];
             }
+
+            $min = self::salePriceFromTariff($min);
+            $max = self::salePriceFromTariff($max);
+            if (self::$pricingWithTax) {
+                $min = round($min * self::taxFactor(), 2);
+                $max = round($max * self::taxFactor(), 2);
+            }
+
             // Redondeo "comercial" para el deslizador.
             return [
                 'min' => floor($min),
@@ -2187,16 +2429,9 @@ final class Catalog
             }
         }
 
-        $precio = self::precioSql();
-        if ($priceMin !== null && $priceMin > 0) {
-            $where[] = "$precio >= :pmin";
-            $params['pmin'] = $priceMin;
-        }
-        if ($priceMax !== null && $priceMax > 0) {
-            $where[] = "$precio <= :pmax";
-            $params['pmax'] = $priceMax;
-        }
-
+        // El rango de precio no se filtra en SQL: depende de la tarifa elegida
+        // por PriceResolver. `paginate()` lo aplica en `paginateByPrice()` para
+        // que el filtro y la tarjeta usen exactamente el mismo importe.
         return ['WHERE ' . implode(' AND ', $where), $params];
     }
 
@@ -2416,10 +2651,14 @@ final class Catalog
         $file = $img !== '' ? self::applyImagePattern($img, (int) ($item['id'] ?? 0), $size) : null;
         $item['image_url'] = ($base !== '' && $file !== null) ? $base . '/' . $file . '_1.jpg' : null;
 
-        // Precio de venta de la tienda. `precio` ya viene de la consulta con la
-        // tarifa y el beneficio aplicados (y con el IVA, si es el storefront),
-        // asi que aqui solo queda el caso de productos sin tarifa publicada, que
-        // se resuelven desde el coste con el mismo beneficio.
+        // Precio de venta de la tienda.
+        //
+        // `tarifa` es la fila que ha elegido `PriceResolver` siguiendo a
+        // idirecto (stock, tipo de almacen y prioridad). A partir de ahi se
+        // aplica el calculo propio: beneficio fijo, porcentaje y, en la web,
+        // IVA. Si no hay tarifa valida no se inventa un precio con el coste:
+        // el producto queda como no disponible y la ficha muestra "Consultar".
+        $tarifa = $item['tarifa'] ?? null;
         $precio = $item['precio'] ?? null;
         $costo = $item['costo'] ?? null;
         $iva = (float) ($item['impuestos'] ?? 0);
@@ -2427,25 +2666,36 @@ final class Catalog
             $iva = self::$pricingTax;
         }
 
-        if ($precio !== null && (float) $precio > 0) {
+        $final = null;
+        $neto = null;
+        if ($tarifa !== null && (float) $tarifa > 0) {
+            $neto = self::salePriceFromTariff((float) $tarifa);
+            $final = self::$pricingWithTax ? round($neto * self::taxFactor($iva), 2) : $neto;
+        } elseif ($precio !== null && (float) $precio > 0) {
+            // Compatibilidad con llamadas antiguas que ya traen el precio final.
             $final = (float) $precio;
+            $neto = self::netFromSale($final, $iva);
         } elseif ($costo !== null && (float) $costo > 0) {
             $final = self::salePriceFromCost((float) $costo, $iva);
-        } else {
-            $final = null;
+            $neto = self::netFromSale($final, $iva);
         }
 
         $item['tax_rate'] = round($iva, 2);
         $item['price_final'] = $final;
-        // Base sin IVA: es lo que se guarda como precio de la linea del pedido.
-        $item['price_net'] = $final === null ? null : self::netFromSale((float) $final, $iva);
+        $item['price_net'] = $neto;
 
-        // Disponibilidad
-        $item['in_stock'] = (bool) ($item['in_stock'] ?? false);
+        // Sin tarifa/almacen valido no se puede comprar: se evita mostrar el
+        // formulario de compra con un precio nulo.
+        $item['in_stock'] = $final !== null && (bool) ($item['in_stock'] ?? true);
 
         $total = $item['stock_total'] ?? null;
         $threshold = max(1, (int) Config::get('catalog.low_stock_threshold', 5));
-        if ($total === null) {
+        if ($final === null) {
+            // Hay stock en el catalogo, pero ningun almacen con tarifa valida:
+            // no se puede vender ni mostrar una etiqueta de disponibilidad.
+            $item['stock_band'] = 'out';
+            $item['stock_label'] = 'Sin stock';
+        } elseif ($total === null) {
             $item['stock_band'] = $item['in_stock'] ? 'in' : 'out';
             $item['stock_label'] = $item['in_stock'] ? 'En stock' : 'Sin stock';
         } elseif ($total <= 0) {

@@ -21,6 +21,20 @@ _(vacío — sin petición pendiente)_
 
 Cada petición terminada se anota aquí con la fecha, qué se pidió y qué se hizo.
 
+### 2026-11-12 · Precio mostrado desde el almacén con stock (petición por chat)
+
+**Pedido:** el precio debe seguir lo que hace idirecto, descartando los almacenes
+que no corresponden y mostrando el precio de los almacenes con stock. El cálculo
+final de la tienda (beneficio fijo + porcentaje + IVA) se mantiene.
+
+**Hecho:** `Core/Idirecto/PriceResolver` replica la elección de idirecto (stock,
+activo, `tarifas`, sucursal, `umv`, tipos 0/1/3/4/5 y prioridad por tipo).
+`Catalog` resuelve la tarifa por lote, aplica después el cálculo propio y usa el
+stock del almacén elegido; `Pricing`/`OrderGateway` usan el mismo resolvedor.
+`verify.php` 374 → **379** (TODO OK) con casos de prioridad y HTTP real en
+`xgrabu.local.tienda` (productos 213701 y 235316). Detalle en `CHANGELOG.md` y
+`STATE.md`.
+
 ### 2026-11-09 · Ayuda del beneficio fijo + porcentual (petición por chat)
 
 **Pedido:** actualizar la ayuda para incluir la nueva tarifa combinada y explicar

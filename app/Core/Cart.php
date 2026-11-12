@@ -390,13 +390,19 @@ final class Cart
         }
 
         $product = Catalog::find($productId);
-        if ($product === null || empty($product['in_stock'])) {
+        if (
+            $product === null
+            || empty($product['in_stock'])
+            || ($product['price_final'] ?? null) === null
+            || ($product['price_net'] ?? null) === null
+            || (float) $product['price_final'] <= 0
+            || (float) $product['price_net'] <= 0
+        ) {
             return null;
         }
 
-        // Stock real del mayorista: sin esto el carrito no podia recortar las
-        // unidades al anadir. `stockTotal()` devuelve `null` si no se puede
-        // consultar, y entonces se mantiene el tope global.
+        // Stock del almacen que sirve el precio: no se suman otros almacenes
+        // con otra tarifa. `stockTotal()` devuelve `null` si falla la consulta.
         $stockTotal = Catalog::stockTotal($productId);
 
         return [

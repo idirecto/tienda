@@ -88,29 +88,12 @@ final class Pricing
             ['part_number' => (string) $product['part_number'], 'margen' => $idMargen, 'sucursal' => $sucursalId]
         );
 
-        // Precio de tarifa: el mas barato con stock; si no hay stock, el mas
-        // barato publicado (asi el pedido se puede preparar igualmente).
-        $price = Database::first(
-            'SELECT pr.precio, pr.id_almacen, pr.id_stock
-             FROM precios pr
-             INNER JOIN stock s ON s.id = pr.id_stock
-             INNER JOIN almacenes a ON a.id = s.id_almacen
-             WHERE pr.id_producto = :id AND pr.id_margen = :margen AND pr.precio > 0
-               AND s.stock > 0 AND s.activo = 1 AND a.tipo <> 2
-             ORDER BY pr.precio ASC LIMIT 1',
-            ['id' => $productId, 'margen' => $idMargen]
-        );
+        // Precio de tarifa: la MISMA eleccion de almacen que idirecto
+        // (`getPrecioInternal`). Si no hay candidato valido no se usa una fila
+        // publicada sin stock: se cae al coste, que ya viene de un almacen con
+        // existencias, y se marca la linea como no verificada.
+        $price = PriceResolver::resolve($productId, $idMargen, $sucursalId);
         $tarifaConocida = $price !== null;
-
-        if ($price === null) {
-            $price = Database::first(
-                'SELECT pr.precio, pr.id_almacen, pr.id_stock
-                 FROM precios pr
-                 WHERE pr.id_producto = :id AND pr.id_margen = :margen AND pr.precio > 0
-                 ORDER BY pr.precio ASC LIMIT 1',
-                ['id' => $productId, 'margen' => $idMargen]
-            );
-        }
 
         $coste = (float) ($cost['costo'] ?? 0);
         $precio = (float) ($price['precio'] ?? 0);
@@ -119,7 +102,7 @@ final class Pricing
             return self::$cache[$key] = null;
         }
         if ($precio <= 0) {
-            // Sin tarifa publicada: se usa el coste para no enviar un pedido a 0.
+            // Sin tarifa valida: se usa el coste para no enviar un pedido a 0.
             $precio = $coste;
         }
         if ($coste <= 0) {
@@ -135,6 +118,9 @@ final class Pricing
         if ($almacen <= 0) {
             $almacen = (int) ($cost['id_almacen'] ?? 0);
         }
+        $tipoAlmacen = $price !== null
+            ? (int) $price['tipo_almacen']
+            : (int) ($cost['tipo'] ?? 0);
 
         return self::$cache[$key] = [
             'product_id'      => (int) $product['id'],
@@ -144,9 +130,9 @@ final class Pricing
             'coste'           => round($coste, 2),
             'ganancia'        => round($precio - $coste, 2),
             'id_almacen'      => $almacen > 0 ? $almacen : null,
-            'id_stock'        => (int) ($price['id_stock'] ?? 0) ?: null,
-            // Tipo del almacen que sirve: 0 y 4 son los que reservan stock.
-            'tipo_almacen'    => (int) ($cost['tipo'] ?? 0),
+            'id_stock'        => $price !== null ? (int) $price['id_stock'] : null,
+            // Tipo del almacen del precio: 0 y 4 son los que reservan stock.
+            'tipo_almacen'    => $tipoAlmacen,
             'iva'             => round($iva, 2),
             'sujeto'          => (int) ($product['sujeto'] ?? 0),
             'canon'           => round((float) ($product['canon'] ?? 0), 2),

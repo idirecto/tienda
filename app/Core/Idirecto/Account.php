@@ -26,6 +26,9 @@ final class Account
     /** @var array<int,int|null> */
     private static array $marginCache = [];
 
+    /** @var array<int,array{id_margen:int,sucursal_id:int}> */
+    private static array $pricingCache = [];
+
     /** Configuracion activa y tablas del mayorista disponibles. */
     public static function enabled(): bool
     {
@@ -69,11 +72,54 @@ final class Account
         return $margen;
     }
 
+    /**
+     * Tarifa y sucursal necesarias para resolver el precio de catalogo.
+     *
+     * Es una version ligera de `forStore()`: no resuelve pais, provincia,
+     * comercial ni forma de pago. Se usa en cada peticion del storefront y del
+     * panel, asi que conviene no hacer mas consultas de las necesarias.
+     *
+     * @param array $store Fila de `mt_stores`
+     * @return array{id_margen:int,sucursal_id:int}
+     */
+    public static function pricingForStore(array $store): array
+    {
+        $storeId = (int) ($store['id'] ?? 0);
+        if ($storeId > 0 && isset(self::$pricingCache[$storeId])) {
+            return self::$pricingCache[$storeId];
+        }
+
+        $idTienda = (int) ($store['id_tienda_idirecto'] ?? 0);
+        $tienda = $idTienda > 0 ? self::findTienda($idTienda) : null;
+
+        $idMargen = (int) ($tienda['id_margen'] ?? 0);
+        if ($idMargen <= 0) {
+            $idMargen = (int) Config::get('idirecto.default_id_margen', 12);
+        }
+
+        $sucursalId = (int) ($tienda['sucursal_id'] ?? 0);
+        if ($sucursalId <= 0) {
+            $sucursalId = (int) Config::get('idirecto.sucursal_id', 1);
+        }
+
+        $pricing = [
+            'id_margen'   => max(1, $idMargen),
+            'sucursal_id' => max(1, $sucursalId),
+        ];
+
+        if ($storeId > 0) {
+            self::$pricingCache[$storeId] = $pricing;
+        }
+
+        return $pricing;
+    }
+
     /** Limpia las resoluciones cacheadas de la cuenta y su tarifa. */
     public static function resetCache(): void
     {
         self::$cache = null;
         self::$marginCache = [];
+        self::$pricingCache = [];
     }
 
     /**

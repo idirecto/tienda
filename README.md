@@ -601,7 +601,7 @@ tienda/
 │   │                        011..012 banners/zonas · 013_store_markup_fixed.sql (mt_)
 │   ├── seeds/               001_seed.sql (planes, temas, tienda demo)
 │   └── migrate.php          Ejecutor de migraciones y semillas
-├── tools/verify.php         Comprobacion automatica (374)
+├── tools/verify.php         Comprobacion automatica (379)
 ├── tools/cache-clear.php    Gestion de la cache de datos (estado, vaciar, patrones, gc)
 ├── tools/logs.php           Consulta los logs por consola (filtros, resumen, dias, gc)
 └── deploy/                  Vhosts/plantillas de Apache y nginx + scripts

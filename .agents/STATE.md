@@ -1,7 +1,7 @@
 # STATE — Estado del proyecto
 
 > **El agente actualiza este fichero al terminar cada sesión.**
-> Última actualización: **2026-11-11**
+> Última actualización: **2026-11-12**
 
 ---
 
@@ -13,6 +13,17 @@ al mayorista**. El ciclo de compra (carrito, cuenta, direcciones y checkout) est
 implementado, pero la web está en **modo de pruebas comercial** por defecto:
 el carrito y los pedidos se rechazan con un aviso hasta poner
 `SHOP_TEST_MODE=false`.
+
+> 💰 **Precio por almacén con stock (2026-11-12).** El precio base ya no es el
+> `MIN(precios.precio)` del margen: `Core/Idirecto/PriceResolver` replica la
+> elección de idirecto (stock, activo, `tarifas`, sucursal, tipos 0/1/3/4/5 y
+> prioridad por tipo con sus tolerancias). El cálculo final de la tienda no
+> cambia: `(tarifa + fijo) × (1 + porcentaje/100)` y después el IVA. El catálogo
+> devuelve también `id_almacen`, `id_stock` y `stock_almacen`, y el carrito limita
+> la cantidad al almacén que sirve el precio. `Pricing`/`OrderGateway` usan el
+> mismo resolvedor. Pruebas: `verify.php` **TODO OK (379)**, con casos de tipo 5
+> descartado, empate tipo 4/0, ficha y pedido con el mismo almacén. Detalle en
+> `CHANGELOG.md`.
 
 > 🏠 **Portada de plataforma IDIRECTO (2026-11-11).** El dominio principal
 > (`ecom-era.com`, `local.tienda`, `www`) y cualquier host sin tienda muestran
@@ -655,7 +666,7 @@ el carrito y los pedidos se rechazan con un aviso hasta poner
   en **nginx + PHP-FPM** (`sudo bash deploy/setup-nginx-domain.sh ecom-era.com`).
 - La app detecta el servidor (`app/Core/Server.php`): ruta pública de `/public`,
   esquema real (incluido proxy) y host de las URLs canónicas.
-- `tools/verify.php`: 374 comprobaciones automáticas (diseño, facetas, filtros
+- `tools/verify.php`: 379 comprobaciones automáticas (diseño, facetas, filtros
   estructurados del mayorista, catálogo, paginación y enlaces de las tarjetas, caché y
   precios en vivo, carrito y mini-carrito, **modo de pruebas comercial**, **nombre de
   marca con razón social**, **sesiones antiguas y títulos públicos**, favicon de la

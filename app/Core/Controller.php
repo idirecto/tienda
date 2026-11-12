@@ -32,12 +32,15 @@ abstract class Controller
      */
     protected function bootPricing(bool $withTax = true): void
     {
+        $cuenta = Account::pricingForStore($this->tenant->toArray());
+
         Catalog::forStore(
-            Account::marginForStore($this->tenant->toArray()),
+            (int) $cuenta['id_margen'],
             $this->tenant->get('markup', Config::get('catalog.default_markup', 15)),
             (float) ($this->tenant->get('tax_rate') ?: 21),
             $withTax,
-            $this->tenant->get('markup_fixed', Config::get('catalog.default_markup_fixed', 0))
+            $this->tenant->get('markup_fixed', Config::get('catalog.default_markup_fixed', 0)),
+            (int) $cuenta['sucursal_id']
         );
     }
 

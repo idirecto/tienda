@@ -33,6 +33,7 @@ use Tienda\Core\Favicon;
 use Tienda\Core\Help;
 use Tienda\Core\Idirecto\Account;
 use Tienda\Core\Idirecto\OrderGateway;
+use Tienda\Core\Idirecto\PriceResolver;
 use Tienda\Core\Idirecto\Pricing;
 use Tienda\Core\Log\LogReader;
 use Tienda\Core\Logger;
@@ -871,17 +872,59 @@ check(
 
 Catalog::forStore(null, 0, 21, false);
 $precioSinContexto = Catalog::find(254967);
-$tarifaMasBarata = (float) Database::scalar(
-    'SELECT MIN(pr.precio) FROM precios pr WHERE pr.id_producto = :id AND pr.precio > 0',
-    ['id' => 254967]
-);
+$tarifaDefecto = PriceResolver::resolve(254967, 12, 1);
 
 check(
-    $tarifaMasBarata > 0
+    $tarifaDefecto !== null
+        && $tarifaDefecto['precio'] > 0
         && Catalog::markupFactor() === 1.0
         && Catalog::markupFixed() === 0.0
-        && abs((float) $precioSinContexto['price_final'] - round($tarifaMasBarata, 2)) < 0.02,
-    'sin contexto se mantiene la tarifa mas barata publicada (' . $precioSinContexto['price_final'] . ')'
+        && abs((float) $precioSinContexto['price_final'] - round((float) $tarifaDefecto['precio'], 2)) < 0.02,
+    'sin contexto se usa la tarifa 12 de idirecto con su prioridad de almacenes ('
+        . $precioSinContexto['price_final'] . ')'
+);
+
+// Prioridad de almacenes: idirecto descarta el tipo 5 si hay tipo 3, y en un
+// empate exacto prefiere el tipo 4 sobre el tipo 0.
+Catalog::forStore(12, 15, 21, true, 0, 1);
+$prioridadTipo3 = PriceResolver::resolve(213701, 12, 1);
+check(
+    $prioridadTipo3 !== null
+        && (int) $prioridadTipo3['tipo_almacen'] === 3
+        && abs((float) $prioridadTipo3['precio'] - 239.21) < 0.01,
+    'la prioridad descarta el almacen tipo 5 y elige el tipo 3 ('
+        . ($prioridadTipo3['precio'] ?? 'sin tarifa') . ')'
+);
+$prioridadTipo4 = PriceResolver::resolve(235316, 12, 1);
+check(
+    $prioridadTipo4 !== null
+        && (int) $prioridadTipo4['tipo_almacen'] === 4
+        && abs((float) $prioridadTipo4['precio'] - 66.94) < 0.01,
+    'en empate de precio se prefiere el tipo 4 sobre el tipo 0'
+);
+$fichaPrioridad = Catalog::find(213701);
+$esperadoFicha = round(Catalog::salePriceFromTariff(239.21) * 1.21, 2);
+check(
+    $fichaPrioridad !== null
+        && abs((float) $fichaPrioridad['price_final'] - $esperadoFicha) < 0.03
+        && (int) $fichaPrioridad['id_almacen'] === 82
+        && (int) $fichaPrioridad['stock_total'] === 2,
+    'la ficha usa la tarifa y el stock del almacen elegido ('
+        . ($fichaPrioridad['price_final'] ?? 'null') . ')'
+);
+$tarifaPedido = Pricing::forProduct(213701, 12, 1);
+check(
+    $tarifaPedido !== null
+        && abs((float) $tarifaPedido['precio'] - 239.21) < 0.01
+        && (int) $tarifaPedido['id_almacen'] === 82
+        && (int) $tarifaPedido['tipo_almacen'] === 3,
+    'el pedido a idirecto usa el mismo precio y almacen que la ficha'
+);
+$catalogoFuente = (string) file_get_contents(TIENDA_BASE . '/app/Models/Catalog.php');
+check(
+    str_contains($catalogoFuente, 'PriceResolver::resolveMany')
+        && !str_contains($catalogoFuente, 'private static function precioSql'),
+    'el catalogo resuelve el precio por almacen, no con un MIN de todas las tarifas'
 );
 
 // Precio historico con 15 % y sin importe fijo: (tarifa + 0) * 1,15.
@@ -1343,10 +1386,14 @@ if (OrderGateway::isAvailable()) {
     } else {
         check(false, 'hay una cuenta de idirecto con tarifa para comprobar el origen');
     }
+    $controllerFuente = (string) file_get_contents(TIENDA_BASE . '/app/Core/Controller.php');
+    $orderControllerFuente = (string) file_get_contents(TIENDA_BASE . '/app/Controllers/Admin/OrderController.php');
     check(
-        str_contains((string) file_get_contents(TIENDA_BASE . '/app/Core/Controller.php'), 'Account::marginForStore($this->tenant->toArray())')
-            && str_contains((string) file_get_contents(TIENDA_BASE . '/app/Controllers/Admin/OrderController.php'), 'Account::marginForStore($store)'),
-        'el precio publico y el del panel se fijan con la tarifa de la cuenta de idirecto'
+        str_contains($controllerFuente, 'Account::pricingForStore($this->tenant->toArray())')
+            && str_contains($controllerFuente, "(int) \$cuenta['sucursal_id']")
+            && str_contains($orderControllerFuente, 'Account::pricingForStore($store)')
+            && str_contains($orderControllerFuente, "(int) \$cuenta['sucursal_id']"),
+        'el precio publico y el del panel se fijan con la tarifa y la sucursal de la cuenta de idirecto'
     );
     $cuenta = Account::forStore($tiendaVerificada);
 
@@ -2208,7 +2255,7 @@ try {
 try {
     $fids = Catalog::featured(6);
     check(count($fids) > 0, 'la portada resuelve productos destacados');
-    $seleccion = Cache::get('catalog_featured_ids_0_6');
+    $seleccion = Cache::get('catalog_featured_ids_v2_0_6');
     check(is_array($seleccion) && $seleccion !== [] && $seleccion === array_values(array_filter($seleccion, 'is_int')),
         'los destacados cachean solo la lista de ids (numeros), no el precio');
     $primero = $fids[0] ?? null;

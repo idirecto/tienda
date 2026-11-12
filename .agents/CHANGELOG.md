@@ -5,6 +5,43 @@ El detalle línea a línea está en `git log`.
 
 ---
 
+## 2026-11-12 · Precio desde el almacén con stock y prioridad de idirecto
+
+**Motivo (petición por chat):** el precio mostrado debe seguir lo que hace
+idirecto: descartar los almacenes que no corresponden y usar solo almacenes con
+stock. El cálculo final de la tienda (beneficio fijo + porcentaje + IVA) se
+mantiene.
+
+**Qué se hizo**
+
+- **`Core/Idirecto/PriceResolver`**: replica `getPrecioInternal()` de idirecto.
+  Solo entran almacenes con `stock > 0`, activos, con fila en `tarifas` para el
+  margen y la sucursal, `umv` suficiente y tipo 0/1/3/4/5; se queda con el más
+  barato de cada tipo y aplica la prioridad por tipo (1, 3, 4, 0 y, como último
+  recurso, 5). Devuelve `precio`, `coste`, `id_almacen`, `id_stock`,
+  `tipo_almacen` y `stock_almacen`.
+- **`Catalog`**: elimina `precioSql()`/`costoSql()` y resuelve la tarifa por
+  lote. `decorate()` aplica después `(tarifa + fijo) × (1 + porcentaje/100)` y el
+  IVA; sin tarifa válida no inventa un precio con el coste. El stock de la ficha
+  y del carrito es el del almacén elegido, no la suma de todos. El rango y el
+  orden por precio usan el mismo resolvedor.
+- **`Pricing`/`OrderGateway`**: el precio y el `tipo_almacen` salen del mismo
+  almacén elegido; se elimina el fallback a una tarifa publicada sin stock. El
+  coste sigue usando el criterio de `getCosto()`.
+- **Contexto**: `Catalog::forStore()` recibe también la sucursal de la cuenta
+  (`tiendas.sucursal_id`). `Controller::bootPricing()` y
+  `OrderController::bootStorePricing()` la pasan junto con el margen.
+- **Carrito**: no admite líneas sin precio/stock válidos y limita la cantidad al
+  stock del almacén que sirve el precio.
+
+**Pruebas:** `verify.php` **TODO OK (379)** con casos nuevos de prioridad
+(tipo 5 descartado frente a tipo 3, empate tipo 4 sobre tipo 0, ficha y pedido
+con el mismo almacén) y de ausencia de `MIN(pr.precio)` en el catálogo. HTTP real
+en `xgrabu.local.tienda`: ficha 213701 a 324,18 € (tipo 3) y 235316 a 90,71 €
+(tipo 4). Detalle en `STATE.md`.
+
+---
+
 ## 2026-11-11 · Portada de plataforma IDIRECTO en el dominio principal
 
 **Motivo (petición por chat):** al entrar sin cookies ni sesión, el dominio

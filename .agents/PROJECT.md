@@ -58,7 +58,7 @@ index.php                  Front controller y TODAS las rutas
 app/
   bootstrap.php            Autoload PSR-4 (Tienda\ -> app/), .env, helpers
   Core/                    Infraestructura (ver §4)
-  Core/Idirecto/           Puente con el mayorista: Account, Pricing y OrderGateway
+  Core/Idirecto/           Puente con el mayorista: Account, PriceResolver, Pricing y OrderGateway
   Core/Registration.php    Alta de una tienda a partir de una cuenta de `tiendas`
   Core/Subdomain.php       Subdominio de plataforma: validación, reservados, URL y diagnóstico DNS/TLS
   Core/Cart.php            Carrito del cliente final (en sesión, por tienda)
@@ -94,7 +94,7 @@ public/                    ÚNICO directorio servido como estático
   uploads/                 Archivos locales (si STORAGE_DRIVER=local)
 storage/                   cache/ y logs/ (escritura de la app; la caché se limpia sola)
   logs/<canal>/<día>/       Un fichero JSON-lines por día y tienda (`Logger`)
-tools/verify.php           374 comprobaciones automáticas
+tools/verify.php           379 comprobaciones automáticas
 tools/cache-clear.php      Gestiona la caché de datos (estado, vaciar, patrones, gc)
 tools/logs.php             Consulta los logs por consola (filtros, resumen, días, tiendas, gc)
 ```
@@ -125,7 +125,8 @@ tools/logs.php             Consulta los logs por consola (filtros, resumen, día
 | `Str` | `slugify()` (mismo criterio que idirecto) y `excerpt()` |
 | `Dns` | Verificación de dominios por A/CNAME/TXT (con *lookup* inyectable) |
 | `Core/Idirecto/Account` | Cuenta del mayorista de la tienda: tarifa de idirecto, sucursal, comercial, forma de pago, país/provincia |
-| `Core/Idirecto/Pricing` | Tarifa, coste, almacén, IVA, sujeto y canon de un producto del catálogo |
+| `Core/Idirecto/PriceResolver` | Elige la tarifa y el almacén con stock siguiendo la prioridad de idirecto; devuelve `precio`, `id_almacen`, `id_stock`, `tipo_almacen` y `stock_almacen` |
+| `Core/Idirecto/Pricing` | Tarifa, coste, almacén, IVA, sujeto y canon de un producto del catálogo; usa `PriceResolver` |
 | `Core/Idirecto/OrderGateway` | Vista previa y envío de líneas a `pedidos_addr`/`pedidos`/`pedidos_det` |
 | `Registration` | Alta de una tienda desde una cuenta del mayorista (alta pública `/registro`) |
 | `Cart` | Carrito del cliente final: en sesión por tienda, con precios y stock en vivo |
@@ -277,6 +278,12 @@ Resultado en la BD de desarrollo: **39.437 de 233.773** productos.
 - **Ningún precio se cachea.** Los listados y la ficha leen el precio en cada
   petición; los destacados de portada cachean **solo los ids** y releen precio,
   stock y marca en vivo (`Catalog::featured()` + `findMany()`).
+- **El precio base no es `MIN(precios.precio)`.** `PriceResolver` replica la
+  elección de idirecto: solo almacenes con stock, activos, con `tarifas`, de tipo
+  0/1/3/4/5 y con su prioridad por tipo. Devuelve también `id_almacen`,
+  `id_stock` y `stock_almacen`, y de ahí salen el precio final, la etiqueta de
+  stock y el límite del carrito. El beneficio de la tienda y el IVA se aplican
+  después, como siempre.
 
 ### Imágenes: `img_name` es una plantilla
 
@@ -559,11 +566,13 @@ ejemplo 2 de 4) y `OrderGateway::send()` escribe en el mayorista:
    `price_idirecto`, `cost_idirecto`), actualiza `mt_orders` y, si ya no queda
    ninguna línea del catálogo pendiente, pasa el pedido a **enviado**.
 
-La tarifa sale de `precios` con el `id_margen` de la cuenta en idirecto
-(`tiendas.id_margen`; respaldo `IDIRECTO_DEFAULT_ID_MARGEN`) y el coste de `stock` +
-`tarifas`, con los mismos criterios que `getPrecio()`/`getCosto()` de idirecto
-(`app/Core/Idirecto/Pricing.php`). Los **productos propios** no se pueden enviar
-(no existen en el catálogo del mayorista): el panel los marca y quedan fuera.
+La tarifa la elige `PriceResolver` con el `id_margen` de la cuenta en idirecto
+(`tiendas.id_margen`; respaldo `IDIRECTO_DEFAULT_ID_MARGEN`) y su sucursal
+(`tiendas.sucursal_id`): solo almacenes con stock, activos, con `tarifas`, de tipo
+0/1/3/4/5 y aplicando la prioridad por tipo de `getPrecio()`. El coste sigue
+saliendo de `stock` + `tarifas` con el criterio de `getCosto()`. Los **productos
+propios** no se pueden enviar (no existen en el catálogo del mayorista): el panel
+los marca y quedan fuera.
 
 `OrderGateway::preview()` hace exactamente los mismos cálculos **sin escribir**, y
 es lo que la ficha muestra antes de confirmar (base, IVA y total).
@@ -705,7 +714,7 @@ servidores no los traen en `/etc/mime.types` y servirían la imagen sin
 
 ```bash
 sudo bash deploy/setup-local-domain.sh     # /etc/hosts + VirtualHost + permisos
-php tools/verify.php                       # 374 comprobaciones
+php tools/verify.php                       # 379 comprobaciones
 php -S 127.0.0.1:8099 index.php            # servidor embebido (alternativa)
 ```
 
@@ -741,7 +750,7 @@ certificado wildcard; el panel los comprueba en **Dominios > Comprobar que carga
 ## 10. Verificación antes de dar algo por hecho
 
 ```bash
-php tools/verify.php                 # debe decir: TODO OK (374 comprobaciones)
+php tools/verify.php                 # debe decir: TODO OK (379 comprobaciones)
 curl -s -o /dev/null -w '%{http_code}\n' http://local.tienda/
 curl -s -o /dev/null -w '%{http_code}\n' -H 'Host: idirecto-demo.local.tienda' http://127.0.0.1/
 curl -s -o /dev/null -w '%{http_code}\n' http://local.tienda/catalogo
@@ -794,9 +803,9 @@ google-chrome --headless=new --disable-gpu --no-sandbox \
 | `password_verify()` no valida ninguna cuenta de `tiendas` | La contraseña del mayorista **no** es `password_hash`: es `hash('sha256', md5(sha1($clave)))` | Usar `Account::signature()` / `Account::login()`; si cambian su login, ajustar ahí |
 | Un cliente del mayorista no puede registrarse y su contraseña es correcta | `tiendas.activo` **no** vale `1`: idirecto marca las cuentas activas con `activo = 2` (y hay que descartar `cerrada` y `deleted`) | Mismo filtro que el login de idirecto: `activo = 2 AND COALESCE(cerrada,0)=0 AND COALESCE(deleted,0)=0` |
 | `SQLSTATE[HY093]: Invalid parameter number` al buscar clientes | En `Customer::forStore()` el mismo `:q` se usaba en tres `LIKE` de la misma consulta (prohibido con `EMULATE_PREPARES = false`) | Un parámetro por repetición: `:q1`, `:q2`, `:q3` |
-| La web muestra un precio y el pedido cobra otro | El storefront trabaja **con IVA incluido** (`Catalog::forStore(..., true)`) y el panel **sin IVA** (`false`); `price_final` es el precio de venta de cada contexto y `price_net` la base | Convertir con `Catalog::netFromSale()` / `saleFromNet()`; en el pedido se guarda **siempre** la base sin IVA |
-| Los precios del catálogo salen «demasiado baratos» (por debajo del coste) | Nadie fijó el contexto de la tienda y `precioSql()` cae en `MIN(precios.precio)` de **todas** las tarifas | Llamar a `Catalog::forStore($id_margen, $markup, $tax, $withTax, $markupFixed)` al empezar la petición: lo hace `Controller::bootPricing()` en el storefront y `OrderController::bootStorePricing()` en el panel |
-| El beneficio fijo parece no aplicarse o se aplica después del porcentaje | `precioSql()` y `Catalog::applyStoreMargin()` son las dos vías de cálculo y deben conservar el orden `(tarifa + fijo) * (1 + porcentaje/100)`; el IVA va al final | Probar fijo solo, porcentaje solo y ambos; `verify.php` compara la fórmula PHP con la consulta real |
+| La web muestra un precio y el pedido cobra otro | El storefront trabaja **con IVA incluido** (`Catalog::forStore(..., true)`) y el panel **sin IVA** (`false`); `price_final` es el precio de venta de cada contexto y `price_net` la base | Convertir con `Catalog::netFromSale()` / `saleFromNet()`; en el pedido se guarda **siempre** la base sin IVA. La tarifa base debe salir de `PriceResolver` en ambos lados |
+| Los precios del catálogo salen «demasiado baratos» (por debajo del coste) | Se usaba `MIN(precios.precio)` de todas las filas del margen, sin stock ni tipo de almacén | Usar `PriceResolver::resolveMany()`; solo entran almacenes con stock, activos, con tarifa, de tipo 0/1/3/4/5 y con la prioridad de idirecto |
+| El beneficio fijo parece no aplicarse o se aplica después del porcentaje | `Catalog::applyStoreMargin()` debe conservar el orden `(tarifa + fijo) * (1 + porcentaje/100)`; el IVA va al final | Probar fijo solo, porcentaje solo y ambos; `verify.php` compara la fórmula con `PriceResolver` y con la ficha |
 | `Fatal error: Access level to ...::requireAuth() must be protected` | Ese método ya existe en `Core\Controller`: un controlador hijo no puede bajarlo a `private` | No redefinirlo (o hacerlo `protected`); en los `Admin/*` solo se redefine `storeId()` |
 | Una compra fallida dejaba una dirección vacía en la libreta | Se guardaba la dirección **antes** de validar el pedido | Guardarla solo cuando el pedido ya está registrado (`CheckoutController::place()`) |
 
@@ -812,7 +821,7 @@ El contador total sí es caro (~1-3 s con la caché InnoDB fría: recorre `produ
 comprobando `stock`) y por eso se cachea 10 minutos con `Tienda\Core\Cache`
 (`catalog_count_*`), con bloqueo para que al caducar no lo recalculen varias
 peticiones a la vez. Los **destacados de portada** ya no guardan el precio: cachean
-solo la lista de ids 10 minutos (`catalog_featured_ids_*`) y releen el precio en
+solo la lista de ids 10 minutos (`catalog_featured_ids_v2_*`) y releen el precio en
 vivo. Si algún día se quiere eliminar ese pico periódico, la vía limpia es
 materializar el stock válido en una tabla propia `mt_` refrescada por tarea — es
 una decisión de frescura de datos del dueño, no un cambio que deba hacer un agente
