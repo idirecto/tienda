@@ -14,6 +14,14 @@ implementado, pero la web está en **modo de pruebas comercial** por defecto:
 el carrito y los pedidos se rechazan con un aviso hasta poner
 `SHOP_TEST_MODE=false`.
 
+> **Aviso permanente de web de prueba (2026-11-12).** Todas las páginas del
+> storefront muestran una barra compacta con el texto «Web de prueba. Los
+> productos y precios mostrados son de prueba. Fecha prevista de habilitación: 1
+> de diciembre de 2026.». Se pinta una sola vez en `layouts/shop.php`, en flujo
+> normal antes de la cabecera, sin botón de cierre ni JavaScript y sin depender
+> de `SHOP_TEST_MODE`; la fecha es informativa y no activa compras. `verify.php`
+> **TODO OK (382)**. Detalle en `CHANGELOG.md`.
+
 > 💰 **Precio por almacén con stock (2026-11-12).** El precio base ya no es el
 > `MIN(precios.precio)` del margen: `Core/Idirecto/PriceResolver` replica la
 > elección de idirecto (stock, activo, `tarifas`, sucursal, tipos 0/1/3/4/5 y
@@ -97,6 +105,7 @@ el carrito y los pedidos se rechazan con un aviso hasta poner
 | **Registro de tiendas (solo con cuenta activa del mayorista)** | ✅ Completo |
 | **Compra del cliente final (carrito, cuenta, direcciones y pedido)** | ✅ Completo (**sin pasarela de pago**) |
 | **Modo de pruebas comercial (`SHOP_TEST_MODE`)** | ✅ Activo por defecto: bloquea carrito y checkout con el aviso solicitado |
+| **Aviso permanente de web de prueba** | ✅ Visible en todo el storefront; texto fijo, sin cierre y sin depender de `SHOP_TEST_MODE` |
 | **Nombre visible de la marca** | ✅ Cabecera, banner y pestaña usan la razón social (`XGRABU`), con el nombre comercial como respaldo |
 | **Compatibilidad con sesiones antiguas** | ✅ Sanea carrito, cliente, panel, flash y CSRF sin cerrar la sesión |
 | **Carrito: botón «Agregar al carrito» + mini-carrito lateral (AJAX, responsive, stock real)** | ✅ Completo |
@@ -135,6 +144,30 @@ el carrito y los pedidos se rechazan con un aviso hasta poner
 ---
 
 ## Hecho
+
+### Aviso permanente de web de prueba en el storefront (2026-11-12)
+- `Core/ShopMode` gana `NOTICE_MESSAGE` y `notice()` con el texto exacto y fijo:
+  «Web de prueba. Los productos y precios mostrados son de prueba. Fecha prevista
+  de habilitación: 1 de diciembre de 2026.». **No** se toca `TEST_MESSAGE`, que
+  sigue siendo el aviso de las acciones bloqueadas, ni `SHOP_TEST_MODE`.
+- El aviso se pinta **una sola vez** en `app/Views/layouts/shop.php`, después del
+  `skip-link` y antes de la cabecera. Al ser el layout común, aparece en portada,
+  catálogo, categorías/subcategorías, búsqueda, ficha, carrito, checkout, gracias,
+  cuenta, contacto, páginas, marcas, productos propios, ofertas y 404. No aparece
+  en `/registro`, login ni portada de plataforma, que no son storefront.
+- Es una barra compacta en flujo normal: **no** es `fixed`/`sticky`, no tapa logo,
+  menú, buscador ni botones, no tiene botón de cierre ni JavaScript y se adapta a
+  móvil. Usa tokens (`--c-warning-soft`, `--c-warning`, `--c-text`); contraste
+  medido > 12:1 en claro y oscuro. No depende de `SHOP_TEST_MODE` ni resta la
+  fecha al reloj: se mantiene hasta retirarla manualmente.
+- `tools/verify.php` añade 3 comprobaciones (texto exacto sin `date()`, una sola
+  aparición en el layout y ausencia de cierre/JS): **TODO OK (382)**.
+- **Pruebas**: HTTP real en las cuatro tiendas (`xgrabu`, `prueba`,
+  `servitecni-online`, `informaticasanjose`) y 15 rutas por tienda, con el texto
+  exacto **una sola vez**. Chrome CDP a 1440, 768, 390 y 320 px sin solapamiento
+  con la cabecera ni desbordamiento; la tienda `prueba` (tema `minimal` y modo
+  oscuro) también. Menú móvil, buscador en vivo, carrito (bloqueo intacto) y
+  checkout (302 al carrito) comprobados. Detalle en `CHANGELOG.md`.
 
 ### Ayuda actualizada con la tarifa fija + porcentual (2026-11-09)
 - La guía **Ajustes > Venta y cobro** explica la fórmula
@@ -666,7 +699,7 @@ el carrito y los pedidos se rechazan con un aviso hasta poner
   en **nginx + PHP-FPM** (`sudo bash deploy/setup-nginx-domain.sh ecom-era.com`).
 - La app detecta el servidor (`app/Core/Server.php`): ruta pública de `/public`,
   esquema real (incluido proxy) y host de las URLs canónicas.
-- `tools/verify.php`: 379 comprobaciones automáticas (diseño, facetas, filtros
+- `tools/verify.php`: 382 comprobaciones automáticas (diseño, facetas, filtros
   estructurados del mayorista, catálogo, paginación y enlaces de las tarjetas, caché y
   precios en vivo, carrito y mini-carrito, **modo de pruebas comercial**, **nombre de
   marca con razón social**, **sesiones antiguas y títulos públicos**, favicon de la

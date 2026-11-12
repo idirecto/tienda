@@ -19,6 +19,7 @@ use Tienda\Core\Cart;
 use Tienda\Core\CustomerAuth;
 use Tienda\Core\Favicon;
 use Tienda\Core\Session;
+use Tienda\Core\ShopMode;
 use Tienda\Models\Catalog;
 use Tienda\Models\Menu;
 
@@ -91,6 +92,16 @@ $headerStyle = preg_replace('/[^a-z0-9_\-]/i', '', $tenant->headerStyle()) ?: 'c
 <body class="shop theme-<?= e($tenant->theme()) ?> header-<?= e($headerStyle) ?>">
 
 <a class="skip-link" href="#contenido">Saltar al contenido principal</a>
+
+<?php /* Aviso permanente de fase de prueba: va en el layout comun para que
+         aparezca UNA sola vez en todas las paginas del storefront. Es un
+         bloque en flujo normal (no fixed/sticky), sin boton de cierre y sin
+         JavaScript; la fecha del texto es fija y no se calcula con el reloj. */ ?>
+<div class="shop-test-notice" role="note" aria-label="Aviso de web de prueba">
+    <div class="container shop-test-notice-inner">
+        <p><?= e(ShopMode::notice()) ?></p>
+    </div>
+</div>
 
 <?php /* Buscador en vivo (mismo comportamiento que PuntoByZE): panel con
          resultados y filtros por subcategoria y marca. Los resultados se piden

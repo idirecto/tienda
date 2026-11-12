@@ -183,6 +183,31 @@ svg { flex: 0 0 auto; }
 .header-compact .header-main { padding: .5rem 0; }
 
 /* ---------- Avisos -------------------------------------------------------- */
+/* Aviso permanente de fase de prueba. Va en flujo normal, a ancho completo y
+   por encima de la cabecera: no tapa logo, menu, buscador ni botones, y no
+   tiene boton de cierre. Los colores salen de los tokens del tema. */
+.shop-test-notice {
+    background: var(--c-warning-soft);
+    color: var(--c-text);
+    border-bottom: 1px solid var(--c-warning);
+    font-size: .85rem;
+    line-height: 1.45;
+}
+.shop-test-notice-inner {
+    display: flex;
+    align-items: center;
+    padding: .5rem 0;
+}
+.shop-test-notice p {
+    margin: 0;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+@media (max-width: 640px) {
+    .shop-test-notice { font-size: .84rem; }
+    .shop-test-notice-inner { padding: .45rem 0; }
+}
+
 .notices { padding-top: .75rem; }
 .notice {
     /* El tipo decide el acento; la variante decide el tratamiento visual. */

@@ -94,7 +94,7 @@ public/                    ÚNICO directorio servido como estático
   uploads/                 Archivos locales (si STORAGE_DRIVER=local)
 storage/                   cache/ y logs/ (escritura de la app; la caché se limpia sola)
   logs/<canal>/<día>/       Un fichero JSON-lines por día y tienda (`Logger`)
-tools/verify.php           379 comprobaciones automáticas
+tools/verify.php           382 comprobaciones automáticas
 tools/cache-clear.php      Gestiona la caché de datos (estado, vaciar, patrones, gc)
 tools/logs.php             Consulta los logs por consola (filtros, resumen, días, tiendas, gc)
 ```
@@ -130,7 +130,7 @@ tools/logs.php             Consulta los logs por consola (filtros, resumen, día
 | `Core/Idirecto/OrderGateway` | Vista previa y envío de líneas a `pedidos_addr`/`pedidos`/`pedidos_det` |
 | `Registration` | Alta de una tienda desde una cuenta del mayorista (alta pública `/registro`) |
 | `Cart` | Carrito del cliente final: en sesión por tienda, con precios y stock en vivo |
-| `ShopMode` | Modo de pruebas comercial global: bloquea carrito y pedidos con un aviso único (`SHOP_TEST_MODE`) |
+| `ShopMode` | Modo de pruebas comercial global: bloquea carrito y pedidos con un aviso único (`SHOP_TEST_MODE`) y expone el aviso permanente de fase de prueba que pinta el storefront (`NOTICE_MESSAGE`, fecha fija e independiente del modo) |
 | `Shipping` | Gastos de envío de la tienda (tarifa plana + gratis desde X €) |
 | `Checkout` | Cierra el pedido: valida direcciones/pago y crea `mt_orders` + líneas |
 | `CustomerAuth` | Sesión del cliente de la tienda (registro, entrada, invitado) |
@@ -355,6 +355,12 @@ El comprador **no es el tendero**: tiene su propia cuenta y su propia sesión
   comprado, los precios y cantidades mostradas son ficticias». La comprobación está
   también en `Cart::add()` y `Checkout::place()`, no solo en los botones. Para abrir
   la venta real hay que poner `SHOP_TEST_MODE=false`.
+- **Aviso permanente de fase de prueba**: `layouts/shop.php` pinta una barra
+  compacta con «Web de prueba. Los productos y precios mostrados son de prueba.
+  Fecha prevista de habilitación: 1 de diciembre de 2026.» en todas las páginas
+  del storefront. La fecha es fija (no se calcula con el reloj), no bloquea
+  compras y no depende de `SHOP_TEST_MODE`; se retira manualmente cuando el
+  propietario lo indique.
 - **Precio de venta**: `(tarifa de la cuenta en idirecto (tiendas.id_margen) +
   mt_stores.markup_fixed) × (1 + mt_stores.markup / 100)`, y después el IVA en la web
   (`Catalog::forStore()` fija ese contexto en cada petición; el panel usa la base sin
@@ -714,7 +720,7 @@ servidores no los traen en `/etc/mime.types` y servirían la imagen sin
 
 ```bash
 sudo bash deploy/setup-local-domain.sh     # /etc/hosts + VirtualHost + permisos
-php tools/verify.php                       # 379 comprobaciones
+php tools/verify.php                       # 382 comprobaciones
 php -S 127.0.0.1:8099 index.php            # servidor embebido (alternativa)
 ```
 
@@ -750,7 +756,7 @@ certificado wildcard; el panel los comprueba en **Dominios > Comprobar que carga
 ## 10. Verificación antes de dar algo por hecho
 
 ```bash
-php tools/verify.php                 # debe decir: TODO OK (379 comprobaciones)
+php tools/verify.php                 # debe decir: TODO OK (382 comprobaciones)
 curl -s -o /dev/null -w '%{http_code}\n' http://local.tienda/
 curl -s -o /dev/null -w '%{http_code}\n' -H 'Host: idirecto-demo.local.tienda' http://127.0.0.1/
 curl -s -o /dev/null -w '%{http_code}\n' http://local.tienda/catalogo

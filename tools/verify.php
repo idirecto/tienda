@@ -145,6 +145,34 @@ check(
     'el nucleo del carrito y del pedido tambien aplican el bloqueo'
 );
 
+// Aviso permanente de fase de prueba: texto fijo (sin reloj), una sola vez en
+// el layout comun y siempre visible, sin boton de cierre ni JavaScript.
+$avisoPruebas = 'Web de prueba. Los productos y precios mostrados son de prueba. Fecha prevista de habilitación: 1 de diciembre de 2026.';
+$shopModeSrc = (string) file_get_contents(TIENDA_BASE . '/app/Core/ShopMode.php');
+check(
+    ShopMode::notice() === $avisoPruebas
+        && str_contains($shopModeSrc, $avisoPruebas)
+        && !str_contains($shopModeSrc, 'date('),
+    'el aviso permanente usa el texto exacto y la fecha fija, sin calcularla con el reloj'
+);
+$layoutAviso = (string) file_get_contents(TIENDA_BASE . '/app/Views/layouts/shop.php');
+check(
+    substr_count($layoutAviso, 'ShopMode::notice()') === 1
+        && str_contains($layoutAviso, 'class="shop-test-notice"')
+        && str_contains($layoutAviso, 'role="note"')
+        && !str_contains($layoutAviso, 'ShopMode::isTestMode()'),
+    'el layout comun pinta el aviso una sola vez, siempre visible y con estructura accesible'
+);
+$shopCssAviso = (string) file_get_contents(TIENDA_BASE . '/public/assets/css/shop.css');
+$shopJsAviso = (string) file_get_contents(TIENDA_BASE . '/public/assets/js/shop.js');
+check(
+    str_contains($shopCssAviso, '.shop-test-notice')
+        && str_contains($shopCssAviso, 'var(--c-warning-soft)')
+        && !str_contains($layoutAviso, 'shop-test-notice-close')
+        && !str_contains($shopJsAviso, 'shop-test-notice'),
+    'el aviso esta tokenizado y es compacto, responsive y no se puede cerrar'
+);
+
 echo "\n== Conexion y esquema ==\n";
 try {
     Database::scalar('SELECT 1');

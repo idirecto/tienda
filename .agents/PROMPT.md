@@ -21,6 +21,22 @@ _(vacío — sin petición pendiente)_
 
 Cada petición terminada se anota aquí con la fecha, qué se pidió y qué se hizo.
 
+### 2026-11-12 · Aviso permanente de web de prueba (petición por chat)
+
+**Pedido:** mostrar en todas las páginas públicas de las tiendas que la web está
+en fase de prueba, que los productos y precios son de prueba y que la fecha
+prevista de habilitación es el 1 de diciembre de 2026. La fecha es informativa:
+no debe activar compras ni cambiar el estado de la tienda. Solo storefront de
+tiendas y aviso siempre visible hasta retirarlo manualmente.
+
+**Hecho:** `Core/ShopMode::NOTICE_MESSAGE`/`notice()` con el texto exacto y fijo
+(sin `date()`, independiente de `SHOP_TEST_MODE`); `layouts/shop.php` lo pinta una
+sola vez antes de la cabecera, en flujo normal, sin cierre ni JS; `shop.css` usa
+tokens del tema y lo adapta a móvil; `verify.php` 379 → **382** (texto, una sola
+aparición y ausencia de cierre/JS). QA HTTP real en las cuatro tiendas y 15 rutas
+por tienda, Chrome CDP a 1440/768/390/320 px y regresión de menú, buscador,
+carrito y checkout. Detalle en `CHANGELOG.md` y `STATE.md`.
+
 ### 2026-11-12 · Precio mostrado desde el almacén con stock (petición por chat)
 
 **Pedido:** el precio debe seguir lo que hace idirecto, descartando los almacenes

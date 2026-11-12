@@ -5,6 +5,37 @@ El detalle línea a línea está en `git log`.
 
 ---
 
+## 2026-11-12 · Aviso permanente de web de prueba en el storefront
+
+**Motivo (petición por chat):** todas las páginas públicas de las tiendas deben
+avisar de que la web está en fase de prueba, que los productos y precios son de
+prueba y que la fecha prevista de habilitación es el **1 de diciembre de 2026**.
+La fecha es informativa: no se calcula con el reloj ni activa compras.
+
+**Qué se hizo**
+
+- **`Core/ShopMode`**: nuevo `NOTICE_MESSAGE`/`notice()` con el texto exacto y
+  fijo. Se mantiene `TEST_MESSAGE` intacto para el bloqueo de carrito/checkout.
+- **`layouts/shop.php`**: el aviso se pinta una sola vez, en flujo normal y antes
+  de la cabecera, así que aparece en todas las páginas del storefront (portada,
+  catálogo, categorías, búsqueda, ficha, carrito, checkout, cuenta, contacto,
+  marcas, propios, ofertas y 404) y no tapa logo, menú, buscador ni botones.
+- **`shop.css`**: barra compacta con tokens del tema (`--c-warning-soft`,
+  `--c-warning`, `--c-text`), responsive y con contraste > 12:1 en claro y oscuro.
+  Sin `position: fixed/sticky`, sin botón de cierre, sin JavaScript y sin depender
+  de `SHOP_TEST_MODE`.
+- **`tools/verify.php`**: 3 comprobaciones nuevas (texto exacto sin `date()`,
+  una sola aparición en el layout y ausencia de cierre/JS). Total **379 → 382**.
+
+**Pruebas:** HTTP real con las cuatro tiendas activas (`xgrabu`, `prueba`,
+`servitecni-online`, `informaticasanjose`) y 15 rutas por tienda, con el texto
+exacto una sola vez en cada página. Chrome CDP a 1440, 768, 390 y 320 px:
+`overlapHeader = false`, sin desbordamiento y aviso visible; también en la tienda
+`prueba`, que usa tema `minimal` y modo oscuro. Menú móvil, buscador en vivo,
+carrito (bloqueo de pruebas intacto) y checkout (302 al carrito) comprobados.
+
+---
+
 ## 2026-11-12 · Precio desde el almacén con stock y prioridad de idirecto
 
 **Motivo (petición por chat):** el precio mostrado debe seguir lo que hace
