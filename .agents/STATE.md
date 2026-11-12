@@ -22,6 +22,15 @@ el carrito y los pedidos se rechazan con un aviso hasta poner
 > de `SHOP_TEST_MODE`; la fecha es informativa y no activa compras. `verify.php`
 > **TODO OK (382)**. Detalle en `CHANGELOG.md`.
 
+> 📘 **Ayuda de tarifa y precio (2026-11-12).** Nuevo artículo
+> `productos/configurar-calcular-tarifa` en **Productos y precios**: explica la
+> tarifa de idirecto, el beneficio fijo y porcentual, la fórmula aprobada
+> `(tarifa + fijo) × (1 + porcentaje / 100)`, el IVA posterior, el redondeo y
+> los dos ejemplos (2,24 € / 2,71 € y 561,12 € / 678,96 €). No existe una opción
+> «automática» seleccionable: la tarifa base se resuelve desde idirecto. El
+> artículo se enlaza desde **Ajustes > Venta y cobro**. `verify.php` **TODO OK
+> (385)** y 39 artículos. La lógica de precios y la base de datos no se tocaron.
+
 > 💰 **Precio por almacén con stock (2026-11-12).** El precio base ya no es el
 > `MIN(precios.precio)` del margen: `Core/Idirecto/PriceResolver` replica la
 > elección de idirecto (stock, activo, `tarifas`, sucursal, tipos 0/1/3/4/5 y
@@ -63,8 +72,8 @@ el carrito y los pedidos se rechazan con un aviso hasta poner
 > `deploy/registro-controlado.md` (checklist, prueba real con rollback,
 > retención de PDFs y propuesta de outbox). Detalle en `CHANGELOG.md`.
 
-> 🆕 **Centro de Ayuda (2026-11-06, actualizado 2026-11-09).** Integrado en
-> `/panel/ayuda`: 38 artículos, 22 preguntas frecuentes, 11 categorías (la de
+> 🆕 **Centro de Ayuda (2026-11-06, actualizado 2026-11-12).** Integrado en
+> `/panel/ayuda`: 39 artículos, 22 preguntas frecuentes, 11 categorías (la de
 > plataforma solo para rol `platform`), buscador en servidor sin
 > acentos/mayúsculas, enlaces contextuales
 > desde las pantallas reales y diseño responsive/accesible. El contenido vive en
@@ -122,7 +131,7 @@ el carrito y los pedidos se rechazan con un aviso hasta poner
 | **Filtros avanzados (socket, gráfica, memoria, formato, almacenamiento, marca, precio)** | ✅ Completo (**ahora sí filtran**; el WHERE los ignoraba) |
 | **Buscador del catálogo (en vivo, estilo PuntoByZE)** | ✅ Completo (solo el catálogo visible en el menú de la tienda + sus productos propios; `/buscar/live`; **rejilla adaptativa: 1 tarjeta por línea en el móvil y 5-7 en un monitor grande**) |
 | Panel de la tienda (diseño, banners, avisos, productos, dominios, ajustes) | ✅ Completo (sin usuario demo: se crea en `/registro`) |
-| **Centro de Ayuda del panel (`/panel/ayuda`)** | ✅ Completo: 38 artículos + 22 FAQ, buscador en servidor, enlaces contextuales y ayuda de plataforma restringida por rol |
+| **Centro de Ayuda del panel (`/panel/ayuda`)** | ✅ Completo: 39 artículos + 22 FAQ, buscador en servidor, enlaces contextuales y ayuda de plataforma restringida por rol |
 | **Cuenta y tarifa del mayorista** | ✅ Solo lectura desde idirecto: Ajustes no muestra ni guarda cuenta, tarifa, margen ni nivel |
 | **Coste interno en pedidos** | ✅ Oculto de `/panel/pedidos/{id}`; el identificador de margen tampoco se muestra y la columna de precio de tarifa sigue visible |
 | **Pedidos: listado por estados, ficha y envío por líneas a idirecto** | ✅ Completo |
@@ -699,7 +708,7 @@ el carrito y los pedidos se rechazan con un aviso hasta poner
   en **nginx + PHP-FPM** (`sudo bash deploy/setup-nginx-domain.sh ecom-era.com`).
 - La app detecta el servidor (`app/Core/Server.php`): ruta pública de `/public`,
   esquema real (incluido proxy) y host de las URLs canónicas.
-- `tools/verify.php`: 382 comprobaciones automáticas (diseño, facetas, filtros
+- `tools/verify.php`: 385 comprobaciones automáticas (diseño, facetas, filtros
   estructurados del mayorista, catálogo, paginación y enlaces de las tarjetas, caché y
   precios en vivo, carrito y mini-carrito, **modo de pruebas comercial**, **nombre de
   marca con razón social**, **sesiones antiguas y títulos públicos**, favicon de la

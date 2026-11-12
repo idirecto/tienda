@@ -2859,7 +2859,7 @@ foreach ($ayudaTodas as $categoriaSlug => $categoriaAyuda) {
 
 check(count($ayudaTodas) === 11, 'el Centro de Ayuda tiene las 11 categorias aprobadas');
 check(count($ayudaNormales) === 10 && !isset($ayudaNormales['plataforma']), 'la tienda no ve la categoria de plataforma');
-check(count($ayudaArticulos) === 38, 'el Centro de Ayuda contiene 38 articulos normales y de plataforma');
+check(count($ayudaArticulos) === 39, 'el Centro de Ayuda contiene 39 articulos normales y de plataforma');
 check(Help::faqCount() === 22, 'el Centro de Ayuda contiene 22 preguntas frecuentes');
 check($ayudaContenidoOk, 'todos los articulos tienen titulo, resumen y contenido');
 check($ayudaRelacionadosOk, 'todos los enlaces a articulos relacionados existen');
@@ -2875,6 +2875,29 @@ check(
         && str_contains((string) $ayudaPrecios['body'], 'productos propios'),
     'la ayuda explica la formula, los dos campos y como guardar la configuracion'
 );
+
+$ayudaTarifa = Help::find('productos/configurar-calcular-tarifa', true);
+$rutasProductos = array_column(Help::articlesForCategory('productos', true), 'path');
+check(
+    is_array($ayudaTarifa)
+        && in_array('productos/configurar-calcular-tarifa', $rutasProductos, true)
+        && str_contains((string) $ayudaTarifa['body'], 'coste de tarifa')
+        && str_contains((string) $ayudaTarifa['body'], 'Beneficio fijo (EUR)')
+        && str_contains((string) $ayudaTarifa['body'], 'Beneficio porcentual (%)')
+        && str_contains((string) $ayudaTarifa['body'], '(tarifa + beneficio fijo) × (1 + beneficio porcentual / 100)')
+        && str_contains((string) $ayudaTarifa['body'], '2,24 €')
+        && str_contains((string) $ayudaTarifa['body'], '2,71 €')
+        && str_contains((string) $ayudaTarifa['body'], '561,12 €')
+        && str_contains((string) $ayudaTarifa['body'], '678,96 €')
+        && str_contains((string) $ayudaTarifa['body'], 'Ejemplo ilustrativo')
+        && str_contains((string) $ayudaTarifa['body'], 'Consultar')
+        && str_contains((string) $ayudaTarifa['body'], 'No hay un selector de tipos de tarifa')
+        && str_contains((string) $ayudaTarifa['body'], '999.999,99 €')
+        && str_contains((string) $ayudaTarifa['body'], 'no usa el coste interno')
+        && (string) $ayudaTarifa['panel_path'] === 'panel/ajustes#venta-y-cobro',
+    'la guia de tarifa esta en Productos y precios, explica la formula, el redondeo, dos ejemplos y los errores'
+);
+
 check(
     Help::find('plataforma/menu-plataforma', false) === null
         && Help::find('plataforma/menu-plataforma', true) !== null,
@@ -2884,6 +2907,13 @@ check(
 $busquedaParcial = array_column(Help::search('ban', false, 100), 'path');
 $busquedaAcento = array_column(Help::search('PEDÍDOS', false, 100), 'path');
 $busquedaBeneficios = array_column(Help::search('beneficio fijo', false, 100), 'path');
+$busquedasTarifaOk = true;
+foreach (['tarifa', 'beneficio', 'margen', 'precio', 'coste', 'configurar precio', 'cálculo', 'calculo'] as $terminoTarifa) {
+    $rutasTarifa = array_column(Help::search($terminoTarifa, false, 100), 'path');
+    if (!in_array('productos/configurar-calcular-tarifa', $rutasTarifa, true)) {
+        $busquedasTarifaOk = false;
+    }
+}
 $busquedaVacia = Help::search('contenidoquenoexiste', false, 100);
 $busquedaPlataformaTienda = array_filter(
     Help::search('plataforma', false, 100),
@@ -2900,6 +2930,7 @@ check(
         && in_array('preguntas-frecuentes/calculo-precio-venta', $busquedaBeneficios, true),
     'el buscador encuentra la guia y la FAQ de beneficios fijo y porcentual'
 );
+check($busquedasTarifaOk, 'el buscador encuentra la guia de tarifa con y sin acentos y con las palabras clave');
 check($busquedaVacia === [], 'el buscador devuelve un estado vacio sin resultados');
 check($busquedaPlataformaTienda === [] && $busquedaPlataformaAdmin !== [], 'el buscador oculta la ayuda de plataforma a las tiendas');
 check(Help::search('a', false, 100) === [], 'el buscador exige al menos dos caracteres');
@@ -2913,6 +2944,12 @@ $contextoAjustes = Help::contextual('/panel/ajustes', false);
 check(
     is_array($contextoAjustes) && ($contextoAjustes['path'] ?? '') === 'configuracion/venta-cobro-pagos',
     'la ayuda contextual de Ajustes abre la guia de precios y cobro'
+);
+$vistaAjustes = (string) file_get_contents(TIENDA_BASE . '/app/Views/panel/settings.php');
+check(
+    str_contains($vistaAjustes, 'id="venta-y-cobro"')
+        && str_contains($vistaAjustes, 'Help::articleUrl(\'productos/configurar-calcular-tarifa\')'),
+    'la tarjeta Venta y cobro enlaza con la guia de tarifa'
 );
 
 $indiceFuente = (string) file_get_contents(TIENDA_BASE . '/index.php');

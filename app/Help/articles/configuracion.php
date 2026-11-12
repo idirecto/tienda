@@ -145,7 +145,7 @@ return [
         HTML,
         'panel_path' => 'panel/ajustes',
         'panel_label' => 'Ir a Configurar precios y cobro',
-        'related' => ['productos/precios-iva-stock', 'configuracion/cuenta-idirecto', 'envios/zonas-tarifas', 'problemas/no-recibo-pedidos'],
+        'related' => ['productos/configurar-calcular-tarifa', 'productos/precios-iva-stock', 'configuracion/cuenta-idirecto', 'envios/zonas-tarifas', 'problemas/no-recibo-pedidos'],
     ],
 
     [

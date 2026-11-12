@@ -5,6 +5,46 @@ El detalle línea a línea está en `git log`.
 
 ---
 
+## 2026-11-12 · Ayuda de configuración y cálculo de la tarifa
+
+**Motivo (petición por chat):** explicar a las tiendas, sin conocimientos
+técnicos, dónde se configura la tarifa, qué significan los dos beneficios, cómo
+se calcula el precio final, cómo se redondea y qué hacer cuando un producto no
+muestra precio.
+
+**Discrepancia resuelta antes de publicar:** el ejemplo inicial de 1 € de
+tarifa, 1 € de beneficio fijo y 12 % daba 2,12 € con la fórmula
+`tarifa + fijo + (tarifa × porcentaje / 100)`, pero el código aplica
+`(tarifa + fijo) × (1 + porcentaje / 100)` y da 2,24 €. Se detuvo la publicación
+y, tras la confirmación del responsable, se mantuvo la fórmula implementada.
+No se modificó la lógica de precios ni la base de datos.
+
+**Qué se hizo**
+
+- Nuevo artículo **«Cómo se configura y calcula la tarifa de tu tienda»** en
+  **Productos y precios** (`productos/configurar-calcular-tarifa`), con la
+  definición de tarifa, los dos beneficios, las combinaciones posibles, la
+  fórmula, el redondeo, dos ejemplos paso a paso (1 € y 500 €; 2,24 € y 561,12 €
+  sin IVA; 2,71 € y 678,96 € con IVA del 21 %), la advertencia de ejemplo y la
+  actuación ante un producto sin precio.
+- Enlace directo desde la tarjeta **Venta y cobro** de `/panel/ajustes` y ancla
+  `#venta-y-cobro`. Enlaces relacionados desde la ayuda de precios, la guía de
+  venta/cobro y la de productos propios.
+- El artículo aclara que **no existe una opción «automática» seleccionable** en
+  el panel: la tarifa base se toma de la cuenta de idirecto y la tienda solo
+  configura el beneficio.
+- `tools/verify.php`: 2 comprobaciones nuevas (contenido/ubicación del artículo
+  y buscador con/sin acentos y palabras clave) y 1 para el enlace de Ajustes;
+  recuento **382 → 385**, 39 artículos.
+
+**Pruebas:** `verify.php` **TODO OK (385)**; HTTP real con una sesión temporal
+del panel (sin escribir en la base de datos): artículo, categoría, búsqueda
+`tarifa`, `cálculo`/`calculo` y enlace de Ajustes, todos 200 y con el contenido
+esperado. `php -l` de los archivos modificados, `git diff --check` y
+`check-privacidad.sh` correctos.
+
+---
+
 ## 2026-11-12 · Aviso permanente de web de prueba en el storefront
 
 **Motivo (petición por chat):** todas las páginas públicas de las tiendas deben

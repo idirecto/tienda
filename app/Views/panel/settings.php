@@ -6,6 +6,7 @@
  * @var string $shippingBlockedMessage
  */
 use Tienda\Core\Csrf;
+use Tienda\Core\Help;
 $v = static fn (string $k, string $d = '') => e($store[$k] ?? $d);
 $zoneValue = static function (mixed $value): string {
     if ($value === null || $value === '') {
@@ -72,7 +73,7 @@ $previewPrice = static fn (float $tariff): float
         </div>
     </div>
 
-    <div class="card">
+    <div class="card" id="venta-y-cobro">
         <h2>Venta y cobro</h2>
         <form method="post" action="<?= e($base) ?>/panel/ajustes" class="stack">
             <?= Csrf::field() ?>
@@ -111,6 +112,11 @@ $previewPrice = static fn (float $tariff): float
                     <strong><?= e(euros($previewPrice(500.0))) ?></strong>.
                     El beneficio fijo protege los articulos baratos; el porcentual mantiene
                     el margen en los caros.
+                </p>
+                <p class="muted small">
+                    <a href="<?= e(Help::articleUrl('productos/configurar-calcular-tarifa')) ?>">
+                        Cómo se configura y calcula la tarifa paso a paso
+                    </a>
                 </p>
             </div>
 

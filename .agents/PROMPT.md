@@ -21,6 +21,23 @@ _(vacío — sin petición pendiente)_
 
 Cada petición terminada se anota aquí con la fecha, qué se pidió y qué se hizo.
 
+### 2026-11-12 · Ayuda de configuración y cálculo de tarifa (petición por chat)
+
+**Pedido:** documentar en la ayuda del panel cómo se configura y calcula la
+tarifa de una tienda, con opciones, fórmula real, redondeo, dos ejemplos y qué
+hacer si un producto no muestra precio. La petición inicial daba como resultado
+2,12 € para tarifa 1 € + fijo 1 € + 12 %.
+
+**Auditoría:** el código aplica `(tarifa + fijo) × (1 + porcentaje / 100)` y da
+**2,24 €** sin IVA (2,71 € con IVA del 21 %). El 2,12 € corresponde a otra
+fórmula. Se detuvo la publicación y el responsable confirmó mantener la fórmula
+implementada. No se cambió la lógica de precios ni la base de datos.
+
+**Hecho:** nuevo artículo `productos/configurar-calcular-tarifa` en **Productos
+y precios**, enlace desde **Ajustes > Venta y cobro** y artículos relacionados;
+buscador con y sin acentos y palabras clave; `verify.php` **TODO OK (385)** y
+39 artículos. Detalle en `CHANGELOG.md` y `STATE.md`.
+
 ### 2026-11-12 · Aviso permanente de web de prueba (petición por chat)
 
 **Pedido:** mostrar en todas las páginas públicas de las tiendas que la web está
