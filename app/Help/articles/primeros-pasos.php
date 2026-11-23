@@ -67,7 +67,7 @@ return [
             <ul>
                 <li>No hay un menú creado. Hasta que lo configures, la web solo muestra los accesos básicos.</li>
                 <li>No hay banners, avisos ni productos propios.</li>
-                <li>No hay páginas legales editables desde este panel.</li>
+                <li>La política de cookies se genera automáticamente con los datos de la tienda; el resto de páginas legales no tiene editor en el panel.</li>
                 <li>No hay una pantalla para cambiar de plan ni para activar o suspender la tienda.</li>
             </ul>
 

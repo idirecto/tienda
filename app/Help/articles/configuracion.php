@@ -33,7 +33,7 @@ return [
 
             <div class="help-callout help-callout--warning">
                 <strong>Hay datos repartidos en dos pantallas</strong>
-                <p>El nombre, el email, el teléfono, el código postal, la ciudad y la provincia se pueden editar tanto en Ajustes como en Diseño. La razón social y el IVA solo están en Ajustes; la dirección completa y el WhatsApp están en Diseño.</p>
+                <p>El nombre, el email, el teléfono, el código postal, la ciudad y la provincia se pueden editar tanto en Ajustes como en Diseño. La razón social, el NIF/CIF y el IVA solo están en Ajustes; la dirección completa y el WhatsApp están en Diseño.</p>
                 <p>Si cambias un dato compartido, revisa también la otra pantalla antes de guardar para no dejar el valor anterior.</p>
             </div>
 
@@ -45,8 +45,8 @@ return [
             <ul>
                 <li>El plan de la tienda.</li>
                 <li>El estado técnico de la tienda.</li>
-                <li>Las páginas legales: no tienen editor en el panel.</li>
-                <li>El NIF/CIF y la tarifa de la cuenta del mayorista: se gestionan en idirecto.</li>
+                <li>Las páginas legales, salvo la política de cookies que se genera automáticamente, no tienen editor en el panel.</li>
+                <li>La tarifa de la cuenta del mayorista se gestiona en idirecto. El NIF/CIF del responsable se edita en Ajustes.</li>
             </ul>
         HTML,
         'panel_path' => 'panel/ajustes',

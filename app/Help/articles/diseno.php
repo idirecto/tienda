@@ -133,9 +133,9 @@ return [
             </ul>
 
             <div class="help-callout help-callout--warning">
-                <strong>No hay editor de páginas legales</strong>
-                <p>El panel no permite crear ni editar páginas de aviso legal, privacidad, cookies, condiciones de venta o devoluciones. Tampoco existe un editor del pie de página. No documentamos esos textos como si estuvieran disponibles.</p>
-                <p>Si necesitas publicarlos, la decisión y el contenido deben resolverse fuera de esta pantalla con quien corresponda. Esta ayuda no redacta textos legales ni fiscales.</p>
+                <strong>La política de cookies se genera; el resto de textos legales no</strong>
+                <p>La tienda publica automáticamente una política de cookies en <code>/cookies</code> con la tabla real de cookies y los datos del responsable. Para completarla, revisa la razón social, el NIF/CIF, el email y la dirección en Ajustes y Diseño.</p>
+                <p>El panel no permite crear ni editar el aviso legal, la privacidad, las condiciones de venta o las devoluciones. Si necesitas publicarlos, la decisión, el contenido y la revisión legal deben resolverse fuera de esta pantalla.</p>
             </div>
 
             <h3>Contacto y páginas</h3>

@@ -298,7 +298,7 @@ return [
             <h3>Contenido y legal</h3>
             <ul>
                 <li>No hay editor de páginas de contenido.</li>
-                <li>No hay editor de aviso legal, privacidad, cookies, condiciones o devoluciones.</li>
+                <li>La política de cookies se genera automáticamente en <code>/cookies</code>; no hay editor del aviso legal, privacidad, condiciones o devoluciones.</li>
                 <li>No hay editor del pie de página.</li>
                 <li>«Sobre nosotros» se guarda, pero no se publica en una página visible.</li>
                 <li>«Meta título» se guarda, pero no sustituye al título real de la página.</li>
