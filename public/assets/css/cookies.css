@@ -342,30 +342,6 @@ body.idc-modal-open {
 }
 
 /* -------------------------------------------------------------------------
-   Enlace permanente del pie
-   ------------------------------------------------------------------------- */
-.footer-cookie-settings {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px 14px;
-    margin: 8px 0 0;
-    color: var(--idc-muted, #64748b);
-    font-size: 12px;
-    line-height: 1.5;
-}
-
-.footer-cookie-settings a {
-    color: var(--idc-muted, #64748b);
-    text-decoration: underline;
-    text-underline-offset: .14em;
-}
-
-.footer-cookie-settings a:hover,
-.footer-cookie-settings a:focus {
-    color: var(--idc-link, #333333);
-}
-
-/* -------------------------------------------------------------------------
    Politica de cookies
    ------------------------------------------------------------------------- */
 .idc-policy {

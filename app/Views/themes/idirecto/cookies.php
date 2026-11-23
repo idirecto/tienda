@@ -150,7 +150,7 @@ $addressParts = array_filter([
     </p>
 
     <div class="idc-policy-actions">
-        <a href="#preferencias" class="idc-btn idc-btn--ghost" data-idc-open>Configurar mis preferencias</a>
+        <a href="#preferencias" class="idc-btn idc-btn--ghost" data-idc-open aria-haspopup="dialog">Configurar mis preferencias</a>
     </div>
 
     <div class="idc-policy-preferences">

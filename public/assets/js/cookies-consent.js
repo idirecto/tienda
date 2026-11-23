@@ -470,11 +470,15 @@
 
             var first = focusable[0];
             var last = focusable[focusable.length - 1];
+            var active = document.activeElement;
+            var insideDialog = dialog && dialog.contains(active);
 
-            if (event.shiftKey && document.activeElement === first) {
-                event.preventDefault();
-                last.focus();
-            } else if (!event.shiftKey && document.activeElement === last) {
+            if (event.shiftKey) {
+                if (active === first || active === dialog || !insideDialog) {
+                    event.preventDefault();
+                    last.focus();
+                }
+            } else if (active === last || !insideDialog) {
                 event.preventDefault();
                 first.focus();
             }

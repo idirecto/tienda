@@ -313,7 +313,7 @@ $headerStyle = preg_replace('/[^a-z0-9_\-]/i', '', $tenant->headerStyle()) ?: 'c
         <nav aria-label="Informacion legal">
             <h4>Legal</h4>
             <a href="<?= e($base) ?>/cookies">Politica de cookies</a>
-            <a href="<?= e($base) ?>/cookies#preferencias" data-idc-open>Configurar cookies</a>
+            <a href="<?= e($base) ?>/cookies#preferencias" data-idc-open aria-haspopup="dialog">Configurar cookies</a>
         </nav>
     </div>
     <div class="footer-bottom">
