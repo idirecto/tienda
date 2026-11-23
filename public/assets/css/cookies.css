@@ -1,0 +1,550 @@
+/**
+ * Consentimiento de cookies.
+ *
+ * Los colores de marca, texto, botones y foco los calcula el servidor y llegan
+ * como variables --idc-*. Este fichero no fija el color de ninguna tienda.
+ */
+
+[hidden] {
+    display: none !important;
+}
+
+/* -------------------------------------------------------------------------
+   Banner informativo
+   ------------------------------------------------------------------------- */
+.idc-banner {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 10050;
+    padding: 18px 20px;
+    background: var(--idc-surface, #ffffff);
+    border-top: 4px solid var(--idc-primary, #333333);
+    box-shadow: var(--c-shadow-lg, 0 18px 45px rgba(15, 23, 42, .18));
+    color: var(--idc-text, #1f2937);
+    font-family: var(--c-font, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif);
+    font-size: 14px;
+    line-height: 1.55;
+}
+
+.idc-banner__inner {
+    width: 100%;
+    max-width: var(--c-container-max, 1600px);
+    margin: 0 auto;
+}
+
+.idc-banner__title {
+    margin: 0 0 5px;
+    color: var(--idc-heading, var(--idc-text, #1f2937));
+    font-family: var(--c-font-head, var(--c-font, sans-serif));
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 1.25;
+}
+
+.idc-banner__text {
+    max-width: 1050px;
+    margin: 0;
+}
+
+.idc-banner__text a,
+.idc-modal a,
+.idc-policy a {
+    color: var(--idc-link, #333333);
+    text-decoration: underline;
+    text-underline-offset: .14em;
+}
+
+.idc-banner__actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 14px;
+}
+
+/* -------------------------------------------------------------------------
+   Botones: Aceptar y Rechazar comparten exactamente clase, tamaño y peso.
+   ------------------------------------------------------------------------- */
+.idc-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    padding: .7rem 1.1rem;
+    border: 1px solid transparent;
+    border-radius: var(--c-radius-md, 10px);
+    font-family: var(--c-font, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif);
+    font-size: .92rem;
+    font-weight: 700;
+    line-height: 1.2;
+    text-align: center;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.idc-btn--choice {
+    background: var(--idc-control-bg, #333333);
+    border-color: var(--idc-control-border, #ffffff);
+    color: var(--idc-control-text, #ffffff);
+}
+
+.idc-btn--choice:hover,
+.idc-btn--choice:focus {
+    background: var(--idc-control-hover, #111111);
+    border-color: var(--idc-control-border, #ffffff);
+    color: var(--idc-control-text, #ffffff);
+    text-decoration: none;
+}
+
+.idc-btn--ghost {
+    background: var(--idc-surface, #ffffff);
+    border-color: var(--idc-border, #e2e8f0);
+    color: var(--idc-text, #1f2937);
+}
+
+.idc-btn--ghost:hover,
+.idc-btn--ghost:focus {
+    border-color: var(--idc-link, #333333);
+    color: var(--idc-link, #333333);
+    text-decoration: none;
+}
+
+.idc-btn:focus-visible,
+.idc-modal__close:focus-visible,
+.idc-cat__control input:focus-visible {
+    outline: 3px solid var(--idc-focus, #333333);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 5px var(--idc-surface, #ffffff);
+}
+
+/* -------------------------------------------------------------------------
+   Dialogo de preferencias
+   ------------------------------------------------------------------------- */
+.idc-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 10060;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    color: var(--idc-text, #1f2937);
+    font-family: var(--c-font, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif);
+}
+
+.idc-modal__backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, .58);
+}
+
+.idc-modal__dialog {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 780px;
+    max-height: calc(100dvh - 40px);
+    overflow-y: auto;
+    padding: 24px;
+    background: var(--idc-surface, #ffffff);
+    border: 1px solid var(--idc-border, #e2e8f0);
+    border-radius: var(--c-radius-lg, 14px);
+    box-shadow: var(--c-shadow-lg, 0 18px 45px rgba(15, 23, 42, .28));
+    color: var(--idc-text, #1f2937);
+}
+
+.idc-modal__header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 8px;
+}
+
+.idc-modal__header h2 {
+    margin: 0;
+    color: var(--idc-heading, var(--idc-text, #1f2937));
+    font-family: var(--c-font-head, var(--c-font, sans-serif));
+    font-size: 21px;
+    font-weight: 700;
+    line-height: 1.3;
+}
+
+.idc-modal__close {
+    flex: 0 0 auto;
+    width: 44px;
+    height: 44px;
+    margin: -8px -8px 0 0;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: var(--c-radius-md, 10px);
+    background: transparent;
+    color: var(--idc-heading, var(--idc-text, #1f2937));
+    font-size: 30px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.idc-modal__close:hover,
+.idc-modal__close:focus {
+    background: var(--idc-surface-2, #f8fafc);
+    color: var(--idc-heading, var(--idc-text, #1f2937));
+}
+
+.idc-modal__intro,
+.idc-modal__note {
+    margin: 0 0 12px;
+    color: var(--idc-muted, #64748b);
+    font-size: 13px;
+    line-height: 1.55;
+}
+
+.idc-cats {
+    margin: 4px 0 16px;
+    border-top: 1px solid var(--idc-border, #e2e8f0);
+}
+
+.idc-cat {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 20px;
+    padding: 16px 0;
+    border-bottom: 1px solid var(--idc-border, #e2e8f0);
+}
+
+.idc-cat__title {
+    margin: 0 0 4px;
+    color: var(--idc-heading, var(--idc-text, #1f2937));
+    font-family: var(--c-font-head, var(--c-font, sans-serif));
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1.35;
+}
+
+.idc-cat__desc {
+    max-width: 570px;
+    margin: 0;
+    color: var(--idc-text, #1f2937);
+    font-size: 13px;
+    line-height: 1.55;
+}
+
+.idc-badge {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 2px 8px;
+    border: 1px solid var(--idc-border, #e2e8f0);
+    border-radius: var(--c-radius-pill, 999px);
+    background: var(--idc-surface-2, #f8fafc);
+    color: var(--idc-text, #1f2937);
+    font-size: 11px;
+    font-weight: 600;
+    vertical-align: middle;
+}
+
+.idc-cat__control {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+    margin: 0;
+    padding-left: 10px;
+    color: var(--idc-text, #1f2937);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.idc-cat__control input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    accent-color: var(--idc-control-bg, #333333);
+    cursor: pointer;
+}
+
+.idc-cat--necessary .idc-cat__control {
+    color: var(--idc-muted, #64748b);
+    cursor: default;
+}
+
+.idc-modal__actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 10px;
+    padding-top: 18px;
+    border-top: 1px solid var(--idc-border, #e2e8f0);
+}
+
+body.idc-modal-open {
+    overflow: hidden;
+}
+
+/* -------------------------------------------------------------------------
+   Fachadas de contenido externo
+   ------------------------------------------------------------------------- */
+.idc-embed {
+    position: relative;
+    min-height: 260px;
+    overflow: hidden;
+    border: 1px solid var(--idc-border, #e2e8f0);
+    border-radius: var(--c-radius-md, 10px);
+    background: var(--idc-surface-2, #f8fafc);
+}
+
+.idc-embed--map {
+    height: 450px;
+    min-height: 450px;
+}
+
+.idc-embed iframe {
+    position: absolute;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 0;
+}
+
+.idc-embed__placeholder {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 22px;
+    text-align: center;
+}
+
+.idc-embed__placeholder p {
+    max-width: 560px;
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.55;
+}
+
+.idc-embed__placeholder strong {
+    color: var(--idc-heading, var(--idc-text, #1f2937));
+}
+
+.idc-embed__note {
+    color: var(--idc-muted, #64748b);
+    font-size: 12px !important;
+}
+
+/* -------------------------------------------------------------------------
+   Enlace permanente del pie
+   ------------------------------------------------------------------------- */
+.footer-cookie-settings {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 14px;
+    margin: 8px 0 0;
+    color: var(--idc-muted, #64748b);
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.footer-cookie-settings a {
+    color: var(--idc-muted, #64748b);
+    text-decoration: underline;
+    text-underline-offset: .14em;
+}
+
+.footer-cookie-settings a:hover,
+.footer-cookie-settings a:focus {
+    color: var(--idc-link, #333333);
+}
+
+/* -------------------------------------------------------------------------
+   Politica de cookies
+   ------------------------------------------------------------------------- */
+.idc-policy {
+    max-width: 980px;
+}
+
+.idc-policy h2 {
+    margin: 30px 0 10px;
+    color: var(--idc-heading, var(--idc-text, #1f2937));
+    font-family: var(--c-font-head, var(--c-font, sans-serif));
+    font-size: 20px;
+    font-weight: 700;
+    line-height: 1.35;
+}
+
+.idc-policy h3 {
+    margin: 24px 0 8px;
+    color: var(--idc-heading, var(--idc-text, #1f2937));
+    font-family: var(--c-font-head, var(--c-font, sans-serif));
+    font-size: 16px;
+    font-weight: 700;
+}
+
+.idc-policy p,
+.idc-policy li {
+    font-size: 14px;
+    line-height: 1.65;
+}
+
+.idc-policy ul {
+    margin: 0 0 14px;
+    padding-left: 22px;
+}
+
+.idc-policy-meta {
+    margin: 0 0 18px !important;
+    color: var(--idc-muted, #64748b);
+    font-size: 13px !important;
+}
+
+.idc-policy-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 18px 0 22px;
+}
+
+.idc-table-wrap {
+    width: 100%;
+    margin: 14px 0 24px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.idc-cookie-table {
+    width: 100%;
+    min-width: 720px;
+    margin: 0;
+    border-collapse: collapse;
+    background: var(--idc-surface, #ffffff);
+    color: var(--idc-text, #1f2937);
+    font-size: 13px;
+}
+
+.idc-cookie-table caption {
+    padding: 0 0 8px;
+    color: var(--idc-heading, var(--idc-text, #1f2937));
+    font-size: 13px;
+    font-weight: 700;
+    text-align: left;
+}
+
+.idc-cookie-table th,
+.idc-cookie-table td {
+    padding: 10px 12px;
+    border: 1px solid var(--idc-border, #e2e8f0);
+    text-align: left;
+    vertical-align: top;
+    line-height: 1.5;
+}
+
+.idc-cookie-table th {
+    background: var(--idc-surface-2, #f8fafc);
+    color: var(--idc-heading, var(--idc-text, #1f2937));
+    font-weight: 700;
+}
+
+.idc-cookie-table tbody tr:nth-child(even) {
+    background: var(--idc-surface-2, #f8fafc);
+}
+
+.idc-cookie-table code {
+    padding: 1px 4px;
+    border-radius: 3px;
+    background: var(--idc-surface-2, #f8fafc);
+    color: var(--idc-text, #1f2937);
+    font-size: 12px;
+}
+
+.idc-policy-preferences {
+    margin: 18px 0 0;
+    padding: 18px;
+    border: 1px solid var(--idc-border, #e2e8f0);
+    border-radius: var(--c-radius-lg, 14px);
+    background: var(--idc-surface, #ffffff);
+}
+
+.idc-policy-preferences .idc-cats {
+    margin-bottom: 12px;
+}
+
+.idc-policy-preferences .idc-modal__actions {
+    padding-top: 14px;
+}
+
+.idc-policy-note {
+    margin: 10px 0 0;
+    color: var(--idc-muted, #64748b);
+    font-size: 13px;
+}
+
+@media (max-width: 767px) {
+    .idc-banner {
+        max-height: 82dvh;
+        padding: 16px;
+        overflow-y: auto;
+    }
+
+    .idc-banner__title {
+        font-size: 16px;
+    }
+
+    .idc-banner__actions,
+    .idc-modal__actions,
+    .idc-policy-actions {
+        flex-direction: column;
+    }
+
+    .idc-banner__actions .idc-btn,
+    .idc-modal__actions .idc-btn,
+    .idc-policy-actions .idc-btn {
+        width: 100%;
+    }
+
+    .idc-modal {
+        align-items: flex-end;
+        padding: 8px;
+    }
+
+    .idc-modal__dialog {
+        max-height: calc(100dvh - 16px);
+        padding: 18px;
+    }
+
+    .idc-modal__header h2 {
+        font-size: 18px;
+    }
+
+    .idc-cat {
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .idc-cat__control {
+        padding-left: 0;
+    }
+
+    .idc-embed--map {
+        height: 300px;
+        min-height: 300px;
+    }
+
+    .idc-policy-preferences {
+        padding: 14px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .idc-btn {
+        transition: none;
+    }
+}
