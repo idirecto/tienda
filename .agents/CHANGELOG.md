@@ -5,6 +5,78 @@ El detalle línea a línea está en `git log`.
 
 ---
 
+## 2026-11-23 · Consentimiento de cookies por tienda y política dinámica
+
+**Motivo (petición por chat):** aplicar a tienda el sistema de consentimiento de
+idirecto, adaptado a los diseños y colores de cada tienda, cumpliendo RGPD/LSSI/
+AEPD. Debía funcionar con y sin JavaScript, no cargar terceros antes del
+consentimiento y generar una política con los datos del responsable de cada
+tienda, sin hardcodearlos.
+
+**Decisiones confirmadas antes de implementar:** reutilizar `color_primary`
+(sin campo `cookie_color`), añadir `mt_stores.tax_id` mediante migración, no
+añadir ningún servicio de analítica ni copiar el UA de idirecto, incluir
+fachadas reutilizables de YouTube/Maps sin insertar embeds nuevos y mantener el
+sistema antiguo fuera (en tienda no existía).
+
+**Qué se hizo**
+
+- **Migración `016_store_tax_id.sql`**: `mt_stores.tax_id` (`varchar(30)`,
+  nullable) y relleno desde `tiendas.nif_cif` de la cuenta enlazada. Se hizo
+  copia previa de `mt_stores` en
+  `storage/backups/mt_stores_20261123_171439.sql`. Quedan con NIF `xgrabu`,
+  `prueba` e `informaticasanjose`; `servitecni-online` queda sin él porque no
+  tiene cuenta enlazada.
+- **`config/cookies.php` y `Core/CookieConsent.php`**: nombre `id_consent`,
+  versión `1`, 180 días, formato `a:0|m:0|e:0|v:1`, `Path=/`,
+  `SameSite=Lax`, `Secure` en HTTPS y sin `Domain` (host-only). Parser estricto,
+  serialización, estado de servidor, redirección local segura y ID de analítica
+  por tienda (`mt_settings.analytics_ga4_id`, vacío por defecto).
+- **Color seguro**: se parte de `color_primary` o del override hexadecimal de
+  `theme_tokens.raw`; respaldo `#333333`. Se calculan con contraste WCAG real
+  (>= 4,5:1) texto, botones, hover, foco y enlaces, para claro y oscuro. No se
+  usa `Appearance::contrast()` porque elegía blanco sobre `#ff5c00` con solo
+  3,10:1. Aceptar y Rechazar comparten clase y peso; Configurar es neutro.
+- **Banner y panel**: partial único `app/Views/partials/cookie_consent.php`,
+  CSS único `public/assets/css/cookies.css` y JS único
+  `public/assets/js/cookies-consent.js`. Se integran una vez en el layout común,
+  por lo que cubren todos los temas. El banner se renderiza visible en servidor
+  cuando no hay decisión y los formularios funcionan sin JS.
+- **Rutas**: `GET /cookies` y `POST /cookies/consent` con CSRF y redirección
+  validada contra open redirect. La política usa los datos de la tienda
+  (razón social, dirección, email y `tax_id`) y la tabla real
+  (`tienda_session`, `id_consent` y `tienda.color-scheme`). Declara que hoy no
+  hay cookies de terceros. Si falta el NIF, se omite.
+- **Ajustes**: campo NIF/CIF y aviso de que se usa en la política; las altas
+  nuevas copian el NIF de la cuenta del mayorista.
+- **Terceros**: sin analítica, píxeles, YouTube ni Maps. El cargador de GA4
+  queda preparado y desactivado mientras el ID por tienda esté vacío; las
+  fachadas `data-idc-embed` se cargan solo con consentimiento o clic puntual.
+- **Ayuda**: se corrigieron las referencias que decían que no había política de
+  cookies. `verify.php` 404 comprobaciones (21 nuevas).
+
+**Pruebas**
+
+- `verify.php`: **TODO OK (404)**.
+- HTTP real con las cuatro tiendas: **61 comprobaciones**, incluidas primera
+  visita, rechazar, aceptar, guardar, persistencia, CSRF, open redirect,
+  cookie host-only, `Max-Age=15552000`, `SameSite=Lax`, banner oculto tras la
+  decisión, política dinámica y NIF omitido en `servitecni-online`.
+- Chrome CDP: **96 comprobaciones** en `xgrabu`, `prueba` (tema minimal/dark),
+  `servitecni-online` e `informaticasanjose`: colores por tienda, Aceptar/
+  Rechazar con el mismo peso, Configurar neutro, casillas vacías, reapertura,
+  trampa de foco, Shift+Tab, Escape, persistencia, revocación, consola limpia,
+  ausencia de peticiones de seguimiento, responsive 320/390/768/1440 y sin JS.
+- En 320 px el buscador preexistente de la cabecera ya producía 354 px de
+  `scrollWidth`; el banner y el modal quedan dentro del viewport y no añaden
+  desbordamiento. No se tocó esa funcionalidad ajena.
+
+**Pendiente:** GA4 por tienda si se quiere analítica, revisión legal del texto,
+completar el NIF de `servitecni-online` y verificar cookies de terceros en
+producción si se añade algún servicio.
+
+---
+
 ## 2026-11-12 · Ayuda de configuración y cálculo de la tarifa
 
 **Motivo (petición por chat):** explicar a las tiendas, sin conocimientos

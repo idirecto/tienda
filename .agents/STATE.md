@@ -1,7 +1,7 @@
 # STATE — Estado del proyecto
 
 > **El agente actualiza este fichero al terminar cada sesión.**
-> Última actualización: **2026-11-12**
+> Última actualización: **2026-11-23**
 
 ---
 
@@ -13,6 +13,17 @@ al mayorista**. El ciclo de compra (carrito, cuenta, direcciones y checkout) est
 implementado, pero la web está en **modo de pruebas comercial** por defecto:
 el carrito y los pedidos se rechazan con un aviso hasta poner
 `SHOP_TEST_MODE=false`.
+
+> 🍪 **Consentimiento de cookies (2026-11-23).** El storefront tiene banner,
+> panel de preferencias y política `/cookies` con 4 categorías, color por tienda
+> y contraste AA calculado en servidor. `id_consent` dura 180 días, es host-only,
+> `SameSite=Lax`, `Secure` en HTTPS y usa `a:0|m:0|e:0|v:1`. Aceptar/rechazar
+> funciona con formulario POST y CSRF sin JavaScript. La migración `016` añadió
+> `mt_stores.tax_id` y la rellenó desde la cuenta enlazada; `servitecni-online`
+> queda sin NIF y la política lo omite. Hoy no hay analítica ni terceros: el ID
+> por tienda (`mt_settings.analytics_ga4_id`) está vacío. `verify.php` **TODO OK
+> (404)**; pruebas HTTP **61/61** y Chrome CDP **96/96**. Detalle en
+> `CHANGELOG.md`.
 
 > **Aviso permanente de web de prueba (2026-11-12).** Todas las páginas del
 > storefront muestran una barra compacta con el texto «Web de prueba. Los
@@ -139,6 +150,7 @@ el carrito y los pedidos se rechazan con un aviso hasta poner
 | Almacenamiento (local / S3) | ✅ Completo (S3 sin probar contra bucket real) |
 | Subida de imágenes (carpetas `tienda_<tipo>`, id en el nombre, WebP) | ✅ Completo |
 | **Favicon: el de cada tienda con el predeterminado de Valduran de respaldo** | ✅ Completo (configurable por `BRAND_FAVICON*`; la tienda solo cambia el suyo) |
+| **Consentimiento de cookies + política dinámica** | ✅ Completo: banner/panel, 4 categorías, color por tienda con AA, sin JS, sin terceros actuales; pendiente GA4 y revisión legal |
 | Entorno local (`http://local.tienda`) | ✅ Completo |
 | **Despliegue Apache y nginx** | ✅ Completo (nginx verificado con binario real) |
 | **Checkout: carrito, pago y envío** | ✅ Completo (cobro **sin pasarela**: transferencia, contra reembolso y recogida) |
@@ -153,6 +165,36 @@ el carrito y los pedidos se rechazan con un aviso hasta poner
 ---
 
 ## Hecho
+
+### Consentimiento de cookies y política por tienda (2026-11-23)
+- **Migración 016**: `mt_stores.tax_id` (`varchar(30)`, nullable) y relleno
+  desde `tiendas.nif_cif` de la cuenta enlazada. Se hizo copia previa en
+  `storage/backups/mt_stores_20261123_171439.sql`. Resultado: `xgrabu`,
+  `prueba` e `informaticasanjose` con NIF; `servitecni-online` sin él.
+- **Núcleo `CookieConsent`**: parser y serializador de `id_consent`, cookie
+  host-only con `SameSite=Lax` y `Secure` condicionado a HTTPS, estado de
+  consentimiento en servidor, redirección local segura, ID de analítica por
+  tienda (vacío) y cálculo de contraste WCAG real. No usa
+  `Appearance::contrast()` para los controles.
+- **Color por tienda**: parte de `color_primary` o del override hexadecimal de
+  `theme_tokens.raw`; respaldo `#333333`. Genera `--idc-primary`,
+  `--idc-control-bg`, `--idc-control-text`, `--idc-control-hover`,
+  `--idc-focus`, `--idc-link`, etc. para claro y oscuro. Aceptar y Rechazar usan
+  la misma clase y peso; Configurar es neutro.
+- **Banner y panel**: partial único en el layout común, CSS/JS únicos, enlace
+  permanente en el footer, formularios POST con CSRF y degradación sin JS. El
+  modal tiene foco atrapado, Escape, retorno de foco y `aria-live`.
+- **Política `/cookies`**: responsable desde `mt_stores` (incluido `tax_id`, que
+  se omite si falta), tabla real de `tienda_session`, `id_consent` y
+  `tienda.color-scheme`, y declaración de que hoy no hay cookies de terceros.
+- **Terceros**: no se añadió ningún servicio. El cargador de GA4 queda
+  desactivado mientras `mt_settings.analytics_ga4_id` esté vacío; no se copia
+  el UA de idirecto. Las fachadas `data-idc-embed` están preparadas para
+  YouTube/Maps, sin embeds nuevos.
+- **Herramientas**: `verify.php` **TODO OK (404)**; 61 comprobaciones HTTP y 96
+  de Chrome CDP (incluye teclado, foco, responsive 320/390/768/1440, sin JS,
+  consola limpia y ausencia de peticiones de seguimiento). Detalle en
+  `CHANGELOG.md`.
 
 ### Aviso permanente de web de prueba en el storefront (2026-11-12)
 - `Core/ShopMode` gana `NOTICE_MESSAGE` y `notice()` con el texto exacto y fijo:
@@ -708,7 +750,7 @@ el carrito y los pedidos se rechazan con un aviso hasta poner
   en **nginx + PHP-FPM** (`sudo bash deploy/setup-nginx-domain.sh ecom-era.com`).
 - La app detecta el servidor (`app/Core/Server.php`): ruta pública de `/public`,
   esquema real (incluido proxy) y host de las URLs canónicas.
-- `tools/verify.php`: 385 comprobaciones automáticas (diseño, facetas, filtros
+- `tools/verify.php`: 404 comprobaciones automáticas (diseño, facetas, filtros
   estructurados del mayorista, catálogo, paginación y enlaces de las tarjetas, caché y
   precios en vivo, carrito y mini-carrito, **modo de pruebas comercial**, **nombre de
   marca con razón social**, **sesiones antiguas y títulos públicos**, favicon de la
@@ -721,6 +763,23 @@ el carrito y los pedidos se rechazan con un aviso hasta poner
 ---
 
 ## Pendiente (por orden sugerido)
+
+### 0. Cookies: GA4, revisión legal y datos que falten
+- **GA4 por tienda**: hoy `mt_settings.analytics_ga4_id` está vacío y no se
+  solicita nada. Si se quiere analítica, hay que dar de alta un ID GA4 por
+  tienda, decidir su finalidad, actualizar la tabla de terceros de `/cookies` y
+  revisar la base jurídica antes de activarlo. No hay ID global.
+- **Revisión legal**: la política se genera con los datos reales de la tienda,
+  pero el texto debe revisarlo quien corresponda. La fecha de revisión está en
+  `config/cookies.php`.
+- **NIF/CIF**: `servitecni-online` sigue sin `tax_id`; la política lo omite y no
+  se inventa. Se puede completar en **Ajustes > Datos de la tienda**.
+- **Verificación de terceros en navegador**: el proyecto no tiene hoy
+  analítica, píxeles, YouTube ni Maps. Si se añaden, hay que comprobar en
+  DevTools que no salen peticiones antes del consentimiento y actualizar la
+  política.
+- **Temas**: cualquier tema nuevo debe seguir usando el layout común; el aviso
+  ya está ahí y no necesita copias.
 
 ### 1. Cobro real (pasarela) 💳
 El checkout registra el pedido y su forma de pago (transferencia, contra reembolso o

@@ -65,17 +65,19 @@ app/
   Core/Checkout.php        Cierre del pedido: direcciones, pago y comentario
   Core/Shipping.php        Gastos de envío (tarifa plana + gratis desde X €)
   Core/CustomerAuth.php    Sesión del CLIENTE de la tienda (va aparte del panel)
-  Controllers/             Storefront, Cart, Checkout, Customer, Registration + Admin/* (panel)
+  Core/CookieConsent.php   Consentimiento, cookie id_consent, colores AA y política
+  Controllers/             Storefront, Cart, Checkout, Customer, CookieConsent, Registration + Admin/* (panel)
   Models/                  Acceso a datos (una clase por concepto)
   Views/
     layouts/               shop.php (web), panel.php, panel_blank.php
+    partials/              cookie_consent.php (banner y diálogo únicos)
     register.php           Registro público de tienda (/registro)
     panel/                 Pantallas del panel (orders.php, order.php, order_form.php,
                            _order_lines.php = editor de líneas, customers.php, customer.php,
                            design_preview.php)
-    themes/idirecto/       Tema público (home, _hero, catalog, product, page, _card, cart,
-                           checkout, thanks, account/*)
-config/                    app, appearance, brand, database, storage, tenant, catalog, idirecto, cache, shop
+    themes/idirecto/       Tema público (home, _hero, catalog, product, page, cookies, _card,
+                           cart, checkout, thanks, account/*)
+config/                    app, appearance, brand, cookies, database, storage, tenant, catalog, idirecto, cache, shop
 database/
   migrations/001_schema.sql      13 tablas mt_ (idempotente)
   migrations/002_design_tokens.sql  Columnas de identidad visual en mt_stores
@@ -85,16 +87,18 @@ database/
   migrations/010_favicon.sql     favicon_key + favicon_version en mt_stores
   migrations/011..012_*.sql      Banners/avisos y zonas de venta y envío
   migrations/013_store_markup_fixed.sql  Beneficio fijo en EUR por tienda
+  migrations/014..015_*.sql      Ciclo de alta y evidencia contractual
+  migrations/016_store_tax_id.sql  NIF/CIF del responsable en mt_stores
   seeds/001_seed.sql             Planes, temas y tienda demo
   migrate.php                    Ejecutor de migraciones + semillas
 deploy/                    Vhosts de Apache, plantilla de nginx y scripts
 public/                    ÚNICO directorio servido como estático
-  assets/css|js            shop.css, panel.css, shop.js, panel.js
+  assets/css|js            shop.css, cookies.css, panel.css; shop.js, cookies-consent.js, panel.js
   assets/img/              Recursos de la plataforma (favicon predeterminado de Valduran)
   uploads/                 Archivos locales (si STORAGE_DRIVER=local)
 storage/                   cache/ y logs/ (escritura de la app; la caché se limpia sola)
   logs/<canal>/<día>/       Un fichero JSON-lines por día y tienda (`Logger`)
-tools/verify.php           385 comprobaciones automáticas
+tools/verify.php           404 comprobaciones automáticas
 tools/cache-clear.php      Gestiona la caché de datos (estado, vaciar, patrones, gc)
 tools/logs.php             Consulta los logs por consola (filtros, resumen, días, tiendas, gc)
 ```
@@ -108,6 +112,7 @@ tools/logs.php             Consulta los logs por consola (filtros, resumen, día
 | `Env` | Lee `.env` a `$_ENV` (sin dependencias) |
 | `Config` | Carga `config/*.php` con acceso por punto: `Config::get('catalog.markup')` |
 | `Appearance` | **Sistema de diseño**: resuelve los tokens (config + tienda + `theme_tokens`), deriva hover/suave/contraste y emite el CSS de variables `--c-*` |
+| `CookieConsent` | **Consentimiento de cookies**: cookie `id_consent`, parser/formato versionado, cálculo de contraste AA de los controles, datos del responsable y tabla real de la política |
 | `Favicon` | **Favicon de cada tienda**: usa el de la tienda si existe y está disponible y, si no, el **predeterminado de Valduran** (`config/brand.php` + `BRAND_FAVICON*`). Valida la URL, comprueba el fichero local, versiona con `?v=` y emite los `<link>`. Nunca devuelve una URL vacía |
 | `Database` | PDO singleton; `select/first/scalar/execute/insert/update/delete/transaction/tableExists` |
 | `Cache` | **Caché de datos**: `get/set/delete/remember/flush/forgetPattern/gc` con driver `Cache/FileCache` o `Cache/ApcuCache` (`config/cache.php`). Memo por petición + bloqueo antiestampida. **Nunca guarda precios** |
@@ -214,6 +219,11 @@ Todas con `utf8mb4_unicode_ci` y FK a `mt_stores(id) ON DELETE CASCADE`.
 `color_text`, `color_border`, `color_scheme` (`light|dark|auto`),
 `radius_scale` (`compact|standard|rounded`), `font`, `theme_tokens` (JSON) y
 `custom_css`. Los colores opcionales en `NULL` significan «usa el valor del tema».
+
+`mt_stores.tax_id` (migración `016`) guarda el **NIF/CIF del responsable** que se
+muestra en la política de cookies. Se rellena desde `tiendas.nif_cif` al migrar y
+se puede editar en **Ajustes**. Si falta, la política omite ese dato; no se
+inventa ni se toma de una tienda distinta.
 
 `mt_stores` guarda además el **enlace con el mayorista** (migración `003`):
 `id_tienda_idirecto` (cuenta en `tiendas.id`). La cuenta y la tarifa se gestionan
@@ -333,6 +343,8 @@ las que dan 404, y reutiliza la imagen grande si solo falta la miniatura.
 | `/buscar/live` | **Buscador en vivo** (JSON): resultados del catálogo visible de la tienda + sus productos propios, con facetas de subcategoría y marca. Parámetros `q`, `s[]`, `m[]`, `pmin`, `pmax`. Devuelve las tarjetas ya envueltas en `.grid-products` (rejilla adaptativa: 1 por línea en móvil, 5-7 en monitor grande). El panel lo pinta `shop.js` desde el campo de la cabecera |
 | `/producto/{slug}/{id}` | Ficha (**URL SEO**); `/producto/{id}` redirige 301 |
 | `/contacto`, `/pagina/{slug}` | Contacto y páginas de contenido |
+| `/cookies` | **Política de cookies** de la tienda, con responsable, tabla real y formulario de preferencias |
+| `POST /cookies/consent` | Guarda aceptar/rechazar/selección sin JS; CSRF y redirección local validada |
 | `/registro` | **Alta de una tienda nueva** con la cuenta de idirecto (ver más abajo) |
 | `/carrito` | Carrito del cliente (añadir, cambiar cantidades, quitar, vaciar) |
 | `/checkout` | Cierre del pedido: dirección, forma de pago y comentario |
@@ -636,6 +648,35 @@ anterior y su fila de `mt_media`; al quitarlo, la tienda vuelve al predeterminad
 versión es **monótona**, así que dos cambios seguidos nunca dejan la misma URL en la
 caché del navegador.
 
+### 7quinquies. Consentimiento de cookies
+
+El storefront carga **un único partial** (`app/Views/partials/cookie_consent.php`)
+desde `layouts/shop.php`, así que el aviso aparece en todas las páginas y temas.
+Los estilos y el comportamiento están en `public/assets/css/cookies.css` y
+`public/assets/js/cookies-consent.js`; no hay copias por tema.
+
+- **Cookie**: `id_consent`, versión `1`, 180 días, formato
+  `a:0|m:0|e:0|v:1`, `Path=/`, `SameSite=Lax`, `Secure` solo en HTTPS y sin
+  atributo `Domain` (host-only). `config/cookies.php` deja `domain` vacío.
+- **Categorías**: necesarias, analíticas, marketing y contenido externo. El
+  consentimiento del servidor y el JS comparten el mismo formato y versión.
+- **Sin JS**: el banner se renderiza visible en servidor, no al revés; aceptar,
+  rechazar y guardar envían un `POST /cookies/consent` con CSRF. La respuesta
+  redirige a una ruta local validada (`safeReturnPath()`), nunca a otro host.
+- **Color por tienda**: `Core/CookieConsent` parte de `color_primary` o del
+  override hexadecimal de `theme_tokens.raw`. Calcula con contraste WCAG real
+  (>= 4,5:1) los botones, hover, foco, enlaces y texto; si no hay color válido
+  usa `#333333`. Aceptar y rechazar comparten la misma clase y peso visual.
+- **Terceros**: no se carga analítica sin `a:1` ni se crean iframes sin `e:1`.
+  El ID de analítica es por tienda (`mt_settings.analytics_ga4_id`) y, mientras
+  esté vacío o no sea GA4, el cargador no solicita nada. No hay ID global ni se
+  copia el UA de idirecto. Las fachadas `data-idc-embed` quedan preparadas para
+  YouTube y Maps, pero hoy no hay embeds en las páginas.
+- **Política**: `GET /cookies` genera la tabla real (`tienda_session`,
+  `id_consent` y `tienda.color-scheme`), el formulario de preferencias y los
+  datos del responsable desde `mt_stores` (razón social, dirección, email y
+  `tax_id`). El NIF se omite si no existe. No hay datos legales hardcodeados.
+
 ### Temas
 
 Catálogo cerrado en `mt_themes`. Implementado: **`idirecto`**.
@@ -720,7 +761,7 @@ servidores no los traen en `/etc/mime.types` y servirían la imagen sin
 
 ```bash
 sudo bash deploy/setup-local-domain.sh     # /etc/hosts + VirtualHost + permisos
-php tools/verify.php                       # 385 comprobaciones
+php tools/verify.php                       # 404 comprobaciones
 php -S 127.0.0.1:8099 index.php            # servidor embebido (alternativa)
 ```
 
@@ -756,7 +797,7 @@ certificado wildcard; el panel los comprueba en **Dominios > Comprobar que carga
 ## 10. Verificación antes de dar algo por hecho
 
 ```bash
-php tools/verify.php                 # debe decir: TODO OK (385 comprobaciones)
+php tools/verify.php                 # debe decir: TODO OK (404 comprobaciones)
 curl -s -o /dev/null -w '%{http_code}\n' http://local.tienda/
 curl -s -o /dev/null -w '%{http_code}\n' -H 'Host: idirecto-demo.local.tienda' http://127.0.0.1/
 curl -s -o /dev/null -w '%{http_code}\n' http://local.tienda/catalogo

@@ -21,6 +21,23 @@ _(vacío — sin petición pendiente)_
 
 Cada petición terminada se anota aquí con la fecha, qué se pidió y qué se hizo.
 
+### 2026-11-23 · Consentimiento de cookies por tienda (petición por chat)
+
+**Pedido:** aplicar en tienda el sistema de cookies de idirecto, adaptado a los
+colores y diseños de cada tienda, con 4 categorías, color seguro AA, política
+dinámica con datos del responsable y funcionamiento sin JS. Se confirmó
+reutilizar `color_primary`, añadir `tax_id` con migración, no añadir analítica,
+incluir fachadas reutilizables y no tocar el sistema antiguo inexistente.
+
+**Hecho:** migración `016` con `mt_stores.tax_id` y copia previa de la tabla;
+`Core/CookieConsent`, `config/cookies.php`, partial/CSS/JS únicos, rutas
+`GET /cookies` y `POST /cookies/consent` con CSRF y redirección segura, política
+dinámica, campo NIF/CIF en Ajustes, enlace permanente en el footer y corrección
+de la ayuda. `verify.php` **TODO OK (404)**; 61 pruebas HTTP y 96 Chrome CDP.
+Pendiente: GA4 por tienda si se decide, revisión legal, NIF de
+`servitecni-online` y verificación de terceros en producción. Detalle en
+`CHANGELOG.md` y `STATE.md`.
+
 ### 2026-11-12 · Ayuda de configuración y cálculo de tarifa (petición por chat)
 
 **Pedido:** documentar en la ayuda del panel cómo se configura y calcula la
