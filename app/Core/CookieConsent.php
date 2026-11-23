@@ -209,12 +209,15 @@ final class CookieConsent
     public static function responsible(Tenant $tenant): array
     {
         $legalName = trim($tenant->legalName());
+        $postalCode = trim($tenant->postalCode());
+        $city = trim($tenant->city());
+        $locality = trim($postalCode . ($postalCode !== '' && $city !== '' ? ' ' : '') . $city);
 
         return [
             'legal_name' => $legalName !== '' ? $legalName : $tenant->brandName(),
             'tax_id'     => trim($tenant->taxId()),
             'address'    => trim($tenant->address()),
-            'locality'   => trim(trim($tenant->postalCode() . ' ') . trim($tenant->city())),
+            'locality'   => $locality,
             'province'   => trim($tenant->province()),
             'country'    => trim((string) $tenant->get('country', '')),
             'email'      => trim($tenant->email()),
