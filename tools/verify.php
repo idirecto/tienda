@@ -25,6 +25,7 @@ use Tienda\Core\Auth;
 use Tienda\Core\Cache;
 use Tienda\Core\Cart;
 use Tienda\Core\Checkout;
+use Tienda\Core\CookieConsent;
 use Tienda\Core\Csrf;
 use Tienda\Core\CustomerAuth;
 use Tienda\Core\Database;
@@ -3002,6 +3003,166 @@ check(
         && !str_contains($helpSources, 'Guardar cuenta')
         && !str_contains($helpSources, 'Ajustes > Cuenta en idirecto'),
     'la ayuda no envia a una tarjeta de cuenta o margen que ya no existe'
+);
+
+echo "\n== Consentimiento de cookies ==\n";
+
+$cookieFilesOk = is_file(TIENDA_BASE . '/config/cookies.php')
+    && is_file(TIENDA_BASE . '/app/Core/CookieConsent.php')
+    && is_file(TIENDA_BASE . '/app/Views/partials/cookie_consent.php')
+    && is_file(TIENDA_BASE . '/app/Views/themes/idirecto/cookies.php')
+    && is_file(TIENDA_BASE . '/app/Controllers/CookieConsentController.php')
+    && is_file(TIENDA_BASE . '/public/assets/css/cookies.css')
+    && is_file(TIENDA_BASE . '/public/assets/js/cookies-consent.js')
+    && is_file(TIENDA_BASE . '/database/migrations/016_store_tax_id.sql');
+check($cookieFilesOk, 'existen configuracion, nucleo, partial, politica, controlador, CSS, JS y migracion');
+
+check(
+    CookieConsent::name() === 'id_consent'
+        && CookieConsent::version() === '1'
+        && CookieConsent::days() === 180
+        && CookieConsent::domain() === '',
+    'id_consent usa version 1, 180 dias y dominio vacio (host-only)'
+);
+
+$stateReject = CookieConsent::stateFromCookie('a:0|m:0|e:0|v:1');
+$stateAccept = CookieConsent::stateFromCookie('a:1|m:1|e:1|v:1');
+$stateOld = CookieConsent::stateFromCookie('a:1|m:1|e:1|v:0');
+check(
+    $stateReject['decided'] === true
+        && $stateReject['analytics'] === false
+        && $stateAccept['analytics'] === true
+        && $stateAccept['external'] === true
+        && $stateOld['decided'] === false,
+    'el parser acepta el formato a|m|e|v, rechaza versiones antiguas y distingue rechazo de aceptacion'
+);
+check(
+    CookieConsent::cookieValue(['analytics' => false, 'marketing' => false, 'external' => false]) === 'a:0|m:0|e:0|v:1'
+        && CookieConsent::cookieValue(['analytics' => true, 'marketing' => false, 'external' => true]) === 'a:1|m:0|e:1|v:1',
+    'la cookie se serializa con el formato exacto solicitado'
+);
+check(
+    CookieConsent::safeReturnPath('/catalogo?x=1#y', '/cookies') === '/catalogo?x=1#y'
+        && CookieConsent::safeReturnPath('//evil.test/x', '/cookies') === '/cookies'
+        && CookieConsent::safeReturnPath('https://evil.test/', '/cookies') === '/cookies'
+        && CookieConsent::safeReturnPath("/cookies\r\nLocation: https://evil.test", '/cookies') === '/cookies',
+    'la redireccion posterior al POST solo admite rutas locales y bloquea open redirect'
+);
+
+$cookieLayout = (string) file_get_contents(TIENDA_BASE . '/app/Views/layouts/shop.php');
+$cookiePartial = (string) file_get_contents(TIENDA_BASE . '/app/Views/partials/cookie_consent.php');
+$cookieIndex = (string) file_get_contents(TIENDA_BASE . '/index.php');
+check(
+    substr_count($cookieLayout, 'partials/cookie_consent.php') === 1
+        && str_contains($cookieLayout, 'assets/css/cookies.css')
+        && str_contains($cookieLayout, 'assets/js/cookies-consent.js')
+        && str_contains($cookieLayout, 'data-idc-open')
+        && str_contains($cookieLayout, 'Configurar cookies'),
+    'el layout comun incluye una sola vez el aviso, su CSS/JS y el enlace permanente del footer'
+);
+check(
+    str_contains($cookiePartial, 'method="post"')
+        && str_contains($cookiePartial, 'Csrf::field()')
+        && str_contains($cookiePartial, 'name="decision" value="reject"')
+        && str_contains($cookiePartial, 'name="decision" value="accept"')
+        && str_contains($cookiePartial, 'data-idc-action="save"'),
+    'el banner y el panel tienen formularios POST con CSRF, aceptar, rechazar y guardar'
+);
+check(
+    str_contains($cookieIndex, "get('/cookies'")
+        && str_contains($cookieIndex, "post('/cookies/consent'"),
+    'las rutas de politica y consentimiento estan registradas antes del catch-all SEO'
+);
+
+$cookieJs = (string) file_get_contents(TIENDA_BASE . '/public/assets/js/cookies-consent.js');
+check(
+    !str_contains($cookieJs, 'UA-42646160-1')
+        && !str_contains($cookieJs, 'cookies_law')
+        && str_contains($cookieJs, 'ANALYTICS_ID')
+        && str_contains($cookieJs, 'data-idc-embed'),
+    'el JS no copia el UA de idirecto, no limpia cookies inventadas y deja analitica/fachadas preparadas'
+);
+check(CookieConsent::analyticsId(new Tenant(Store::findBySlugWithPlan('xgrabu') ?? [])) === '', 'la analitica esta desactivada mientras el ID por tienda esta vacio');
+
+$colorOk = true;
+$orangeBlack = false;
+foreach (['xgrabu', 'prueba', 'servitecni-online', 'informaticasanjose'] as $cookieSlug) {
+    $cookieStore = Store::findBySlugWithPlan($cookieSlug);
+    if ($cookieStore === null) {
+        $colorOk = false;
+        continue;
+    }
+    $cookieTenant = new Tenant($cookieStore);
+    foreach (['light', 'dark'] as $cookieMode) {
+        $vars = CookieConsent::cssVars($cookieTenant, $cookieMode);
+        if (CookieConsent::contrastRatio($vars['control-bg'], $vars['control-text']) < 4.5
+            || CookieConsent::contrastRatio($vars['control-hover'], $vars['control-text']) < 4.5
+            || CookieConsent::contrastRatio($vars['link'], $vars['surface']) < 4.5
+            || CookieConsent::contrastRatio($vars['focus'], $vars['surface']) < 4.5
+            || CookieConsent::contrastRatio($vars['muted'], $vars['surface']) < 4.5
+            || CookieConsent::contrastRatio($vars['text'], $vars['surface']) < 4.5) {
+            $colorOk = false;
+        }
+        if ($cookieSlug === 'informaticasanjose' && $cookieMode === 'light' && $vars['control-text'] === '#000000') {
+            $orangeBlack = true;
+        }
+    }
+}
+check($colorOk, 'todos los colores reales cumplen 4,5:1 en texto, botones, enlaces y foco en claro y oscuro');
+check($orangeBlack, 'el naranja de informaticasanjose usa texto negro en lugar de blanco');
+
+$fakeTenant = new Tenant([
+    'id' => 9999, 'slug' => 'color-invalido', 'name' => 'Color invalido',
+    'color_primary' => 'no-es-un-color', 'theme_tokens' => '',
+]);
+$fakeVars = CookieConsent::cssVars($fakeTenant, 'light');
+check(
+    $fakeVars['primary'] === '#333333'
+        && CookieConsent::contrastRatio($fakeVars['control-bg'], $fakeVars['control-text']) >= 4.5,
+    'un color invalido o ausente cae al respaldo #333333'
+);
+$overrideTenant = new Tenant([
+    'id' => 9998, 'slug' => 'color-override', 'name' => 'Color override',
+    'color_primary' => '#e30613',
+    'theme_tokens' => (string) json_encode(['raw' => ['--c-primary' => '#0a7d32']]),
+]);
+$overrideVars = CookieConsent::cssVars($overrideTenant, 'light');
+check($overrideVars['primary'] === '#0a7d32', 'el override hexadecimal de theme_tokens se aplica al aviso');
+
+$taxColumn = Database::first(
+    'SELECT COLUMN_NAME, COLUMN_TYPE FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :t AND COLUMN_NAME = :c LIMIT 1',
+    ['t' => 'mt_stores', 'c' => 'tax_id']
+);
+check(
+    is_array($taxColumn) && $taxColumn['COLUMN_TYPE'] === 'varchar(30)',
+    'la migracion 016 ha creado mt_stores.tax_id'
+);
+
+$policyX = CookieConsent::policy(new Tenant(Store::findBySlugWithPlan('xgrabu') ?? []));
+$policyS = CookieConsent::policy(new Tenant(Store::findBySlugWithPlan('servitecni-online') ?? []));
+$policyNames = array_column($policyX['own_cookies'], 'name');
+check(
+    in_array('tienda_session', $policyNames, true)
+        && in_array('id_consent', $policyNames, true)
+        && ($policyX['local_storage'][0]['name'] ?? '') === 'tienda.color-scheme',
+    'la politica declara tienda_session, id_consent y tienda.color-scheme'
+);
+check(
+    $policyX['responsible']['tax_id'] !== ''
+        && $policyS['responsible']['tax_id'] === ''
+        && $policyX['responsible']['legal_name'] !== ''
+        && $policyX['responsible']['email'] !== '',
+    'los datos del responsable salen de la tienda y el NIF ausente queda vacio'
+);
+check(
+    str_contains((string) file_get_contents(TIENDA_BASE . '/app/Views/themes/idirecto/cookies.php'), 'Actualmente no se cargan cookies de terceros')
+        && !str_contains((string) file_get_contents(TIENDA_BASE . '/app/Views/themes/idirecto/cookies.php'), 'B55120661'),
+    'la politica no hardcodea el NIF y declara que hoy no hay cookies de terceros'
+);
+check(
+    str_contains((string) file_get_contents(TIENDA_BASE . '/app/Help/faq.php'), 'La política de cookies se genera automáticamente'),
+    'la ayuda explica que la politica de cookies se genera automaticamente'
 );
 
 echo "\n==============================================================\n";
