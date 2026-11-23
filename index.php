@@ -47,6 +47,7 @@ use Tienda\Controllers\Admin\ProductController;
 use Tienda\Controllers\Admin\SettingsController;
 use Tienda\Controllers\CartController;
 use Tienda\Controllers\CheckoutController;
+use Tienda\Controllers\CookieConsentController;
 use Tienda\Controllers\CustomerController;
 use Tienda\Controllers\RegistrationController;
 use Tienda\Controllers\StorefrontController;
@@ -71,6 +72,8 @@ $router->get('/producto/{slug}/{id}',  [StorefrontController::class, 'product'])
 // Compatibilidad: /producto/{id} redirige 301 a la URL canonica con slug
 $router->get('/producto/{id}',         [StorefrontController::class, 'productLegacy']);
 $router->get('/contacto',              [StorefrontController::class, 'contact']);
+$router->get('/cookies',               [CookieConsentController::class, 'policy']);
+$router->post('/cookies/consent',      [CookieConsentController::class, 'save']);
 $router->get('/pagina/{slug}',         [StorefrontController::class, 'page']);
 
 // -----------------------------------------------------------------------------
