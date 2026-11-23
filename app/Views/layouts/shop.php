@@ -16,6 +16,7 @@
  */
 use Tienda\Core\Appearance;
 use Tienda\Core\Cart;
+use Tienda\Core\CookieConsent;
 use Tienda\Core\CustomerAuth;
 use Tienda\Core\Favicon;
 use Tienda\Core\Session;
@@ -25,6 +26,17 @@ use Tienda\Models\Menu;
 
 $scheme = Appearance::scheme($tenant);
 $themeCss = Appearance::css($tenant);
+$cookieCss = CookieConsent::css($tenant);
+$cookieState = CookieConsent::stateFromRequest();
+$showCookieBanner = !$cookieState['decided'];
+$cookieConfigJson = (string) json_encode(
+    CookieConsent::jsConfig($tenant),
+    JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+);
+$cookieStateJson = (string) json_encode(
+    $cookieState,
+    JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+);
 $brandLogo = $tenant->logoUrl();
 $brandText = $tenant->brandName();
 
@@ -82,9 +94,17 @@ $headerStyle = preg_replace('/[^a-z0-9_\-]/i', '', $tenant->headerStyle()) ?: 'c
         })();
     </script>
 
+    <?php /* Consentimiento de cookies: estado y configuracion calculados en servidor. */ ?>
+    <script>
+        window.idcConsentConfig = <?= $cookieConfigJson ?>;
+        window.idcConsentState = <?= $cookieStateJson ?>;
+    </script>
+
     <?php /* Identidad de la tienda (design tokens) */ ?>
     <style><?= $themeCss ?></style>
+    <style><?= $cookieCss ?></style>
     <link rel="stylesheet" href="<?= e(asset('assets/css/shop.css')) ?>">
+    <link rel="stylesheet" href="<?= e(asset('assets/css/cookies.css')) ?>">
     <?php if ($tenant->customCss() !== ''): ?>
         <style><?= $tenant->customCss() ?></style>
     <?php endif; ?>
@@ -92,6 +112,9 @@ $headerStyle = preg_replace('/[^a-z0-9_\-]/i', '', $tenant->headerStyle()) ?: 'c
 <body class="shop theme-<?= e($tenant->theme()) ?> header-<?= e($headerStyle) ?>">
 
 <a class="skip-link" href="#contenido">Saltar al contenido principal</a>
+
+<?php /* Aviso de cookies: partial unico para todos los temas/disenos. */ ?>
+<?php include __DIR__ . '/../partials/cookie_consent.php'; ?>
 
 <?php /* Aviso permanente de fase de prueba: va en el layout comun para que
          aparezca UNA sola vez en todas las paginas del storefront. Es un
@@ -287,6 +310,11 @@ $headerStyle = preg_replace('/[^a-z0-9_\-]/i', '', $tenant->headerStyle()) ?: 'c
             <?php if ($tenant->email()): ?><p><a href="mailto:<?= e($tenant->email()) ?>"><?= e($tenant->email()) ?></a></p><?php endif; ?>
             <?php if ($tenant->phone()): ?><p><?= e($tenant->phone()) ?></p><?php endif; ?>
         </div>
+        <nav aria-label="Informacion legal">
+            <h4>Legal</h4>
+            <a href="<?= e($base) ?>/cookies">Politica de cookies</a>
+            <a href="<?= e($base) ?>/cookies#preferencias" data-idc-open>Configurar cookies</a>
+        </nav>
     </div>
     <div class="footer-bottom">
         <div class="container">
@@ -325,5 +353,6 @@ $headerStyle = preg_replace('/[^a-z0-9_\-]/i', '', $tenant->headerStyle()) ?: 'c
 <div class="shop-toast" id="shop-toast" role="status" aria-live="polite" hidden></div>
 
 <script src="<?= e(asset('assets/js/shop.js')) ?>" defer></script>
+<script src="<?= e(asset('assets/js/cookies-consent.js')) ?>" defer></script>
 </body>
 </html>
