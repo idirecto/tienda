@@ -14,29 +14,33 @@ consentimiento y generar una política con los datos del responsable de cada
 tienda, sin hardcodearlos.
 
 **Decisiones confirmadas antes de implementar:** reutilizar `color_primary`
-(sin campo `cookie_color`), añadir `mt_stores.tax_id` mediante migración, no
-añadir ningún servicio de analítica ni copiar el UA de idirecto, incluir
-fachadas reutilizables de YouTube/Maps sin insertar embeds nuevos y mantener el
-sistema antiguo fuera (en tienda no existía).
+(sin campo `cookie_color`), no tocar la base de datos, no añadir ningún servicio
+de analítica ni copiar el UA de idirecto, incluir fachadas reutilizables de
+YouTube/Maps sin insertar embeds nuevos y mantener el sistema antiguo fuera
+(en tienda no existía). El NIF se toma de `Account::forStore()`.
 
 **Qué se hizo**
 
-- **Migración `016_store_tax_id.sql`**: `mt_stores.tax_id` (`varchar(30)`,
-  nullable) y relleno desde `tiendas.nif_cif` de la cuenta enlazada. Se hizo
-  copia previa de `mt_stores` en
-  `storage/backups/mt_stores_20261123_171439.sql`. Quedan con NIF `xgrabu`,
-  `prueba` e `informaticasanjose`; `servitecni-online` queda sin él porque no
-  tiene cuenta enlazada.
+- **Sin migración ni datos de visitantes**: no se crean tablas, columnas ni
+  copias de `mt_stores`. Aceptar, rechazar y guardar solo escriben `id_consent`
+  en el navegador; el servidor no guarda aceptaciones ni datos del visitante.
 - **`config/cookies.php` y `Core/CookieConsent.php`**: nombre `id_consent`,
   versión `1`, 180 días, formato `a:0|m:0|e:0|v:1`, `Path=/`,
   `SameSite=Lax`, `Secure` en HTTPS y sin `Domain` (host-only). Parser estricto,
   serialización, estado de servidor, redirección local segura y ID de analítica
   por tienda (`mt_settings.analytics_ga4_id`, vacío por defecto).
-- **Color seguro**: se parte de `color_primary` o del override hexadecimal de
-  `theme_tokens.raw`; respaldo `#333333`. Se calculan con contraste WCAG real
-  (>= 4,5:1) texto, botones, hover, foco y enlaces, para claro y oscuro. No se
-  usa `Appearance::contrast()` porque elegía blanco sobre `#ff5c00` con solo
-  3,10:1. Aceptar y Rechazar comparten clase y peso; Configurar es neutro.
+- **Color y diseño por tienda**: se parte de `color_primary` o del override
+  hexadecimal de `theme_tokens.raw`; se usan esquema, tipografía y radios
+  efectivos de `Appearance`; respaldo `#333333`. Se calculan con contraste WCAG
+  real (>= 4,5:1) texto, botones, hover, foco y enlaces, para claro y oscuro.
+  No se usa `Appearance::contrast()` porque elegía blanco sobre `#ff5c00` con
+  solo 3,10:1. Aceptar y Rechazar comparten clase y peso; Configurar es neutro.
+- **Aislamiento por subdominio**: las variables `--idc-*` se calculan por
+  petición para el tenant resuelto por hostname y se imprimen al final del
+  `<head>` con `!important`. El CSS estático no contiene colores de tienda ni
+  hay caché de páginas/CSS. `custom_css` se imprime antes y se le eliminan las
+  reglas que apunten a `idc`/`--idc`, por lo que no puede ocultar ni recolorear
+  el aviso.
 - **Banner y panel**: partial único `app/Views/partials/cookie_consent.php`,
   CSS único `public/assets/css/cookies.css` y JS único
   `public/assets/js/cookies-consent.js`. Se integran una vez en el layout común,
@@ -44,36 +48,36 @@ sistema antiguo fuera (en tienda no existía).
   cuando no hay decisión y los formularios funcionan sin JS.
 - **Rutas**: `GET /cookies` y `POST /cookies/consent` con CSRF y redirección
   validada contra open redirect. La política usa los datos de la tienda
-  (razón social, dirección, email y `tax_id`) y la tabla real
-  (`tienda_session`, `id_consent` y `tienda.color-scheme`). Declara que hoy no
-  hay cookies de terceros. Si falta el NIF, se omite.
-- **Ajustes**: campo NIF/CIF y aviso de que se usa en la política; las altas
-  nuevas copian el NIF de la cuenta del mayorista.
+  (razón social, dirección y email) y el NIF de `Account::forStore()`; si no
+  existe, se omite. La tabla real contiene `tienda_session`, `id_consent` y
+  `tienda.color-scheme`, y declara que hoy no hay cookies de terceros.
 - **Terceros**: sin analítica, píxeles, YouTube ni Maps. El cargador de GA4
   queda preparado y desactivado mientras el ID por tienda esté vacío; las
   fachadas `data-idc-embed` se cargan solo con consentimiento o clic puntual.
 - **Ayuda**: se corrigieron las referencias que decían que no había política de
-  cookies. `verify.php` 404 comprobaciones (21 nuevas).
+  cookies y las que atribuían el NIF a Ajustes. `verify.php` 407 comprobaciones
+  (22 nuevas).
 
 **Pruebas**
 
-- `verify.php`: **TODO OK (404)**.
-- HTTP real con las cuatro tiendas: **61 comprobaciones**, incluidas primera
+- `verify.php`: **TODO OK (407)**.
+- HTTP real con las cuatro tiendas: **86 comprobaciones**, incluidas primera
   visita, rechazar, aceptar, guardar, persistencia, CSRF, open redirect,
   cookie host-only, `Max-Age=15552000`, `SameSite=Lax`, banner oculto tras la
   decisión, política dinámica y NIF omitido en `servitecni-online`.
-- Chrome CDP: **96 comprobaciones** en `xgrabu`, `prueba` (tema minimal/dark),
-  `servitecni-online` e `informaticasanjose`: colores por tienda, Aceptar/
-  Rechazar con el mismo peso, Configurar neutro, casillas vacías, reapertura,
-  trampa de foco, Shift+Tab, Escape, persistencia, revocación, consola limpia,
-  ausencia de peticiones de seguimiento, responsive 320/390/768/1440 y sin JS.
+- Chrome CDP: **106 comprobaciones** en `xgrabu`, `prueba` (tema minimal/dark),
+  `servitecni-online` e `informaticasanjose`: colores, tipografía y radios por
+  tienda, Aceptar/Rechazar con el mismo peso, Configurar neutro, casillas vacías,
+  reapertura, trampa de foco, Shift+Tab, Escape, persistencia, revocación,
+  consola limpia, ausencia de peticiones de seguimiento, responsive
+  320/390/768/1440 y sin JS.
 - En 320 px el buscador preexistente de la cabecera ya producía 354 px de
   `scrollWidth`; el banner y el modal quedan dentro del viewport y no añaden
   desbordamiento. No se tocó esa funcionalidad ajena.
 
 **Pendiente:** GA4 por tienda si se quiere analítica, revisión legal del texto,
-completar el NIF de `servitecni-online` y verificar cookies de terceros en
-producción si se añade algún servicio.
+enlazar la cuenta del mayorista de `servitecni-online` si se quiere mostrar su
+NIF y verificar cookies de terceros en producción si se añade algún servicio.
 
 ---
 

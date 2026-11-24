@@ -88,7 +88,6 @@ database/
   migrations/011..012_*.sql      Banners/avisos y zonas de venta y envío
   migrations/013_store_markup_fixed.sql  Beneficio fijo en EUR por tienda
   migrations/014..015_*.sql      Ciclo de alta y evidencia contractual
-  migrations/016_store_tax_id.sql  NIF/CIF del responsable en mt_stores
   seeds/001_seed.sql             Planes, temas y tienda demo
   migrate.php                    Ejecutor de migraciones + semillas
 deploy/                    Vhosts de Apache, plantilla de nginx y scripts
@@ -98,7 +97,7 @@ public/                    ÚNICO directorio servido como estático
   uploads/                 Archivos locales (si STORAGE_DRIVER=local)
 storage/                   cache/ y logs/ (escritura de la app; la caché se limpia sola)
   logs/<canal>/<día>/       Un fichero JSON-lines por día y tienda (`Logger`)
-tools/verify.php           404 comprobaciones automáticas
+tools/verify.php           407 comprobaciones automáticas
 tools/cache-clear.php      Gestiona la caché de datos (estado, vaciar, patrones, gc)
 tools/logs.php             Consulta los logs por consola (filtros, resumen, días, tiendas, gc)
 ```
@@ -220,10 +219,10 @@ Todas con `utf8mb4_unicode_ci` y FK a `mt_stores(id) ON DELETE CASCADE`.
 `radius_scale` (`compact|standard|rounded`), `font`, `theme_tokens` (JSON) y
 `custom_css`. Los colores opcionales en `NULL` significan «usa el valor del tema».
 
-`mt_stores.tax_id` (migración `016`) guarda el **NIF/CIF del responsable** que se
-muestra en la política de cookies. Se rellena desde `tiendas.nif_cif` al migrar y
-se puede editar en **Ajustes**. Si falta, la política omite ese dato; no se
-inventa ni se toma de una tienda distinta.
+El **NIF/CIF del responsable** no se guarda en tienda: la política lo obtiene de
+`Account::forStore()` (`tiendas.nif_cif` de la cuenta enlazada) y lo omite si la
+tienda no tiene cuenta o el dato no existe. No hay columnas ni migraciones para
+el consentimiento.
 
 `mt_stores` guarda además el **enlace con el mayorista** (migración `003`):
 `id_tienda_idirecto` (cuenta en `tiendas.id`). La cuenta y la tarifa se gestionan
@@ -663,19 +662,31 @@ Los estilos y el comportamiento están en `public/assets/css/cookies.css` y
 - **Sin JS**: el banner se renderiza visible en servidor, no al revés; aceptar,
   rechazar y guardar envían un `POST /cookies/consent` con CSRF. La respuesta
   redirige a una ruta local validada (`safeReturnPath()`), nunca a otro host.
-- **Color por tienda**: `Core/CookieConsent` parte de `color_primary` o del
-  override hexadecimal de `theme_tokens.raw`. Calcula con contraste WCAG real
-  (>= 4,5:1) los botones, hover, foco, enlaces y texto; si no hay color válido
-  usa `#333333`. Aceptar y rechazar comparten la misma clase y peso visual.
+- **Color y diseño por tienda**: `Core/CookieConsent` parte de `color_primary` o
+  del override hexadecimal de `theme_tokens.raw`; usa el esquema, la tipografía
+  y los radios efectivos de `Appearance`. Calcula con contraste WCAG real
+  (>= 4,5:1) botones, hover, foco, enlaces y texto; si no hay color válido usa
+  `#333333`. Aceptar y rechazar comparten la misma clase y peso visual.
+- **Aislamiento**: el CSS estático no contiene colores de tienda; las variables
+  `--idc-*` se generan en cada petición para el tenant resuelto por hostname y se
+  imprimen al final del `<head>` con `!important`. No hay caché de páginas ni de
+  CSS por tienda; si se añadiera, la clave debe incluir el `store_id`. El
+  `custom_css` se imprime antes y se le eliminan las reglas que apunten a
+  `#idc-*`/`.idc-*` o declaren `--idc-*`, de modo que no puede ocultar ni
+  recolorear el aviso.
 - **Terceros**: no se carga analítica sin `a:1` ni se crean iframes sin `e:1`.
   El ID de analítica es por tienda (`mt_settings.analytics_ga4_id`) y, mientras
   esté vacío o no sea GA4, el cargador no solicita nada. No hay ID global ni se
   copia el UA de idirecto. Las fachadas `data-idc-embed` quedan preparadas para
   YouTube y Maps, pero hoy no hay embeds en las páginas.
+- **Sin base de datos de visitantes**: aceptar, rechazar y guardar solo escriben
+  `id_consent` en el navegador. El servidor no guarda aceptaciones ni datos del
+  visitante. La cookie es host-only y cada subdominio tiene su propia decisión.
 - **Política**: `GET /cookies` genera la tabla real (`tienda_session`,
   `id_consent` y `tienda.color-scheme`), el formulario de preferencias y los
-  datos del responsable desde `mt_stores` (razón social, dirección, email y
-  `tax_id`). El NIF se omite si no existe. No hay datos legales hardcodeados.
+  datos del responsable desde `mt_stores` (razón social, dirección y email) más
+  el NIF de `Account::forStore()` si está disponible. El NIF se omite si no
+  existe. No hay datos legales hardcodeados.
 
 ### Temas
 
@@ -761,7 +772,7 @@ servidores no los traen en `/etc/mime.types` y servirían la imagen sin
 
 ```bash
 sudo bash deploy/setup-local-domain.sh     # /etc/hosts + VirtualHost + permisos
-php tools/verify.php                       # 404 comprobaciones
+php tools/verify.php                       # 407 comprobaciones
 php -S 127.0.0.1:8099 index.php            # servidor embebido (alternativa)
 ```
 
@@ -797,7 +808,7 @@ certificado wildcard; el panel los comprueba en **Dominios > Comprobar que carga
 ## 10. Verificación antes de dar algo por hecho
 
 ```bash
-php tools/verify.php                 # debe decir: TODO OK (404 comprobaciones)
+php tools/verify.php                 # debe decir: TODO OK (407 comprobaciones)
 curl -s -o /dev/null -w '%{http_code}\n' http://local.tienda/
 curl -s -o /dev/null -w '%{http_code}\n' -H 'Host: idirecto-demo.local.tienda' http://127.0.0.1/
 curl -s -o /dev/null -w '%{http_code}\n' http://local.tienda/catalogo

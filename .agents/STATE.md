@@ -15,15 +15,16 @@ el carrito y los pedidos se rechazan con un aviso hasta poner
 `SHOP_TEST_MODE=false`.
 
 > 🍪 **Consentimiento de cookies (2026-11-23).** El storefront tiene banner,
-> panel de preferencias y política `/cookies` con 4 categorías, color por tienda
-> y contraste AA calculado en servidor. `id_consent` dura 180 días, es host-only,
-> `SameSite=Lax`, `Secure` en HTTPS y usa `a:0|m:0|e:0|v:1`. Aceptar/rechazar
-> funciona con formulario POST y CSRF sin JavaScript. La migración `016` añadió
-> `mt_stores.tax_id` y la rellenó desde la cuenta enlazada; `servitecni-online`
-> queda sin NIF y la política lo omite. Hoy no hay analítica ni terceros: el ID
-> por tienda (`mt_settings.analytics_ga4_id`) está vacío. `verify.php` **TODO OK
-> (404)**; pruebas HTTP **61/61** y Chrome CDP **96/96**. Detalle en
-> `CHANGELOG.md`.
+> panel de preferencias y política `/cookies` con 4 categorías, color, esquema,
+> tipografía y radios de la tienda resuelta por subdominio, y contraste AA
+> calculado en servidor. `id_consent` dura 180 días, es host-only, `SameSite=Lax`,
+> `Secure` en HTTPS y usa `a:0|m:0|e:0|v:1`. Aceptar/rechazar funciona con
+> formulario POST y CSRF sin JavaScript. **No hay migraciones ni tablas nuevas**:
+> el consentimiento solo vive en la cookie y el NIF se obtiene de
+> `Account::forStore()`; `servitecni-online` no lo tiene y la política lo omite.
+> Hoy no hay analítica ni terceros: el ID por tienda
+> (`mt_settings.analytics_ga4_id`) está vacío. `verify.php` **TODO OK (407)**;
+> pruebas HTTP **86/86** y Chrome CDP **106/106**. Detalle en `CHANGELOG.md`.
 
 > **Aviso permanente de web de prueba (2026-11-12).** Todas las páginas del
 > storefront muestran una barra compacta con el texto «Web de prueba. Los
@@ -167,31 +168,34 @@ el carrito y los pedidos se rechazan con un aviso hasta poner
 ## Hecho
 
 ### Consentimiento de cookies y política por tienda (2026-11-23)
-- **Migración 016**: `mt_stores.tax_id` (`varchar(30)`, nullable) y relleno
-  desde `tiendas.nif_cif` de la cuenta enlazada. Se hizo copia previa en
-  `storage/backups/mt_stores_20261123_171439.sql`. Resultado: `xgrabu`,
-  `prueba` e `informaticasanjose` con NIF; `servitecni-online` sin él.
+- **Sin cambios de base de datos**: no hay migración, tabla, columna ni copia de
+  `mt_stores` para este bloque. El consentimiento solo se guarda en la cookie
+  del navegador; el servidor no registra aceptaciones ni datos del visitante.
 - **Núcleo `CookieConsent`**: parser y serializador de `id_consent`, cookie
   host-only con `SameSite=Lax` y `Secure` condicionado a HTTPS, estado de
   consentimiento en servidor, redirección local segura, ID de analítica por
   tienda (vacío) y cálculo de contraste WCAG real. No usa
   `Appearance::contrast()` para los controles.
-- **Color por tienda**: parte de `color_primary` o del override hexadecimal de
-  `theme_tokens.raw`; respaldo `#333333`. Genera `--idc-primary`,
-  `--idc-control-bg`, `--idc-control-text`, `--idc-control-hover`,
-  `--idc-focus`, `--idc-link`, etc. para claro y oscuro. Aceptar y Rechazar usan
-  la misma clase y peso; Configurar es neutro.
+- **Color y diseño por tienda**: parte de `color_primary` o del override
+  hexadecimal de `theme_tokens.raw`; usa el esquema, tipografía y radios
+  efectivos de `Appearance`; respaldo `#333333`. Genera `--idc-*` para claro y
+  oscuro. Aceptar y Rechazar usan la misma clase y peso; Configurar es neutro.
+- **Aislamiento**: las variables se calculan por petición para el tenant del
+  hostname y se imprimen al final del `<head>` con `!important`. No hay caché de
+  páginas/CSS; el CSS estático no contiene colores de tienda. `custom_css` se
+  imprime antes y se le eliminan reglas/declaraciones que apunten a `idc`.
 - **Banner y panel**: partial único en el layout común, CSS/JS únicos, enlace
   permanente en el footer, formularios POST con CSRF y degradación sin JS. El
   modal tiene foco atrapado, Escape, retorno de foco y `aria-live`.
-- **Política `/cookies`**: responsable desde `mt_stores` (incluido `tax_id`, que
-  se omite si falta), tabla real de `tienda_session`, `id_consent` y
+- **Política `/cookies`**: responsable desde `mt_stores` (razón social,
+  dirección y email) y NIF/CIF desde `Account::forStore()`, que se omite si no
+  existe. Tabla real de `tienda_session`, `id_consent` y
   `tienda.color-scheme`, y declaración de que hoy no hay cookies de terceros.
 - **Terceros**: no se añadió ningún servicio. El cargador de GA4 queda
   desactivado mientras `mt_settings.analytics_ga4_id` esté vacío; no se copia
   el UA de idirecto. Las fachadas `data-idc-embed` están preparadas para
   YouTube/Maps, sin embeds nuevos.
-- **Herramientas**: `verify.php` **TODO OK (404)**; 61 comprobaciones HTTP y 96
+- **Herramientas**: `verify.php` **TODO OK (407)**; 86 comprobaciones HTTP y 106
   de Chrome CDP (incluye teclado, foco, responsive 320/390/768/1440, sin JS,
   consola limpia y ausencia de peticiones de seguimiento). Detalle en
   `CHANGELOG.md`.
@@ -750,7 +754,7 @@ el carrito y los pedidos se rechazan con un aviso hasta poner
   en **nginx + PHP-FPM** (`sudo bash deploy/setup-nginx-domain.sh ecom-era.com`).
 - La app detecta el servidor (`app/Core/Server.php`): ruta pública de `/public`,
   esquema real (incluido proxy) y host de las URLs canónicas.
-- `tools/verify.php`: 404 comprobaciones automáticas (diseño, facetas, filtros
+- `tools/verify.php`: 407 comprobaciones automáticas (diseño, facetas, filtros
   estructurados del mayorista, catálogo, paginación y enlaces de las tarjetas, caché y
   precios en vivo, carrito y mini-carrito, **modo de pruebas comercial**, **nombre de
   marca con razón social**, **sesiones antiguas y títulos públicos**, favicon de la
@@ -772,8 +776,9 @@ el carrito y los pedidos se rechazan con un aviso hasta poner
 - **Revisión legal**: la política se genera con los datos reales de la tienda,
   pero el texto debe revisarlo quien corresponda. La fecha de revisión está en
   `config/cookies.php`.
-- **NIF/CIF**: `servitecni-online` sigue sin `tax_id`; la política lo omite y no
-  se inventa. Se puede completar en **Ajustes > Datos de la tienda**.
+- **NIF/CIF**: `servitecni-online` no tiene cuenta del mayorista enlazada, así
+  que `Account::forStore()` no devuelve NIF y la política lo omite. Se resuelve
+  enlazando esa cuenta en idirecto; no se guarda en tienda.
 - **Verificación de terceros en navegador**: el proyecto no tiene hoy
   analítica, píxeles, YouTube ni Maps. Si se añaden, hay que comprobar en
   DevTools que no salen peticiones antes del consentimiento y actualizar la
