@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tienda\Core;
 
+use Tienda\Core\Idirecto\Account;
 use Tienda\Models\Setting;
 
 /**
@@ -203,8 +204,9 @@ final class CookieConsent
     }
 
     /**
-     * Datos que la politica muestra del responsable. Se toman de la tienda;
-     * si falta el NIF/CIF se omite en la vista (no se inventa ni se rellena).
+     * Datos que la politica muestra del responsable. La tienda aporta sus
+     * datos publicos y el NIF/CIF se toma de Account::forStore() si la cuenta
+     * esta enlazada. Si no hay NIF, la vista omite el dato.
      */
     public static function responsible(Tenant $tenant): array
     {
@@ -212,10 +214,19 @@ final class CookieConsent
         $postalCode = trim($tenant->postalCode());
         $city = trim($tenant->city());
         $locality = trim($postalCode . ($postalCode !== '' && $city !== '' ? ' ' : '') . $city);
+        $taxId = '';
+
+        try {
+            $account = Account::forStore($tenant->toArray());
+            $taxId = trim((string) ($account['nif'] ?? ''));
+        } catch (\Throwable $e) {
+            // Una cuenta del mayorista no disponible no puede romper la política.
+            $taxId = '';
+        }
 
         return [
             'legal_name' => $legalName !== '' ? $legalName : $tenant->brandName(),
-            'tax_id'     => trim($tenant->taxId()),
+            'tax_id'     => $taxId,
             'address'    => trim($tenant->address()),
             'locality'   => $locality,
             'province'   => trim($tenant->province()),
@@ -271,6 +282,42 @@ final class CookieConsent
         }
 
         return $raw;
+    }
+
+    /**
+     * Elimina del CSS propio de la tienda cualquier regla que intente tocar el
+     * aviso (`#idc-*`, `.idc-*`) y cualquier declaracion `--idc-*`.
+     *
+     * Asi el componente no puede ocultarse ni recolorearse desde custom_css:
+     * sus valores salen exclusivamente de las variables generadas en servidor.
+     */
+    public static function sanitizeCustomCss(string $css): string
+    {
+        $css = trim($css);
+        if ($css === '' || stripos($css, 'idc') === false) {
+            return $css;
+        }
+
+        $filtered = preg_replace_callback(
+            '/([^{}]+)\{([^{}]*)\}/s',
+            static function (array $match): string {
+                if (stripos($match[1], 'idc') !== false) {
+                    return '';
+                }
+
+                $body = preg_replace('/(?:^|;)\s*--idc-[^;}]*(?:;|$)/i', ';', $match[2]) ?? '';
+
+                return $match[1] . '{' . $body . '}';
+            },
+            $css
+        );
+
+        if (!is_string($filtered)) {
+            return '';
+        }
+
+        // Cubre declaraciones sueltas que no hayan caido dentro de un bloque.
+        return preg_replace('/(?:^|;)\s*--idc-[^;}]*(?:;|$)/i', ';', $filtered) ?? '';
     }
 
     // =====================================================================
@@ -391,6 +438,10 @@ final class CookieConsent
         // Foco: se exige 4,5:1 con la superficie, no solo 3:1 de componente.
         $focus = self::ensureContrast($primary, $surface, 4.5);
 
+        // Tipografía y formas efectivas de la tienda, aisladas del custom_css.
+        $font = self::safeFont((string) ($tokens['font'] ?? ''), 'system-ui, sans-serif');
+        $fontHead = self::safeFont((string) ($tokens['font-head'] ?? $font), $font);
+
         return [
             'primary'        => $primary,
             'surface'        => $surface,
@@ -405,6 +456,14 @@ final class CookieConsent
             'control-border' => $controlBorder,
             'control-hover'  => $controlHover,
             'focus'          => $focus,
+            'font'           => $font,
+            'font-head'      => $fontHead,
+            'radius-sm'      => self::safeLength((string) ($tokens['radius-sm'] ?? ''), '6px'),
+            'radius-md'      => self::safeLength((string) ($tokens['radius-md'] ?? ''), '10px'),
+            'radius-lg'      => self::safeLength((string) ($tokens['radius-lg'] ?? ''), '14px'),
+            'radius-pill'    => self::safeLength((string) ($tokens['radius-pill'] ?? ''), '999px'),
+            'shadow-lg'      => '0 18px 45px rgba(15, 23, 42, .18)',
+            'container-max'  => self::safeLength((string) ($tokens['container-max'] ?? ''), '1600px'),
         ];
     }
 
@@ -424,7 +483,9 @@ final class CookieConsent
     {
         $out = [];
         foreach ($vars as $name => $value) {
-            $out[] = '--idc-' . $name . ':' . $value;
+            // El custom_css de la tienda se imprime antes; estas variables no
+            // pueden pisarse desde el.
+            $out[] = '--idc-' . $name . ':' . $value . ' !important';
         }
 
         return implode(';', $out) . ';';
@@ -457,6 +518,28 @@ final class CookieConsent
         }
 
         return Appearance::hex($tenant->colorPrimary()) ?? self::fallbackColor();
+    }
+
+    /** Fuente segura para una variable CSS (`--idc-font*`). */
+    private static function safeFont(string $value, string $fallback): string
+    {
+        $value = trim($value);
+        if ($value === '' || strlen($value) > 300 || preg_match('/[<>{};()]/', $value) === 1) {
+            return $fallback;
+        }
+
+        return $value;
+    }
+
+    /** Longitud/radio seguro; solo admite unidades CSS sencillas. */
+    private static function safeLength(string $value, string $fallback): string
+    {
+        $value = trim($value);
+        if (preg_match('/^(?:0|\d+(?:\.\d+)?(?:px|rem|em|%|vw|vh|dvh))$/', $value) === 1) {
+            return $value;
+        }
+
+        return $fallback;
     }
 
     private static function safeColor(string $value, string $fallback): string

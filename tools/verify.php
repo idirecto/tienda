@@ -3013,9 +3013,8 @@ $cookieFilesOk = is_file(TIENDA_BASE . '/config/cookies.php')
     && is_file(TIENDA_BASE . '/app/Views/themes/idirecto/cookies.php')
     && is_file(TIENDA_BASE . '/app/Controllers/CookieConsentController.php')
     && is_file(TIENDA_BASE . '/public/assets/css/cookies.css')
-    && is_file(TIENDA_BASE . '/public/assets/js/cookies-consent.js')
-    && is_file(TIENDA_BASE . '/database/migrations/016_store_tax_id.sql');
-check($cookieFilesOk, 'existen configuracion, nucleo, partial, politica, controlador, CSS, JS y migracion');
+    && is_file(TIENDA_BASE . '/public/assets/js/cookies-consent.js');
+check($cookieFilesOk, 'existen configuracion, nucleo, partial, politica, controlador, CSS y JS');
 
 check(
     CookieConsent::name() === 'id_consent'
@@ -3129,14 +3128,37 @@ $overrideTenant = new Tenant([
 $overrideVars = CookieConsent::cssVars($overrideTenant, 'light');
 check($overrideVars['primary'] === '#0a7d32', 'el override hexadecimal de theme_tokens se aplica al aviso');
 
-$taxColumn = Database::first(
-    'SELECT COLUMN_NAME, COLUMN_TYPE FROM information_schema.COLUMNS
-     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :t AND COLUMN_NAME = :c LIMIT 1',
-    ['t' => 'mt_stores', 'c' => 'tax_id']
-);
+$cookieCss = (string) file_get_contents(TIENDA_BASE . '/public/assets/css/cookies.css');
 check(
-    is_array($taxColumn) && $taxColumn['COLUMN_TYPE'] === 'varchar(30)',
-    'la migracion 016 ha creado mt_stores.tax_id'
+    !str_contains($cookieCss, 'var(--c-')
+        && str_contains($cookieCss, 'var(--idc-font')
+        && str_contains($cookieCss, 'var(--idc-radius-md'),
+    'el CSS del aviso usa solo variables --idc- para color, tipografia y radios'
+);
+$pruebaVars = CookieConsent::cssVars(new Tenant(Store::findBySlugWithPlan('prueba') ?? []), 'dark');
+$xgrabuVars = CookieConsent::cssVars(new Tenant(Store::findBySlugWithPlan('xgrabu') ?? []), 'dark');
+check(
+    isset($pruebaVars['font'], $pruebaVars['font-head'], $pruebaVars['radius-md'], $pruebaVars['radius-lg'])
+        && $pruebaVars['font'] !== $xgrabuVars['font']
+        && $pruebaVars['radius-md'] !== $xgrabuVars['radius-md']
+        && str_contains(CookieConsent::css(new Tenant(Store::findBySlugWithPlan('prueba') ?? [])), $pruebaVars['primary']),
+    'cada tienda recibe su propia tipografia, radio y variables sin compartir cache entre subdominios'
+);
+$dirtyCustomCss = '.foo{color:red}.idc-banner{display:none!important}#idc-cookie-banner{opacity:0}:root{--idc-primary:#f00!important}';
+$cleanCustomCss = CookieConsent::sanitizeCustomCss($dirtyCustomCss);
+check(
+    str_contains($cleanCustomCss, '.foo{color:red}')
+        && !str_contains($cleanCustomCss, '.idc-banner')
+        && !str_contains($cleanCustomCss, '#idc-cookie-banner')
+        && !str_contains($cleanCustomCss, '--idc-primary'),
+    'custom_css no puede ocultar ni recolorear el aviso'
+);
+$cookieController = (string) file_get_contents(TIENDA_BASE . '/app/Controllers/CookieConsentController.php');
+check(
+    !str_contains($cookieController, 'Database::')
+        && !str_contains($cookieController, 'Setting::set')
+        && str_contains($cookieController, 'CookieConsent::setCookie'),
+    'el consentimiento solo vive en la cookie: el controlador no escribe en base de datos'
 );
 
 $policyX = CookieConsent::policy(new Tenant(Store::findBySlugWithPlan('xgrabu') ?? []));
@@ -3153,7 +3175,7 @@ check(
         && $policyS['responsible']['tax_id'] === ''
         && $policyX['responsible']['legal_name'] !== ''
         && $policyX['responsible']['email'] !== '',
-    'los datos del responsable salen de la tienda y el NIF ausente queda vacio'
+    'Account::forStore aporta el NIF cuando existe; la tienda sin cuenta lo omite'
 );
 check(
     str_contains((string) file_get_contents(TIENDA_BASE . '/app/Views/themes/idirecto/cookies.php'), 'Actualmente no se cargan cookies de terceros')

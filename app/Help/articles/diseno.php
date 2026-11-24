@@ -134,7 +134,7 @@ return [
 
             <div class="help-callout help-callout--warning">
                 <strong>La política de cookies se genera; el resto de textos legales no</strong>
-                <p>La tienda publica automáticamente una política de cookies en <code>/cookies</code> con la tabla real de cookies y los datos del responsable. Para completarla, revisa la razón social, el NIF/CIF, el email y la dirección en Ajustes y Diseño.</p>
+                <p>La tienda publica automáticamente una política de cookies en <code>/cookies</code> con la tabla real de cookies y los datos del responsable. Para completarla, revisa la razón social, el email y la dirección en Ajustes y Diseño. El NIF/CIF se toma de la cuenta del mayorista enlazada; si no existe, se omite.</p>
                 <p>El panel no permite crear ni editar el aviso legal, la privacidad, las condiciones de venta o las devoluciones. Si necesitas publicarlos, la decisión, el contenido y la revisión legal deben resolverse fuera de esta pantalla.</p>
             </div>
 

@@ -51,12 +51,6 @@ final class Tenant
         return (string) ($this->store['legal_name'] ?? '');
     }
 
-    /** NIF/CIF del responsable, guardado en la propia tienda. */
-    public function taxId(): string
-    {
-        return (string) ($this->store['tax_id'] ?? '');
-    }
-
     public function email(): string
     {
         return (string) ($this->store['email'] ?? '');

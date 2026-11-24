@@ -27,6 +27,7 @@ use Tienda\Models\Menu;
 $scheme = Appearance::scheme($tenant);
 $themeCss = Appearance::css($tenant);
 $cookieCss = CookieConsent::css($tenant);
+$storeCustomCss = CookieConsent::sanitizeCustomCss($tenant->customCss());
 $cookieState = CookieConsent::stateFromRequest();
 $showCookieBanner = !$cookieState['decided'];
 $cookieConfigJson = (string) json_encode(
@@ -102,12 +103,13 @@ $headerStyle = preg_replace('/[^a-z0-9_\-]/i', '', $tenant->headerStyle()) ?: 'c
 
     <?php /* Identidad de la tienda (design tokens) */ ?>
     <style><?= $themeCss ?></style>
-    <style><?= $cookieCss ?></style>
     <link rel="stylesheet" href="<?= e(asset('assets/css/shop.css')) ?>">
-    <link rel="stylesheet" href="<?= e(asset('assets/css/cookies.css')) ?>">
-    <?php if ($tenant->customCss() !== ''): ?>
-        <style><?= $tenant->customCss() ?></style>
+    <?php if ($storeCustomCss !== ''): ?>
+        <style><?= $storeCustomCss ?></style>
     <?php endif; ?>
+    <?php /* El consentimiento se imprime al final: no puede pisarse desde custom_css. */ ?>
+    <style><?= $cookieCss ?></style>
+    <link rel="stylesheet" href="<?= e(asset('assets/css/cookies.css')) ?>">
 </head>
 <body class="shop theme-<?= e($tenant->theme()) ?> header-<?= e($headerStyle) ?>">
 

@@ -84,7 +84,6 @@ final class SettingsController extends Controller
         Store::updateById($storeId, [
             'name'        => (string) $this->input('name', 'Mi tienda'),
             'legal_name'  => (string) $this->input('legal_name', ''),
-            'tax_id'      => mb_substr(trim((string) $this->input('tax_id', '')), 0, 30) ?: null,
             'email'       => (string) $this->input('email', ''),
             'phone'       => (string) $this->input('phone', ''),
             'postal_code' => (string) $this->input('postal_code', ''),

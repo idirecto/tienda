@@ -46,10 +46,6 @@ $previewPrice = static fn (float $tariff): float
             <div class="field-grid">
                 <label>Nombre comercial<input type="text" name="name" value="<?= $v('name') ?>" required></label>
                 <label>Razon social<input type="text" name="legal_name" value="<?= $v('legal_name') ?>"></label>
-                <label>NIF/CIF
-                    <input type="text" name="tax_id" maxlength="30" value="<?= $v('tax_id') ?>">
-                    <small class="muted">Se usa en la politica de cookies. Si se deja vacio, ese dato se omite.</small>
-                </label>
                 <label>Email<input type="email" name="email" value="<?= $v('email') ?>"></label>
                 <label>Telefono<input type="text" name="phone" value="<?= $v('phone') ?>"></label>
                 <label>Codigo postal<input type="text" name="postal_code" value="<?= $v('postal_code') ?>"></label>

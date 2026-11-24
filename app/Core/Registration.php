@@ -137,7 +137,6 @@ final class Registration
             'slug'        => $slugFinal,
             'name'        => mb_substr($comercial !== '' ? $comercial : 'Mi tienda', 0, 120),
             'legal_name'  => $razonSocial !== '' ? mb_substr($razonSocial, 0, 150) : null,
-            'tax_id'      => mb_substr(trim((string) ($tienda['nif_cif'] ?? '')), 0, 30) ?: null,
             'email'       => mb_substr(mb_strtolower(trim((string) ($tienda['email'] ?? ''))), 0, 150) ?: null,
             'phone'       => mb_substr(trim((string) ($tienda['telefono'] ?? '')) ?: trim((string) ($tienda['movil'] ?? '')), 0, 40) ?: null,
             'id_plan'     => self::defaultPlanId(),

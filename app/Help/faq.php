@@ -58,7 +58,7 @@ return [
                 'question' => '¿Dónde edito el aviso legal, la privacidad, las cookies o las condiciones?',
                 'answer' => <<<'HTML'
                     <p>La política de cookies se genera automáticamente en <code>/cookies</code> con los datos del responsable de la tienda y la tabla real de cookies. No hay que redactarla ni publicarla desde el panel.</p>
-                    <p>La razón social, el NIF/CIF, el email y la dirección se cambian en <strong>Ajustes</strong> y <strong>Diseño</strong>. El resto de páginas legales (aviso legal, privacidad y condiciones) no tiene editor en esta versión y debe resolverse fuera del panel con la persona o asesoría correspondiente.</p>
+                    <p>La razón social, el email y la dirección se cambian en <strong>Ajustes</strong> y <strong>Diseño</strong>. El NIF/CIF se toma de la cuenta del mayorista enlazada; si no existe, se omite en la política. El resto de páginas legales (aviso legal, privacidad y condiciones) no tiene editor en esta versión y debe resolverse fuera del panel con la persona o asesoría correspondiente.</p>
                 HTML,
                 'keywords' => ['aviso legal', 'privacidad', 'cookies', 'política de cookies', 'nif', 'condiciones', 'textos legales'],
                 'article' => 'problemas/funciones-no-disponibles',

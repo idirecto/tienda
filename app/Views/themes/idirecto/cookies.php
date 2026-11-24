@@ -2,8 +2,9 @@
 /**
  * Politica de cookies de la tienda.
  *
- * Los datos del responsable salen de `mt_stores` (a traves de Tenant) y la
- * tabla de cookies de `config/cookies.php`. No hay datos legales fijos.
+ * Los datos del responsable salen de `mt_stores` (a traves de Tenant) y el
+ * NIF/CIF de `Account::forStore()` cuando existe. La tabla de cookies sale de
+ * `config/cookies.php`. No hay datos legales fijos.
  *
  * @var array $policy
  * @var array{decided:bool,analytics:bool,marketing:bool,external:bool} $cookieState
